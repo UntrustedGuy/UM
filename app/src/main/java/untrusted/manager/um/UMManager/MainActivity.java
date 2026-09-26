@@ -1,0 +1,4656 @@
+package untrusted.manager.um.UMManager;
+
+import static untrusted.manager.um.utils.FileUtils.doesNotHaveStoragePerm;
+
+import android.Manifest;
+import android.animation.Animator;
+import android.animation.ObjectAnimator;
+import android.app.DownloadManager;
+import android.content.BroadcastReceiver;
+import android.content.ClipboardManager;
+import android.content.ComponentName;
+import android.content.ClipData;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.ServiceConnection;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.database.Cursor;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RotateDrawable;
+import android.media.projection.MediaProjectionManager;
+import android.net.Uri;
+import android.net.wifi.WifiManager;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Environment;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.provider.Settings;
+import android.sun.security.provider.JavaKeyStoreProvider;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextUtils;
+import android.text.TextWatcher;
+import android.text.format.Formatter;
+import android.util.TypedValue;
+import android.view.DragEvent;
+import android.view.GestureDetector;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.SubMenu;
+import android.view.View;
+import android.view.ViewConfiguration;
+import android.view.ViewGroup;
+import android.view.ViewParent;
+import android.view.animation.DecelerateInterpolator;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.ListView;
+import android.widget.PopupMenu;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.ScrollView;
+import android.widget.SeekBar;
+import android.widget.TextView;
+
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.app.AppCompatDelegate;
+import androidx.appcompat.widget.Toolbar;
+import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.graphics.drawable.DrawableCompat;
+import androidx.core.os.LocaleListCompat;
+import androidx.core.view.GestureDetectorCompat;
+import androidx.core.view.GravityCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.drawerlayout.widget.DrawerLayout;
+import androidx.preference.PreferenceManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+import androidx.viewpager2.widget.ViewPager2;
+
+import com.google.android.material.bottomsheet.BottomSheetBehavior;
+import com.google.android.material.button.MaterialButton;
+import com.google.android.material.button.MaterialButtonToggleGroup;
+import com.google.android.material.color.DynamicColors;
+import com.google.android.material.color.MaterialColors;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.materialswitch.MaterialSwitch;
+import com.google.android.material.snackbar.Snackbar;
+import com.google.android.material.tabs.TabLayout;
+import com.google.android.material.tabs.TabLayoutMediator;
+import com.google.android.material.textfield.MaterialAutoCompleteTextView;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import com.lilincpp.github.libezftp.EZFtpClient;
+import com.lilincpp.github.libezftp.EZFtpFile;
+import com.lilincpp.github.libezftp.EZFtpServer;
+import com.lilincpp.github.libezftp.IEZFtpClient;
+import com.lilincpp.github.libezftp.IEZFtpServer;
+import com.lilincpp.github.libezftp.callback.OnEZFtpCallBack;
+import com.lilincpp.github.libezftp.user.EZFtpUser;
+import com.lilincpp.github.libezftp.user.EZFtpUserPermission;
+import com.reandroid.apk.APKLogger;
+import com.reandroid.apkeditor.compile.BuildOptions;
+import com.reandroid.apkeditor.compile.Builder;
+import com.reandroid.utils.StringsUtil;
+import com.reandroid.utils.io.FileUtil;
+
+import net.lingala.zip4j.ZipFile;
+import net.lingala.zip4j.model.FileHeader;
+import net.lingala.zip4j.model.ZipParameters;
+import net.lingala.zip4j.model.enums.CompressionLevel;
+import net.lingala.zip4j.model.enums.CompressionMethod;
+
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.security.Security;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
+
+import untrusted.manager.um.ApkExtractor.APKExtractorActivity;
+import untrusted.manager.um.UMManager.ftp.FTPFileWrapper;
+import untrusted.manager.um.UMManager.ftp.FtpForegroundService;
+import untrusted.manager.um.UMManager.ftp.FtpsCertificateUtil;
+import untrusted.manager.um.UMManager.ftp.ProfileHelper;
+import untrusted.manager.um.UMManager.shizuku.ShizukuFile;
+import untrusted.manager.um.UMManager.shizuku.ShizukuFileOps;
+import untrusted.manager.um.UMManager.shizuku.ShizukuShell;
+import untrusted.manager.um.adapters.BookmarksAdapter;
+import untrusted.manager.um.adapters.SidebarAdapter;
+import untrusted.manager.um.adapters.FtpFilesArrayAdapter;
+import untrusted.manager.um.adapters.HistoryAdapter;
+import untrusted.manager.um.adapters.ZipEntryInfo;
+import untrusted.manager.um.adapters.main.FileMenuCustomizer;
+import untrusted.manager.um.adapters.main.FileMenuOrder;
+import untrusted.manager.um.adapters.main.MainFilesArrayAdapter;
+import untrusted.manager.um.player.ImageViewerActivity;
+import untrusted.manager.um.player.MediaPlayerActivity;
+import untrusted.manager.um.player.MiniPlayerDialog;
+import untrusted.manager.um.player.PlayerManager;
+import untrusted.manager.um.tools.StorageManagerActivity;
+import untrusted.manager.um.tools.ToolsHubActivity;
+import untrusted.manager.um.tools.WifiManagerActivity;
+import untrusted.manager.um.ui.UIHelper;
+import untrusted.manager.um.ui.UiFields;
+import untrusted.manager.um.ui.activities.TextEditorActivity;
+import untrusted.manager.um.ui.dialogs.FilePickerDialog;
+import untrusted.manager.um.ui.views.SortDirectionToggle;
+import untrusted.manager.um.utils.AccessManager;
+import untrusted.manager.um.utils.CopyUtil;
+import untrusted.manager.um.utils.DialogUtil;
+import untrusted.manager.um.utils.ErrorUtil;
+import untrusted.manager.um.utils.FileUtils;
+import untrusted.manager.um.utils.InstallUtil;
+import untrusted.manager.um.utils.LegacyUtils;
+import untrusted.manager.um.utils.ProgressManager;
+import untrusted.manager.um.utils.RootManager;
+import untrusted.manager.um.utils.RootPermissionHelper;
+import untrusted.manager.um.utils.SearchHistoryDropdown;
+import untrusted.manager.um.utils.SearchHistoryHelper;
+import untrusted.manager.um.utils.ShizukuManager;
+import untrusted.manager.um.utils.SignWrapper;
+import untrusted.manager.um.utils.StorageUtil;
+import untrusted.manager.um.utils.UiPrefs;
+import untrusted.manager.um.utils.UpdateUtil;
+import io.github.codehasan.colorpicker.PreferencesDialogFragment;
+import io.github.codehasan.colorpicker.ServiceState;
+import io.github.codehasan.colorpicker.extensions.Extensions;
+import io.github.codehasan.colorpicker.services.ColorPickerService;
+import io.github.ratul.topactivity.extensions.ActivityExtensions;
+import io.github.ratul.topactivity.manager.ServiceManager;
+import io.github.ratul.topactivity.repository.DataRepository;
+import io.github.ratul.topactivity.services.PackageMonitoringService;
+import io.github.ratul.topactivity.utils.PermissionUtil;
+import rikka.shizuku.Shizuku;
+
+public class MainActivity extends AppCompatActivity {
+    boolean logEnabled;
+    private File homeDir1;
+    private File homeDir2;
+    private MediaProjectionManager mediaProjectionManager;
+    public File pane1Folder;
+    public File pane2Folder;
+    public int lastPaneSelected = 1;
+    public DialogUtil dialogUtil;
+    public UIHelper uiHelper;
+    private final List<NavigationHistoryEntry> pane1History = new ArrayList<>();
+    private final List<NavigationHistoryEntry> pane2History = new ArrayList<>();
+    private int pane1HistoryIndex = -1;
+    private int pane2HistoryIndex = -1;
+    public ArrayList<File> bookmarks;
+    private BookmarksAdapter bookmarksAdapter;
+    private HistoryAdapter historyAdapter;
+    public String signatureKeyPath;
+    private DrawerLayout drawerLayout;
+    private BottomSheetBehavior<LinearLayout> bottomSheetBehavior;
+    public boolean isSidebarDrawerOpen;
+    public boolean isBookmarksDrawerOpen;
+    private BroadcastReceiver storageRefreshReceiver;
+    public Handler handler;
+    private boolean systemTheme;
+    public int theme;
+    private boolean checkForUpdates;
+    public String lastVerChecked;
+    public long downloadId;
+    private final BroadcastReceiver onDownloadComplete = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+
+            if (id == downloadId) {
+                downloadId = -1;
+                DownloadManager.Query query = new DownloadManager.Query();
+                query.setFilterById(id);
+                DownloadManager downloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                try (Cursor cursor = downloadManager.query(query)) {
+                    if (cursor.moveToFirst()) {
+                        int columnIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+                        if (DownloadManager.STATUS_SUCCESSFUL == cursor.getInt(columnIndex)) {
+                            int columnIndex1 = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI);
+                            String fileUri = cursor.getString(columnIndex1);
+                            promptInstallDownloadedUpdate(fileUri);
+                        }
+                    }
+                } catch (Exception e) {
+                    Extensions.showMessage(MainActivity.this, e.toString());
+                }
+            }
+        }
+    };
+
+    private void checkPendingUpdateDownload() {
+        if (downloadId == -1) return;
+        try {
+            DownloadManager downloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            DownloadManager.Query query = new DownloadManager.Query();
+            query.setFilterById(downloadId);
+            try (Cursor cursor = downloadManager.query(query)) {
+                if (cursor.moveToFirst()) {
+                    int statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+                    if (DownloadManager.STATUS_SUCCESSFUL == cursor.getInt(statusIndex)) {
+                        long id = downloadId;
+                        downloadId = -1;
+                        int uriIndex = cursor.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI);
+                        promptInstallDownloadedUpdate(cursor.getString(uriIndex));
+                    } else if (DownloadManager.STATUS_FAILED == cursor.getInt(statusIndex)) {
+                        downloadId = -1;
+                    }
+                } else {
+                    downloadId = -1;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void promptInstallDownloadedUpdate(String fileUri) {
+        try {
+            File apkFile = null;
+            if (fileUri != null && !fileUri.isEmpty()) {
+                Uri uri = Uri.parse(fileUri);
+                if ("file".equals(uri.getScheme()) && uri.getPath() != null) {
+                    apkFile = new File(uri.getPath());
+                } else if (uri.getScheme() == null) {
+                    apkFile = new File(fileUri);
+                }
+            }
+            if (apkFile == null || !apkFile.isFile()) {
+                Extensions.showMessage(this, getString(R.string.file_no_longer_available));
+                return;
+            }
+            InstallUtil.installApkWithDialog(this, apkFile);
+        } catch (Exception e) {
+            Extensions.showMessage(this, e.toString());
+        }
+    }
+    private File[] currentPane1Files;
+    private File[] currentPane2Files;
+    private List<ZipEntryInfo> currentPane1ZipEntries;
+    private List<ZipEntryInfo> currentPane2ZipEntries;
+    private String currentPane1Filter = "";
+    private String currentPane2Filter = "";
+
+    private MiniPlayerDialog miniPlayerDialog;
+    private MaterialAutoCompleteTextView profileSpinner;
+    private ImageButton profileManageButton;
+    private boolean isBackPressedToExit;
+    private final Runnable resetExitPrompt = () -> isBackPressedToExit = false;
+
+    private GestureDetectorCompat bottomBarGestureDetector;
+    private View.OnTouchListener bottomBarTouchListener;
+    private boolean multiSelectUIActive;
+    private final ImageButton[] multiSelectButtons = new ImageButton[4];
+    private RotateDrawable addButtonRotateDrawable;
+    private Animator addButtonRotationAnimator;
+    private TabLayout bookmarksTabs;
+    private ViewPager2 bookmarksPager;
+    private TabLayoutMediator bookmarksMediator;
+    private ListView bookmarksList, historyList;
+    private final List<String> bookmarkGroups = new ArrayList<>();
+    private View.OnTouchListener bookmarksSwipeDownCloseListener;
+    private final Map<String, String> bookmarkLabels = new HashMap<>();
+    private BookmarkListController mainBookmarkController;
+    private final Map<String, BookmarkListController> groupControllers = new LinkedHashMap<>();
+    private BookmarkListController batchController;
+    private final Set<Integer> batchSelected = new HashSet<>();
+    private boolean bookmarkDragging;
+    private SidebarAdapter sidebarAdapter;
+    private ListView sidebarList;
+    private SwipeRefreshLayout sidebarRefresh;
+    private boolean sidebarOrganizeMode;
+    private View organizeDragView;
+    private View organizeDragCard;
+    private SidebarAdapter.SidebarEntry organizeDragEntry;
+    private float organizeDownX;
+    private float organizeDownY;
+    private boolean organizeDragStarted;
+    private final Runnable organizeLongPressRunnable = () -> {
+        if (!sidebarOrganizeMode || organizeDragStarted || organizeDragView == null || organizeDragEntry == null) return;
+        organizeDragStarted = true;
+        startSidebarDrag(organizeDragView, organizeDragEntry);
+    };
+
+    private class BookmarkListController implements BookmarksAdapter.Callbacks {
+        final String key; // "bookmarks" or a group name
+        final ListView listView;
+        final ArrayList<File> items;
+        final BookmarksAdapter adapter;
+
+        BookmarkListController(String key, ListView listView, ArrayList<File> items) {
+            this.key = key;
+            this.listView = listView;
+            this.items = items;
+            this.adapter = new BookmarksAdapter(MainActivity.this, items, this);
+        }
+
+        @Override
+        public String labelOf(File file) {
+            String label = bookmarkLabels.get(file.getPath());
+            return label != null ? label : file.getName();
+        }
+
+        @Override
+        public void onDragHandleTouched(View handle, int position, MotionEvent initialEvent) {
+            startBookmarkDrag(this, handle, position, initialEvent);
+        }
+
+        @Override
+        public boolean isBatchMode() {
+            return batchController == this;
+        }
+
+        @Override
+        public boolean isBatchSelected(int position) {
+            return batchSelected.contains(position);
+        }
+
+        @Override
+        public boolean isDragging() {
+            return bookmarkDragging;
+        }
+    }
+
+    private ArrayList<File> getBookmarks() {
+        if (bookmarks == null) {
+            bookmarks = new ArrayList<>();
+            try {
+                String raw = PreferenceManager.getDefaultSharedPreferences(this).getString("bookmarks", "");
+                if (raw == null) raw = "";
+                raw = raw.trim();
+                if (raw.startsWith("[\"")) {
+                    List<String> paths = new Gson().fromJson(raw,
+                            new TypeToken<List<String>>() {}.getType());
+                    if (paths != null) {
+                        for (String path : paths) {
+                            if (!TextUtils.isEmpty(path)) {
+                                File bookmarked = new File(path);
+                                if (bookmarked.exists()) bookmarks.add(bookmarked);
+                            }
+                        }
+                    }
+                } else {
+                    String[] savedBookmarks = raw.replace("[", "").replace("]", "").split(", ");
+                    for (String bookmark : savedBookmarks) {
+                        bookmark = bookmark.trim();
+                        if (!TextUtils.isEmpty(bookmark)) {
+                            File bookmarked = new File(bookmark);
+                            if (bookmarked.exists()) bookmarks.add(bookmarked);
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return bookmarks;
+    }
+
+    public void addBookmark(File toBookmark) {
+        if (PreferenceManager.getDefaultSharedPreferences(this).getBoolean("ask_bookmark_tab", false)) {
+            showBookmarkTargetDialog(toBookmark);
+            return;
+        }
+        addBookmarkToTab(getLastBookmarkTabIndex(), toBookmark);
+    }
+
+    private int getLastBookmarkTabIndex() {
+        int last = PreferenceManager.getDefaultSharedPreferences(this).getInt("bookmarks_last_tab", 0);
+        if (last == 1) last = 0;
+        return Math.min(last, 1 + bookmarkGroups.size());
+    }
+
+    private void addBookmarkToTab(int tabIndex, File file) {
+        if (tabIndex >= 2 && tabIndex - 2 < bookmarkGroups.size()) {
+            String group = bookmarkGroups.get(tabIndex - 2);
+            List<File> items = loadGroupBookmarks(group);
+            items.add(file);
+            saveGroupBookmarks(group, items);
+            refreshGroupList(group);
+        } else {
+            getBookmarks().add(file);
+            if (bookmarksAdapter != null) bookmarksAdapter.notifyDataSetChanged();
+        }
+        refreshSidebar(getSidebarSectionOrder());
+        Extensions.showMessage(this, rss.getString(R.string.added_to_bookmarks, file));
+    }
+
+    private void showBookmarkTargetDialog(File file) {
+        List<String> targets = new ArrayList<>();
+        targets.add(rss.getString(R.string.bookmarks));
+        targets.addAll(bookmarkGroups);
+        int[] selected = {0};
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(rss.getString(R.string.bookmarks))
+                .setSingleChoiceItems(targets.toArray(new String[0]), 0, (d, w) -> selected[0] = w)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (d, w) -> addBookmarkToTab(selected[0], file))
+                .show();
+    }
+
+    private void refreshGroupList(String group) {
+        BookmarkListController controller = groupControllers.get(group);
+        if (controller != null) {
+            controller.items.clear();
+            controller.items.addAll(loadGroupBookmarks(group));
+            controller.adapter.notifyDataSetChanged();
+        }
+        refreshSidebar(getSidebarSectionOrder());
+    }
+
+    public void openImageViewer(String filePath) {
+        ImageViewerActivity.open(this, filePath);
+    }
+
+    public void playMediaFile(String filePath) {
+        boolean isVideo = filePath.endsWith(".mp4") || filePath.endsWith(".mkv") || filePath.endsWith(".avi")
+                || filePath.endsWith(".mov") || filePath.endsWith(".webm") || filePath.endsWith(".3gp")
+                || filePath.endsWith(".ts") || filePath.endsWith(".flv") || filePath.endsWith(".wmv");
+        boolean useActivity = isVideo || PreferenceManager.getDefaultSharedPreferences(this).getBoolean("player_open_activity", false);
+        if (useActivity) MediaPlayerActivity.openAndPlay(this, filePath);
+        else {
+            PlayerManager pm = PlayerManager.getInstance(this);
+            pm.play(PlayerManager.buildMediaItem(this, filePath));
+            if (miniPlayerDialog == null || !miniPlayerDialog.isShowing()) (miniPlayerDialog = new MiniPlayerDialog(this)).show();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        unregisterReceiver(onDownloadComplete);
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+        settings.edit()
+                .putString("bookmarks", bookmarks.toString())
+                .putBoolean("systemTheme", systemTheme)
+                .putBoolean("checkForUpdates", checkForUpdates)
+                .putInt("theme", theme)
+                .apply();
+    }
+
+    public void openSidebarDrawer() {
+        drawerLayout.openDrawer(GravityCompat.START);
+        isSidebarDrawerOpen = true;
+    }
+
+    public void closeSidebarDrawer() {
+        drawerLayout.closeDrawer(GravityCompat.START);
+        isSidebarDrawerOpen = false;
+    }
+
+    private void checkStoragePerm() {
+        if (doesNotHaveStoragePerm(this)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                startActivityForResult(new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + getPackageName())), 0);
+            } else if (Build.VERSION.SDK_INT > 22) requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 0);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 0) {
+            if (doesNotHaveStoragePerm(this)) Extensions.showMessage(this, R.string.storage_perm_needed);
+            else recreate();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 9021) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null
+                    && overlayImageCallback != null) {
+                overlayImageCallback.onImagePicked(data.getData());
+            }
+            return;
+        }
+        if (resultCode == 0) if (doesNotHaveStoragePerm(this)) {
+            Extensions.showMessage(this, R.string.storage_perm_needed);
+        } else {
+            // Editor was closed without returning a modified file (back press /
+            // discard in ARSC, text or dex editors). Refresh the listing in place;
+            // recreate() would drop the user back at the home folder.
+            try {
+                refreshPane(lastPaneSelected == 1);
+            } catch (Exception ignored) {
+            }
+        }
+        else {
+            boolean pane1 = lastPaneSelected == 1;
+            if (requestCode == 11 && resultCode == RESULT_OK) {
+                String dirToLoad = data.getStringExtra("dirToLoad");
+                if (dirToLoad != null) loadFolderInPane(new File(dirToLoad), pane1);
+                else {
+                    Uri path = data.getData();
+                    if (path != null) loadFolderInPane(new File(path.toString()), pane1);
+                }
+            } else if(requestCode == 757) {
+                if (data == null || data.getData() == null) return;
+                handleModifiedFileResult(data.getData(), data.getStringExtra("zipEntryPath"), data.getStringExtra("zipFilePath"));
+            }
+        }
+    }
+
+    public void handleModifiedFileResult(Uri uri) {
+        handleModifiedFileResult(uri, null, null);
+    }
+
+    public void handleModifiedFileResult(Uri uri, String entryPath, String zipFileExtra) {
+        boolean pane1 = lastPaneSelected == 1;
+        String path = uri == null ? null : uri.getPath();
+        File resolvedZip = null;
+        if (zipFileExtra != null && !zipFileExtra.isEmpty()) {
+            File zp = new File(zipFileExtra);
+            if (zp.isFile()) resolvedZip = zp;
+        }
+        if (resolvedZip == null) resolvedZip = pane1 ? pane1Folder : pane2Folder;
+        final File zipFile = resolvedZip;
+        if (path == null) return;
+        boolean inAppPrivateDir = path.startsWith(getCacheDir().getPath());
+        try {
+            inAppPrivateDir = inAppPrivateDir || path.startsWith(getFilesDir().getPath());
+        } catch (Exception ignored) {
+        }
+        if (!inAppPrivateDir) return;
+        if (zipFile == null || !zipFile.isFile()) {
+            Extensions.showMessage(this, R.string.archive_no_longer_open);
+            return;
+        }
+                    SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+                    String entryName = (entryPath != null && !entryPath.isEmpty()) ? entryPath : null;
+                    String modifiedFileName = entryName != null
+                            ? entryName.substring(entryName.lastIndexOf("/") + 1)
+                            : path.substring(path.lastIndexOf("/") + 1);
+                    LinearLayout ll = (LinearLayout) LayoutInflater.from(this).inflate(R.layout.item_modified_dialog, null);
+                    String zipFileName = zipFile.getName();
+                    boolean isApk = zipFileName.endsWith(".apk");
+                    ll.<TextView>findViewById(R.id.modifiedText).setText(rss.getString(R.string.file_modified_x, modifiedFileName, (isApk ? "APK" : "ZIP")));
+                    CheckBox autosign = ll.findViewById(R.id.autosign);
+                    boolean[] sign = new boolean[1];
+                    autosign.setChecked(sign[0] = settings.getBoolean("autosign", true));
+                    autosign.setOnCheckedChangeListener((buttonView, isChecked) -> settings.edit().putBoolean("autosign", sign[0] = isChecked).apply());
+                    ll.findViewById(R.id.sign_settings).setOnClickListener(uiHelper.showSignSettingsDialog());
+                    new MaterialAlertDialogBuilder(this)
+                        .setTitle(getString(R.string.file_modified))
+                        .setView(ll)
+                        .setPositiveButton(getString(R.string.yes), (dialog, which) -> {
+                            dialog.dismiss();
+                            SignWrapper[] wrapper = new SignWrapper[1];
+                            Runnable doWork = () -> {
+                                if (!zipFile.isFile() || !new File(path).isFile()) {
+                                    Extensions.showMessage(this, R.string.file_no_longer_available);
+                                    return;
+                                }
+                                ProgressManager pm = new ProgressManager(this, true).show();
+                                pm.setText(rss.getString(R.string.adding, modifiedFileName));
+                                new Thread(() -> {
+                                    try(ZipFile zf = new ZipFile(zipFile)) {
+                                        File backup = new File(zipFile.getParent(), zipFileName + ".bak");
+                                        FileUtils.copyFile(zipFile, backup);
+                                        if(modifiedFileName.startsWith("classes") && modifiedFileName.endsWith(".dex")) {
+                                            File modifiedFile = new File(path);
+                                            File folder = modifiedFile.getParentFile();
+                                            File[] dexFiles = folder == null ? null : folder.listFiles((dir, name1) -> name1.endsWith(".dex"));
+                                            if (dexFiles == null || dexFiles.length == 0) throw new IOException("No dex files found");
+                                            zf.addFiles(Arrays.asList(dexFiles));
+                                        } else {
+                                            ZipParameters zp = new ZipParameters();
+                                            boolean store = modifiedFileName.equals("AndroidManifest.xml") || modifiedFileName.equals("resources.arsc");
+                                            zp.setCompressionMethod(store ? CompressionMethod.STORE : CompressionMethod.DEFLATE);
+                                            if (entryName != null) zp.setFileNameInZip(entryName);
+                                            zf.addFile(path, zp);
+                                        }
+                                    } catch (Exception e) {
+                                        pm.dismiss();
+                                        new ErrorUtil(this).showError(e);
+                                        return;
+                                    }
+                                    try {
+                                        if(sign[0]) wrapper[0].signApk(zipFile);
+                                        pm.dismiss();
+                                        handler.post(() -> {
+                                            try {
+                                                RecyclerView.Adapter a = getCurrentPane().getAdapter();
+                                                String zipPath = a instanceof MainFilesArrayAdapter
+                                                        ? ((MainFilesArrayAdapter) a).currentZipPath : "";
+                                                loadZipFolderInPane(zipFile, zipPath, pane1, false);
+                                            } catch (Exception ex) {
+                                                new ErrorUtil(this).showError(ex);
+                                            }
+                                        });
+                                    } catch (Exception e) {
+                                        pm.dismiss();
+                                        new ErrorUtil(this).showError(e);
+                                    }
+                                }).start();
+                            };
+                            if(sign[0]) SignWrapper.requireAuth(this, sw -> {
+                                wrapper[0] = sw;
+                                doWork.run();
+                            }); else doWork.run();
+                        }).setNegativeButton(rss.getString(android.R.string.cancel), null).show();
+    }
+
+    public void openBookmarksDrawer() {
+        findViewById(R.id.bookmarks_drawer).post(() -> {
+            historyAdapter.setData(lastPaneSelected == 1 ? pane1History : pane2History);
+            bottomSheetBehavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+            isBookmarksDrawerOpen = true;
+        });
+    }
+
+    public void closeBookmarksDrawer() {
+        bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN);
+        isBookmarksDrawerOpen = false;
+    }
+
+    public void clearPaneSelection(boolean pane1) {
+        try {
+            RecyclerView paneView = findViewById(pane1 ? R.id.listViewPane1 : R.id.listViewPane2);
+            if (paneView != null && paneView.getAdapter() instanceof MainFilesArrayAdapter a) a.clearSelection();
+            else setMultiSelectModeUI(false);
+        } catch (Exception ignored) {
+        }
+    }
+
+    public void setMultiSelectModeUI(boolean enabled) {
+        if (multiSelectUIActive == enabled) return;
+        multiSelectUIActive = enabled;
+        handler.post(() -> {
+            LinearLayout bottomBar = findViewById(R.id.bottomBar);
+            int[] defaultIds = {R.id.backButton, R.id.forwardButton, R.id.syncPaneButton, R.id.upButton};
+            ImageView addButton = findViewById(R.id.addButton);
+            if (enabled) {
+                if (multiSelectButtons[0] == null) buildMultiSelectButtons();
+                for (int id : defaultIds) findViewById(id).setVisibility(View.GONE);
+                addButton.setVisibility(View.VISIBLE);
+                addButton.setContentDescription(rss.getString(R.string.exit));
+                if (LegacyUtils.aboveSdk20) animateAddButtonRotation(10000);
+                else addButton.animate().rotation(45f).setDuration(500).setInterpolator(new DecelerateInterpolator()).start();
+                int addIndex = bottomBar.indexOfChild(addButton);
+                bottomBar.addView(multiSelectButtons[0], addIndex);
+                bottomBar.addView(multiSelectButtons[1], addIndex + 1);
+                addIndex = bottomBar.indexOfChild(addButton);
+                bottomBar.addView(multiSelectButtons[2], addIndex + 1);
+                bottomBar.addView(multiSelectButtons[3], addIndex + 2);
+                for (ImageButton button : multiSelectButtons) {
+                    button.setOnTouchListener(bottomBarTouchListener);
+                }
+            } else {
+                for (ImageButton button : multiSelectButtons) bottomBar.removeView(button);
+                for (int id : defaultIds) findViewById(id).setVisibility(View.VISIBLE);
+                addButton.setVisibility(View.VISIBLE);
+                addButton.setContentDescription(rss.getString(R.string.newFileOrFolder));
+                if(LegacyUtils.aboveSdk20) animateAddButtonRotation(0);
+                else addButton.animate().rotation(0f).setDuration(500).setInterpolator(new DecelerateInterpolator()).start();
+            }
+        });
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+    private RotateDrawable getAddButtonRotateDrawable() {
+        if (addButtonRotateDrawable == null) {
+            ImageView addButton = findViewById(R.id.addButton);
+            addButtonRotateDrawable = new RotateDrawable();
+            addButtonRotateDrawable.setDrawable(addButton.getDrawable());
+            addButtonRotateDrawable.setFromDegrees(0f);
+            addButtonRotateDrawable.setToDegrees(45f);
+            addButtonRotateDrawable.setLevel(0);
+            addButton.setImageDrawable(addButtonRotateDrawable);
+        }
+        return addButtonRotateDrawable;
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+    private void animateAddButtonRotation(int targetLevel) {
+        if (addButtonRotationAnimator != null) addButtonRotationAnimator.cancel();
+        RotateDrawable rd = getAddButtonRotateDrawable();
+        addButtonRotationAnimator = ObjectAnimator.ofInt(rd, "level", rd.getLevel(), targetLevel);
+        addButtonRotationAnimator.setDuration(500);
+        addButtonRotationAnimator.setInterpolator(new DecelerateInterpolator());
+        addButtonRotationAnimator.start();
+    }
+
+    private void buildMultiSelectButtons() {
+        int[] icons = {R.drawable.baseline_select_all_24, R.drawable.tab_inactive_24px, R.drawable.flip_24px, R.drawable.baseline_info_24};
+        View.OnClickListener[] listeners = {
+                v -> { for (MainFilesArrayAdapter a : activeMultiSelectAdapters()) a.selectAll(); },
+                v -> { for (MainFilesArrayAdapter a : activeMultiSelectAdapters()) a.invertSelection(); },
+                v -> { for (MainFilesArrayAdapter a : activeMultiSelectAdapters()) a.selectSameType(); },
+                v -> new MaterialAlertDialogBuilder(this)
+                        .setTitle(R.string.multi_select)
+                        .setMessage(getString(R.string.multiselect_hint))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+        };
+        CharSequence[] cds = {rss.getString(android.R.string.selectAll), rss.getString(R.string.invert_selection), rss.getString(R.string.select_same_type), rss.getString(R.string.multi_select)};
+        TypedValue tv = new TypedValue();
+        Resources.Theme t = getTheme();
+        t.resolveAttribute(com.google.android.material.R.attr.colorOnSurface, tv, true);
+        int color = tv.data;
+        t.resolveAttribute(android.R.attr.selectableItemBackground, tv, true);
+        int bg = tv.resourceId;
+        View.OnLongClickListener ocl = v -> {
+            Extensions.showMessage(MainActivity.this, v.getContentDescription());
+            return false;
+        };
+        int ay = (int) (8 * rss.getDisplayMetrics().density + 0.5f);
+        for (int i = 0; i < multiSelectButtons.length; i++) {
+            ImageButton button = new ImageButton(this);
+            button.setImageResource(icons[i]);
+            button.setBackgroundResource(bg);
+            DrawableCompat.setTint(button.getDrawable(), color);
+            button.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            button.setPadding(ay, ay, ay, ay);
+            button.setOnClickListener(listeners[i]);
+            button.setContentDescription(cds[i]);
+            button.setOnLongClickListener(ocl);
+            multiSelectButtons[i] = button;
+        }
+    }
+
+    private MainFilesArrayAdapter getMainFilesAdapter(int pane) {
+        RecyclerView paneView = findViewById(pane == 1 ? R.id.listViewPane1 : R.id.listViewPane2);
+        RecyclerView.Adapter a = paneView.getAdapter();
+        return a instanceof MainFilesArrayAdapter ? (MainFilesArrayAdapter) a : null;
+    }
+
+    public void onPaneTouched(int pane) {
+        MainFilesArrayAdapter a = getMainFilesAdapter(pane);
+        setMultiSelectModeUI(a != null && a.isMultiSelectMode());
+    }
+
+    private List<MainFilesArrayAdapter> activeMultiSelectAdapters() {
+        List<MainFilesArrayAdapter> out = new ArrayList<>();
+        for (int id : new int[]{R.id.listViewPane1, R.id.listViewPane2}) {
+            RecyclerView pane = findViewById(id);
+            if (pane.getAdapter() instanceof MainFilesArrayAdapter adapter && adapter.isMultiSelectMode())
+                out.add(adapter);
+        }
+        return out;
+    }
+
+    private void rebuildBookmarksPager() {
+        groupControllers.clear();
+        List<ListView> pages = new ArrayList<>();
+        List<String> titles = new ArrayList<>();
+        pages.add(bookmarksList);
+        titles.add(rss.getString(R.string.bookmarks));
+        pages.add(historyList);
+        titles.add(rss.getString(R.string.history));
+        for (String group : bookmarkGroups) {
+            pages.add(createGroupListView(group));
+            titles.add(group);
+        }
+
+        bookmarksPager.setAdapter(new RecyclerView.Adapter<>() {
+            @NonNull
+            @Override
+            public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+                return new RecyclerView.ViewHolder(pages.get(viewType)) {
+                };
+            }
+
+            @Override
+            public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+            }
+
+            @Override
+            public int getItemCount() {
+                return pages.size();
+            }
+
+            @Override
+            public int getItemViewType(int position) {
+                return position;
+            }
+        });
+        bookmarksPager.setOffscreenPageLimit(pages.size());
+        reduceDragSensitivity(bookmarksPager);
+
+        bookmarksTabs.removeAllTabs();
+        if (bookmarksMediator != null) bookmarksMediator.detach();
+        bookmarksMediator = new TabLayoutMediator(bookmarksTabs, bookmarksPager,
+                (tab, position) -> tab.setText(titles.get(position)));
+        bookmarksMediator.attach();
+
+        int lastTab = PreferenceManager.getDefaultSharedPreferences(this).getInt("bookmarks_last_tab", 0);
+        if (bookmarksTabs.getTabAt(lastTab) != null) bookmarksTabs.getTabAt(lastTab).select();
+    }
+
+    private ListView createGroupListView(String group) {
+        ListView listView = new ListView(this);
+        listView.setDivider(null);
+        listView.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        listView.setOnTouchListener(getBookmarksSwipeDownCloseListener());
+        BookmarkListController controller = new BookmarkListController(group, listView, loadGroupBookmarks(group));
+        groupControllers.put(group, controller);
+        listView.setAdapter(controller.adapter);
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            if (handleBookmarkListClick(controller, position)) return;
+            File bookmarked = controller.items.get(position);
+            loadFolderInPane(bookmarked.isFile() ? bookmarked.getParentFile() : bookmarked, lastPaneSelected == 1);
+            closeBookmarksDrawer();
+        });
+        listView.setOnItemLongClickListener((parent, view, position, id) -> {
+            showBookmarkItemMenu(controller, position);
+            return true;
+        });
+        return listView;
+    }
+
+    private void showBookmarksBarMenu(View anchor) {
+        androidx.appcompat.widget.PopupMenu popup = new androidx.appcompat.widget.PopupMenu(this, anchor);
+        String ag = rss.getString(R.string.add_group);
+        String ah = rss.getString(R.string.adjust_height);
+        popup.getMenu().add(ag);
+        popup.getMenu().add(ah);
+        popup.setOnMenuItemClickListener(item -> {
+            CharSequence title = item.getTitle();
+            if(TextUtils.isEmpty(title));
+            else if (ag.contentEquals(title)) showAddGroupDialog();
+            else showAdjustHeightDialog();
+            return true;
+        });
+        popup.show();
+    }
+
+    private void showAddGroupDialog() {
+        EditText input = new EditText(this);
+        input.setHint(rss.getString(R.string.group_name));
+        new MaterialAlertDialogBuilder(this)
+            .setTitle(rss.getString(R.string.add_group))
+            .setView(UiFields.wrap(this, input, null, 16))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                String name = input.getText().toString().trim();
+                if (name.isEmpty()) {
+                    Extensions.showMessage(this, R.string.group_name_e);
+                    return;
+                }
+                if (bookmarkGroups.contains(name)) {
+                    Extensions.showMessage(this, R.string.group_already_exists  );
+                    return;
+                }
+                 bookmarkGroups.add(name);
+                 saveBookmarkGroups();
+                 rebuildBookmarksPager();
+                 refreshSidebar(getSidebarSectionOrder());
+
+                bookmarksPager.post(() -> {
+                    int tab = bookmarkGroups.size() + 1;
+                    if (bookmarksTabs.getTabAt(tab) != null) bookmarksTabs.getTabAt(tab).select();
+                });
+            }).show();
+    }
+
+    private void showAdjustHeightDialog() {
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+        int currentPct = settings.getInt("bookmarks_bar_pct", 35);
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_adjust_height, null);
+        TextInputEditText input = view.findViewById(R.id.heightInput);
+        SeekBar seekBar = view.findViewById(R.id.heightSeekBar);
+        input.setText(String.valueOf(currentPct));
+        seekBar.setProgress(currentPct - 15);
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int pct = progress + 15;
+                input.setText(String.valueOf(pct));
+                input.setSelection(input.length());
+                applyBookmarksBarHeight(pct); // live preview while scrolling
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+
+        input.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                try {
+                    int pct = Integer.parseInt(s.toString());
+                    if (pct >= 15 && pct <= 90) {
+                        seekBar.setProgress(pct - 15);
+                        applyBookmarksBarHeight(pct);
+                    }
+                } catch (NumberFormatException ignored) {
+                }
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+            }
+        });
+
+        AlertDialog heightDialog = new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.adjust_height))
+                .setView(view)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (d, which) -> {
+                    try {
+                        int pct = Math.max(15, Math.min(90, Integer.parseInt(input.getText().toString().trim())));
+                        settings.edit().putInt("bookmarks_bar_pct", pct).apply();
+                        applyBookmarksBarHeight(pct);
+                    } catch (NumberFormatException ignored) {
+                    }
+                }).create();
+        // Cancel restores the saved height after any live preview
+        heightDialog.setOnDismissListener(d -> applyBookmarksBarHeight(settings.getInt("bookmarks_bar_pct", 35)));
+        heightDialog.show();
+    }
+
+    private boolean handleBookmarkListClick(BookmarkListController controller, int position) {
+        if (batchController == controller) {
+            if (batchSelected.contains(position)) batchSelected.remove(position);
+            else batchSelected.add(position);
+            controller.adapter.notifyDataSetChanged();
+            return true;
+        }
+        return false;
+    }
+
+    private void showBookmarkItemMenu(BookmarkListController controller, int position) {
+        showBookmarkItemMenu(controller, position, controller.listView);
+    }
+
+    private void showBookmarkItemMenu(BookmarkListController controller, int position, View anchor) {
+        androidx.appcompat.widget.PopupMenu popup = new androidx.appcompat.widget.PopupMenu(this, anchor);
+        String edit = rss.getString(R.string.edit_bookmark);
+        String move = rss.getString(R.string.move);
+        String delete = rss.getString(R.string.delete);
+        String batch = rss.getString(R.string.batch_operations);
+        popup.getMenu().add(edit);
+        popup.getMenu().add(move);
+        popup.getMenu().add(delete);
+        popup.getMenu().add(batch);
+        popup.setOnMenuItemClickListener(item -> {
+            CharSequence title = item.getTitle();
+            if (delete.contentEquals(title)) confirmDeleteBookmark(controller, position);
+            else if (move.contentEquals(title)) showMoveBookmarkDialog(controller, position);
+            else if (batch.contentEquals(title)) enterBookmarkBatchMode(controller);
+            else showEditBookmarkDialog(controller, position);
+            return true;
+        });
+        popup.show();
+    }
+
+    private void showEditBookmarkDialog(BookmarkListController controller, int position) {
+        File file = controller.items.get(position);
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_edit_bookmark, null);
+        TextInputEditText nameInput = view.findViewById(R.id.bookmarkNameInput);
+        TextInputEditText pathInput = view.findViewById(R.id.bookmarkPathInput);
+        nameInput.setText(controller.labelOf(file));
+        pathInput.setText(file.getPath());
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(rss.getString(R.string.edit_bookmark))
+                .setView(view)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (d, w) -> {
+                    String newName = nameInput.getText().toString().trim();
+                    File newFile = new File(pathInput.getText().toString().trim());
+                    File finalFile = newFile.getPath().equals(file.getPath()) ? file : newFile;
+                    if (finalFile != file) {
+                        bookmarkLabels.remove(file.getPath());
+                        controller.items.set(position, finalFile);
+                    }
+                    if (!newName.isEmpty() && !newName.equals(finalFile.getName()))
+                        bookmarkLabels.put(finalFile.getPath(), newName);
+                     else
+                         bookmarkLabels.remove(finalFile.getPath());
+                     saveBookmarkLabels();
+                     persistBookmarkOrder(controller);
+                     controller.adapter.notifyDataSetChanged();
+                     refreshSidebar(getSidebarSectionOrder());
+                 }).show();
+
+    }
+
+    private void showMoveBookmarkDialog(BookmarkListController controller, int position) {
+        List<String> targets = bookmarkTargetTabs(controller);
+        if (targets.isEmpty()) {
+            Extensions.showMessage(this, R.string.no_other_groups);
+            return;
+        }
+        List<Integer> indices = bookmarkTargetIndices(controller);
+        int[] selected = {0};
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(rss.getString(R.string.move))
+                .setSingleChoiceItems(targets.toArray(new String[0]), 0, (d, w) -> selected[0] = w)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (d, w) -> {
+                    File file = controller.items.remove(position);
+                    addBookmarkToTab(indices.get(selected[0]), file);
+                    persistBookmarkOrder(controller);
+                    controller.adapter.notifyDataSetChanged();
+                }).show();
+    }
+
+    private List<String> bookmarkTargetTabs(BookmarkListController source) {
+        List<String> targets = new ArrayList<>();
+        if (!source.key.equals("bookmarks")) targets.add(rss.getString(R.string.bookmarks));
+        for (String group : bookmarkGroups)
+            if (!group.equals(source.key)) targets.add(group);
+        return targets;
+    }
+
+    private List<Integer> bookmarkTargetIndices(BookmarkListController source) {
+        List<Integer> indices = new ArrayList<>();
+        if (!source.key.equals("bookmarks")) indices.add(0);
+        for (int i = 0; i < bookmarkGroups.size(); i++)
+            if (!bookmarkGroups.get(i).equals(source.key)) indices.add(2 + i);
+        return indices;
+    }
+
+    private void confirmDeleteBookmark(BookmarkListController controller, int position) {
+        new MaterialAlertDialogBuilder(this)
+                .setMessage(rss.getString(R.string.confirm_delete_bookmark, controller.items.get(position)))
+                .setTitle(R.string.warning)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(rss.getString(R.string.delete), (dialog, which) -> {
+                    File removed = controller.items.remove(position);
+                     bookmarkLabels.remove(removed.getPath());
+                     saveBookmarkLabels();
+                     persistBookmarkOrder(controller);
+                     controller.adapter.notifyDataSetChanged();
+                     refreshSidebar(getSidebarSectionOrder());
+                 }).show();
+
+    }
+
+    private void enterBookmarkBatchMode(BookmarkListController controller) {
+        batchController = controller;
+        batchSelected.clear();
+        controller.adapter.notifyDataSetChanged();
+        findViewById(R.id.bookmarksBatchBar).setVisibility(View.VISIBLE);
+    }
+
+    private void exitBookmarkBatchMode() {
+        bookmarkDragging = false; // end any active drag session
+        BookmarkListController controller = batchController;
+        batchController = null;
+        batchSelected.clear();
+        if (controller != null) controller.adapter.notifyDataSetChanged();
+        findViewById(R.id.bookmarksBatchBar).setVisibility(View.GONE);
+    }
+
+    private void batchDeleteSelected() {
+        BookmarkListController source = batchController;
+        if (source == null || batchSelected.isEmpty()) return;
+        List<Integer> positions = new ArrayList<>(batchSelected);
+        positions.sort(Collections.reverseOrder());
+        for (int position : positions) {
+            File removed = source.items.remove(position);
+            bookmarkLabels.remove(removed.getPath());
+        }
+         saveBookmarkLabels();
+         persistBookmarkOrder(source);
+         source.adapter.notifyDataSetChanged();
+         refreshSidebar(getSidebarSectionOrder());
+         exitBookmarkBatchMode();
+
+    }
+
+    private void batchCopyOrMove(boolean copy) {
+        BookmarkListController source = batchController;
+        if (source == null || batchSelected.isEmpty()) return;
+        List<String> targets = bookmarkTargetTabs(source);
+        List<Integer> indices = bookmarkTargetIndices(source);
+        if (targets.isEmpty()) {
+            Extensions.showMessage(this, R.string.no_other_groups);
+            return;
+        }
+        List<Integer> positions = new ArrayList<>(batchSelected);
+        Collections.sort(positions);
+        int[] selected = {0};
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(copy ? rss.getString(android.R.string.copy) : rss.getString(R.string.move))
+                .setSingleChoiceItems(targets.toArray(new String[0]), 0, (d, w) -> selected[0] = w)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (d, w) -> {
+                    int targetIndex = indices.get(selected[0]);
+                    for (int position : positions) {
+                        File file = source.items.get(position);
+                        addBookmarkToTab(targetIndex, file); // labels are path-keyed, so they follow automatically
+                    }
+                    if (!copy) {
+                        for (int p = positions.size() - 1; p >= 0; p--) source.items.remove((int) positions.get(p));
+                        persistBookmarkOrder(source);
+                    }
+                    source.adapter.notifyDataSetChanged();
+                    exitBookmarkBatchMode();
+                }).show();
+    }
+
+    private void startBookmarkDrag(BookmarkListController controller, View handle, int position, MotionEvent downEvent) {
+        ListView listView = controller.listView;
+        View row = (View) handle.getParent();
+        float density = getResources().getDisplayMetrics().density;
+        int rowH = row.getHeight() > 0 ? row.getHeight() : (int) (48 * density + 0.5f);
+        int[] dragPos = {position};
+        int[] startSlot = {position};
+        int[] lastFirst = {listView.getFirstVisiblePosition()};
+        float[] lastRawY = {downEvent.getRawY()};
+        int[] lastTop = {row.getTop()};
+        float[] dragOffset = {0f};
+        bookmarkDragging = true;
+        listView.requestDisallowInterceptTouchEvent(true);
+        handle.getParent().requestDisallowInterceptTouchEvent(true);
+        ViewParent pagerParent = listView.getParent();
+        if (pagerParent != null) pagerParent.requestDisallowInterceptTouchEvent(true);
+
+        handle.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_MOVE: {
+                    float dy = event.getRawY() - lastRawY[0];
+                    lastRawY[0] = event.getRawY();
+                    // compensate list scrolling so the held row stays glued to the finger
+                    int topDelta = row.getTop() - lastTop[0];
+                    lastTop[0] = row.getTop();
+                    dragOffset[0] += dy - topDelta;
+                    row.setTranslationY(dragOffset[0]); // the held row ONLY follows the finger
+
+                    // which slot is the held row's center over?
+                    int first = listView.getFirstVisiblePosition();
+                    startSlot[0] += first - lastFirst[0];
+                    lastFirst[0] = first;
+                    int childIndex = dragPos[0] - first;
+                    if (childIndex < 0 || childIndex >= listView.getChildCount()) return true;
+                    float visualCenter = row.getTop() + dragOffset[0] + rowH / 2f;
+                    int targetChild = (int) Math.floor(visualCenter / rowH);
+                    int maxChild = Math.min(listView.getChildCount() - 1,
+                            controller.items.size() - 1 - first);
+                    targetChild = Math.max(0, Math.min(maxChild, targetChild));
+
+                    // silent data swaps toward the target slot
+                    while (targetChild > childIndex && dragPos[0] + 1 < controller.items.size()) {
+                        controller.items.add(dragPos[0] + 1, controller.items.remove(dragPos[0]));
+                        dragPos[0]++;
+                        childIndex++;
+                    }
+                    while (targetChild < childIndex && dragPos[0] > 0) {
+                        controller.items.add(dragPos[0] - 1, controller.items.remove(dragPos[0]));
+                        dragPos[0]--;
+                        childIndex--;
+                    }
+
+                    // displacement invariant: every slot between the anchor and the current slot is
+                    // offset exactly one row in the drag direction - overlaps are impossible
+                    for (int i = 0; i < listView.getChildCount(); i++) {
+                        View child = listView.getChildAt(i);
+                        if (child == row) continue;
+                        float t;
+                        if (childIndex > startSlot[0] && i >= startSlot[0] && i < childIndex) t = -rowH;
+                        else if (childIndex < startSlot[0] && i > childIndex && i <= startSlot[0]) t = rowH;
+                        else t = 0;
+                        if (child.getTranslationY() != t)
+                            child.animate().translationY(t).setDuration(120)
+                                    .setInterpolator(new DecelerateInterpolator()).start();
+                    }
+
+                    // auto-scroll near the edges
+                    int[] location = new int[2];
+                    listView.getLocationOnScreen(location);
+                    float fingerY = event.getRawY() - location[1];
+                    if (fingerY < rowH) listView.smoothScrollBy(-rowH / 2, 120);
+                    else if (fingerY > listView.getHeight() - rowH) listView.smoothScrollBy(rowH / 2, 120);
+                    return true;
+                }
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL: {
+                    bookmarkDragging = false;
+                    for (int i = 0; i < listView.getChildCount(); i++) {
+                        listView.getChildAt(i).setTranslationY(0);
+                    }
+                    persistBookmarkOrder(controller);
+                    controller.adapter.notifyDataSetChanged(); // normalize rows + restore standard handle listeners
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+    private void persistBookmarkOrder(BookmarkListController controller) {
+        if (controller.key.equals("bookmarks")) {
+            PreferenceManager.getDefaultSharedPreferences(this)
+                    .edit().putString("bookmarks", controller.items.toString()).apply();
+        } else {
+            saveGroupBookmarks(controller.key, controller.items);
+        }
+    }
+
+    private void loadBookmarkLabels() {
+        bookmarkLabels.clear();
+        String json = PreferenceManager.getDefaultSharedPreferences(this).getString("bookmark_labels", "{}");
+        try {
+            Map<String, String> map = new Gson().fromJson(json,
+                    new TypeToken<Map<String, String>>() {}.getType());
+            if (map != null) bookmarkLabels.putAll(map);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void saveBookmarkLabels() {
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+                .putString("bookmark_labels", new Gson().toJson(bookmarkLabels)).apply();
+    }
+
+    private void applyBookmarksBarHeight(int percent) {
+        View drawer = findViewById(R.id.bookmarks_drawer);
+        drawer.getLayoutParams().height = (int) (getResources().getDisplayMetrics().heightPixels * (percent / 100.0));
+        drawer.requestLayout();
+    }
+
+    private void loadBookmarkGroups() {
+        bookmarkGroups.clear();
+        String json = PreferenceManager.getDefaultSharedPreferences(this).getString("bookmark_groups", "[]");
+        try {
+            List<String> groups = new Gson().fromJson(json,
+                    new TypeToken<List<String>>() {}.getType());
+            if (groups != null) bookmarkGroups.addAll(groups);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void saveBookmarkGroups() {
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+                .putString("bookmark_groups", new Gson().toJson(bookmarkGroups)).apply();
+    }
+
+    private ArrayList<File> loadGroupBookmarks(String group) {
+        ArrayList<File> out = new ArrayList<>();
+        String json = PreferenceManager.getDefaultSharedPreferences(this)
+                .getString("bookmarks_group_" + group, "[]");
+        try {
+            List<String> paths = new Gson().fromJson(json,
+                    new TypeToken<List<String>>() {}.getType());
+            if (paths == null) return out;
+            for (String path : paths) {
+                if (!TextUtils.isEmpty(path)) out.add(new File(path));
+            }
+        } catch (Exception ignored) {
+        }
+        return out;
+    }
+
+    private void saveGroupBookmarks(String group, List<File> files) {
+        List<String> paths = new ArrayList<>();
+        for (File f : files) paths.add(f.getPath());
+        PreferenceManager.getDefaultSharedPreferences(this).edit()
+                .putString("bookmarks_group_" + group, new Gson().toJson(paths)).apply();
+    }
+
+    private View.OnTouchListener getBookmarksSwipeDownCloseListener() {
+        if (bookmarksSwipeDownCloseListener != null) return bookmarksSwipeDownCloseListener;
+        bookmarksSwipeDownCloseListener = (v, event) -> {
+            if (!(v instanceof ListView listView)) return false;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    v.setTag(listView.getFirstVisiblePosition() == 0
+                            && (listView.getChildCount() == 0 || listView.getChildAt(0).getTop() >= 0)
+                            ? event.getRawY() : null);
+                    break;
+                case MotionEvent.ACTION_MOVE: {
+                    Object start = v.getTag();
+                    if (start instanceof Float && event.getRawY() - (Float) start
+                            > 80 * getResources().getDisplayMetrics().density) {
+                        v.setTag(null);
+                        closeBookmarksDrawer();
+                    }
+                    break;
+                }
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    v.setTag(null);
+                    break;
+            }
+            return false;
+        };
+        return bookmarksSwipeDownCloseListener;
+    }
+
+
+    private void setupSidebar() {
+        findViewById(R.id.storageContainer).setVisibility(View.GONE);
+        sidebarList = findViewById(R.id.sidebarList);
+        sidebarAdapter = new SidebarAdapter(this, new SidebarAdapter.Callbacks() {
+            @Override
+            public void onEntryClicked(SidebarAdapter.SidebarEntry entry, View view) {
+                if (sidebarOrganizeMode) {
+                    if (entry != null && entry.type() != SidebarAdapter.EntryType.HEADER) startSidebarDrag(view, entry);
+                    return;
+                }
+                openSidebarEntry(entry);
+            }
+
+            @Override
+            public void onHeaderToggle(SidebarAdapter.SidebarEntry entry) {
+                boolean collapsed = !sidebarAdapter.isCollapsed(entry.section());
+                sidebarAdapter.setCollapsed(entry.section(), collapsed);
+                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainActivity.this);
+                Set<String> saved = new HashSet<>(prefs.getStringSet("sidebar_collapsed_sections", Collections.emptySet()));
+                if (collapsed) saved.add(entry.section());
+                else saved.remove(entry.section());
+                prefs.edit().putStringSet("sidebar_collapsed_sections", saved).apply();
+            }
+
+            @Override
+            public void onEntryStorageLongPressed(SidebarAdapter.SidebarEntry entry, View view) {
+                PopupMenu menu = new PopupMenu(MainActivity.this, view);
+                menu.getMenu().add(R.string.manage_storage);
+                menu.getMenu().add(R.string.open_location);
+                menu.setOnMenuItemClickListener(item -> {
+                    if (item.getItemId() == R.string.manage_storage) {
+                        startActivity(new Intent(MainActivity.this, StorageManagerActivity.class));
+                    } else {
+                        loadFolderInPane(new File(entry.storage().path), lastPaneSelected == 1);
+                        closeSidebarDrawer();
+                    }
+                    return true;
+                });
+                menu.show();
+            }
+
+            @Override
+            public void onEntryLongPressed(SidebarAdapter.SidebarEntry entry, View view) {
+                if (!sidebarOrganizeMode && entry.type() == SidebarAdapter.EntryType.BOOKMARK) {
+                    showSidebarBookmarkMenu(entry, view);
+                }
+            }
+
+            @Override
+            public void onEntryDragHandleTouched(SidebarAdapter.SidebarEntry entry, View view) {
+                if (sidebarOrganizeMode) startSidebarDrag(view, entry);
+            }
+
+            @Override
+            public void onEntryHideRequested(SidebarAdapter.SidebarEntry entry) {
+                if (entry.type() == SidebarAdapter.EntryType.HEADER) {
+                    sidebarAdapter.setCollapsed(entry.section(), true);
+                    return;
+                }
+                if (sidebarAdapter.isHidden(entry)) sidebarAdapter.unhideEntry(entry);
+                else sidebarAdapter.hideEntry(entry);
+                PreferenceManager.getDefaultSharedPreferences(MainActivity.this).edit()
+                        .putStringSet("sidebar_hidden_items", sidebarAdapter.getHiddenItems()).apply();
+            }
+        });
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        List<String> sectionOrder = new ArrayList<>();
+        try {
+            List<String> saved = new Gson().fromJson(prefs.getString("sidebar_section_order", "[]"),
+                    new TypeToken<List<String>>() {}.getType());
+            if (saved != null) sectionOrder.addAll(saved);
+        } catch (Exception ignored) {
+        }
+        for (String section : new String[]{"storage", "bookmarks", "tools"}) {
+            if (!sectionOrder.contains(section)) sectionOrder.add(section);
+        }
+        if (prefs.getBoolean("sidebar_show_bookmark_groups", false)) {
+            for (String group : bookmarkGroups) {
+                String section = "bookmark_group:" + group;
+                if (!sectionOrder.contains(section)) sectionOrder.add(section);
+            }
+        }
+        List<String> toolOrder = new ArrayList<>();
+        try {
+            List<String> saved = new Gson().fromJson(prefs.getString("sidebar_tool_order", "[]"),
+                    new TypeToken<List<String>>() {}.getType());
+            if (saved != null) toolOrder.addAll(saved);
+        } catch (Exception ignored) {
+        }
+        sidebarAdapter.setToolOrder(toolOrder);
+        sidebarAdapter.setHiddenItems(prefs.getStringSet("sidebar_hidden_items", Collections.emptySet()));
+        Set<String> collapsed = prefs.getStringSet("sidebar_collapsed_sections", Collections.emptySet());
+        for (String section : new String[]{"storage", "bookmarks", "tools"}) {
+            sidebarAdapter.setCollapsedState(section, collapsed.contains(section));
+        }
+        refreshSidebar(sectionOrder);
+        sidebarList.setAdapter(sidebarAdapter);
+        sidebarList.setOnItemClickListener((parent, view, position, id) -> {
+            SidebarAdapter.SidebarEntry entry = sidebarAdapter.getEntry(position);
+            if (sidebarOrganizeMode) {
+                if (entry != null && entry.type() != SidebarAdapter.EntryType.HEADER) {
+                    startSidebarDrag(view, entry);
+                }
+                return;
+            }
+            if (entry != null) openSidebarEntry(entry);
+        });
+        sidebarList.setOnItemLongClickListener((parent, view, position, id) -> {
+            if (!sidebarOrganizeMode) return false;
+            SidebarAdapter.SidebarEntry entry = sidebarAdapter.getEntry(position);
+            if (entry == null || entry.type() == SidebarAdapter.EntryType.STORAGE) return false;
+            startSidebarDrag(view, entry);
+            return true;
+        });
+        sidebarList.setOnDragListener((v, event) -> handleSidebarDrag(event));
+        sidebarRefresh = findViewById(R.id.sidebarRefresh);
+        if (sidebarRefresh != null) {
+            sidebarRefresh.setOnRefreshListener(() -> {
+                refreshSidebar(getSidebarSectionOrder());
+                sidebarRefresh.setRefreshing(false);
+            });
+        }
+        ImageButton organizeButton = findViewById(R.id.sidebarOrganizeButton);
+        organizeButton.setOnLongClickListener(v -> {
+            Snackbar.make(findViewById(android.R.id.content), R.string.organize_sidebar, Snackbar.LENGTH_SHORT).show();
+            return false;
+        });
+        organizeButton.setOnClickListener(v -> setSidebarOrganizeMode(!sidebarOrganizeMode));
+        registerStorageRefreshReceiver();
+    }
+
+    private boolean handleOrganizeTouch(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            organizeDragStarted = false;
+            organizeDownX = event.getX();
+            organizeDownY = event.getY();
+            int position = sidebarList.pointToPosition((int) event.getX(), (int) event.getY());
+            organizeDragEntry = sidebarAdapter.getEntry(position);
+            int childIndex = position - sidebarList.getFirstVisiblePosition();
+            organizeDragView = childIndex >= 0 && childIndex < sidebarList.getChildCount()
+                    ? sidebarList.getChildAt(childIndex) : null;
+            organizeDragCard = organizeDragView;
+            if (organizeDragEntry != null && organizeDragEntry.type() != SidebarAdapter.EntryType.HEADER
+                    && organizeDragView != null) {
+                handler.postDelayed(organizeLongPressRunnable, ViewConfiguration.getLongPressTimeout());
+            }
+            return true;
+        }
+        if (event.getActionMasked() == MotionEvent.ACTION_MOVE && !organizeDragStarted
+                && Math.hypot(event.getX() - organizeDownX, event.getY() - organizeDownY)
+                > ViewConfiguration.get(this).getScaledTouchSlop()) {
+            handler.removeCallbacks(organizeLongPressRunnable);
+        }
+        if (event.getActionMasked() == MotionEvent.ACTION_UP
+                || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+            if (!organizeDragStarted) handler.removeCallbacks(organizeLongPressRunnable);
+            return true;
+        }
+        return true;
+    }
+
+    private void startSidebarDrag(View view, SidebarAdapter.SidebarEntry entry) {
+        View card = view;
+        while (card.getParent() instanceof View && card.getParent() != sidebarList) {
+            card = (View) card.getParent();
+        }
+        organizeDragCard = card;
+        ClipData data = ClipData.newPlainText("sidebar", entry.dragPayload());
+        View.DragShadowBuilder shadow = new View.DragShadowBuilder(card);
+        card.setAlpha(0.45f);
+        if (Build.VERSION.SDK_INT >= 24) {
+            card.startDragAndDrop(data, shadow, null, 0);
+        } else {
+            card.startDrag(data, shadow, null, 0);
+        }
+    }
+
+    private void setSidebarOrganizeMode(boolean enabled) {
+        sidebarOrganizeMode = enabled;
+        if (sidebarAdapter != null) sidebarAdapter.setOrganizeMode(enabled);
+        if (sidebarRefresh != null) {
+            sidebarRefresh.setRefreshing(false);
+            sidebarRefresh.setEnabled(!enabled);
+        }
+        if (sidebarList != null) {
+            sidebarList.setAlpha(enabled ? 0.85f : 1.0f);
+            if (enabled) sidebarList.setOnTouchListener((v, event) -> handleOrganizeTouch(event));
+            else sidebarList.setOnTouchListener(null);
+        }
+        if (!enabled) {
+            handler.removeCallbacks(organizeLongPressRunnable);
+            organizeDragStarted = false;
+            organizeDragView = null;
+            organizeDragCard = null;
+            organizeDragEntry = null;
+        }
+        ImageButton organizeButton = findViewById(R.id.sidebarOrganizeButton);
+        organizeButton.setImageResource(enabled ? R.drawable.baseline_check_circle_24 : R.drawable.drag_handle_24px);
+        String msg = getString(enabled ? R.string.organize_sidebar : R.string.done_organizing_sidebar);
+        organizeButton.setContentDescription(msg);
+        Snackbar.make(findViewById(android.R.id.content), msg, Snackbar.LENGTH_SHORT).show();
+    }
+
+    private List<String> getSidebarSectionOrder() {
+        List<String> order = new ArrayList<>();
+        try {
+            List<String> saved = new Gson().fromJson(PreferenceManager.getDefaultSharedPreferences(this)
+                    .getString("sidebar_section_order", "[]"), new TypeToken<List<String>>() {}.getType());
+            if (saved != null) order.addAll(saved);
+        } catch (Exception ignored) {
+        }
+        for (String section : new String[]{"storage", "bookmarks", "tools"}) {
+            if (!order.contains(section)) order.add(section);
+        }
+        if (PreferenceManager.getDefaultSharedPreferences(this)
+                .getBoolean("sidebar_show_bookmark_groups", false)) {
+            for (String group : bookmarkGroups) {
+                String section = "bookmark_group:" + group;
+                if (!order.contains(section)) order.add(section);
+            }
+        }
+        return order;
+    }
+
+    private void refreshSidebar(List<String> sectionOrder) {
+        if (sidebarAdapter == null) return;
+        try {
+            Map<String, List<File>> groups = new LinkedHashMap<>();
+            for (String group : bookmarkGroups) groups.put(group, loadGroupBookmarks(group));
+            List<StorageUtil.StorageInfo> storage = new ArrayList<>();
+            try {
+                storage = StorageUtil.getStorageInfos(this);
+            } catch (Exception ignored) {
+            }
+            sidebarAdapter.setData(sectionOrder,
+                    PreferenceManager.getDefaultSharedPreferences(this).getBoolean("sidebar_show_bookmarks", true),
+                    PreferenceManager.getDefaultSharedPreferences(this).getBoolean("sidebar_show_bookmark_groups", false),
+                    storage, getBookmarks(), groups, bookmarkLabels);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void openSidebarEntry(SidebarAdapter.SidebarEntry entry) {
+        if (sidebarOrganizeMode) return;
+        if (entry == null || entry.type() == SidebarAdapter.EntryType.HEADER) return;
+        if (entry.type() == SidebarAdapter.EntryType.STORAGE) {
+            loadFolderInPane(new File(entry.storage().path), lastPaneSelected == 1);
+        } else if (entry.type() == SidebarAdapter.EntryType.BOOKMARK) {
+            File file = entry.file();
+            loadFolderInPane(file.isFile() ? file.getParentFile() : file, lastPaneSelected == 1);
+        } else {
+            openSidebarTool(entry.id());
+        }
+        closeSidebarDrawer();
+    }
+
+    private void openSidebarTool(String id) {
+        switch (id) {
+            case "extract":
+                startActivityForResult(new Intent(this, APKExtractorActivity.class), 11);
+                break;
+            case "ftp_server":
+                showFtpServerDialog();
+                break;
+            case "ftp_client":
+                showFtpClientDialog();
+                break;
+            case "wifi":
+                startActivity(new Intent(this, WifiManagerActivity.class));
+                break;
+            case "settings":
+                showSettingsDialog();
+                break;
+            case "tools":
+                startActivity(new Intent(this, ToolsHubActivity.class));
+                break;
+            case "color_picker":
+                if (Build.VERSION.SDK_INT < 24) return;
+                PreferencesDialogFragment dialogFragment = new PreferencesDialogFragment();
+                dialogFragment.show(getSupportFragmentManager(), "preferences_dialog");
+                handler.post(() -> {
+                    AlertDialog ad = (AlertDialog) dialogFragment.requireDialog();
+                    ((Toolbar) ad.findViewById(R.id.topAppBar)).setOnMenuItemClickListener(item -> {
+                        if (item.getItemId() == R.id.menu_github) {
+                            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/codehasan/ScreenColorPicker")));
+                            return true;
+                        }
+                        return false;
+                    });
+                    boolean isRunning = ServiceState.getInstance().isRunning();
+                    TextView button = ad.getButton(DialogInterface.BUTTON_POSITIVE);
+                    button.setText(isRunning ? getString(R.string.color_stop) : getString(R.string.color_start));
+                    button.setOnClickListener(v -> {
+                        ad.dismiss();
+                        if (isRunning) ServiceState.getInstance().stopColorPickerService(MainActivity.this);
+                        else {
+                            if (!Settings.canDrawOverlays(MainActivity.this)) {
+                                PermissionUtil.requestSystemOverlayPermission(MainActivity.this);
+                                return;
+                            }
+                            if (!ActivityExtensions.isNotificationGranted(MainActivity.this)) {
+                                requestNotificationPermission(() -> { });
+                                return;
+                            }
+                            colorPickerLauncher.launch(mediaProjectionManager.createScreenCaptureIntent());
+                        }
+                    });
+                });
+                break;
+            case "layout":
+                if (Build.VERSION.SDK_INT < 20) return;
+                if (DataRepository.getInstance().getAppState().isRunning()) {
+                    DataRepository.getInstance().updateStatus(false);
+                    return;
+                }
+                try {
+                    RootPermissionHelper.tryAutoGrantInspector(MainActivity.this);
+                } catch (Exception ignored) {
+                }
+                if (!PermissionUtil.requestMissingPermissions(this, this::requestNotificationPermission)) return;
+                DataRepository.getInstance().updateStatus(true);
+                Intent intent = new Intent(this, PackageMonitoringService.class);
+                startService(intent);
+                bindService(intent, serviceConnection, BIND_AUTO_CREATE);
+                new ServiceManager(this).show();
+                DataRepository.getInstance().updateData(getPackageName(), this.getClass().getName());
+                break;
+        }
+    }
+
+    private void requestNotificationPermission(Runnable onResult) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            if (onResult != null) onResult.run();
+            return;
+        }
+        notificationPermissionContinuation = onResult;
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+    }
+
+    private boolean handleSidebarDrag(DragEvent event) {
+        if (event.getAction() == DragEvent.ACTION_DRAG_STARTED) {
+            return event.getClipDescription() != null;
+        }
+        if (event.getAction() == DragEvent.ACTION_DRAG_ENDED) {
+            if (organizeDragCard != null) organizeDragCard.setAlpha(1f);
+            for (int i = 0; i < sidebarList.getChildCount(); i++) {
+                sidebarList.getChildAt(i).setAlpha(1f);
+            }
+            organizeDragCard = null;
+            return true;
+        }
+        if (event.getAction() == DragEvent.ACTION_DROP && sidebarAdapter != null) {
+            String payload = event.getClipData() == null || event.getClipData().getItemCount() == 0
+                    ? null : event.getClipData().getItemAt(0).getText().toString();
+            SidebarAdapter.SidebarEntry source = sidebarAdapter.findByPayload(payload);
+            SidebarAdapter.SidebarEntry target = sidebarAdapter.getEntry(sidebarList.pointToPosition(
+                    (int) event.getX(), (int) event.getY()));
+            if (source == null || target == null) return false;
+            if (source.type() == SidebarAdapter.EntryType.HEADER) {
+                String targetSection = target.section();
+                if (target.type() != SidebarAdapter.EntryType.HEADER) return false;
+                if (!source.section().equals(targetSection)) {
+                    sidebarAdapter.moveSection(source.section(), targetSection);
+                    List<String> order = new ArrayList<>();
+                    for (int i = 0; i < sidebarAdapter.getCount(); i++) {
+                        SidebarAdapter.SidebarEntry entry = sidebarAdapter.getEntry(i);
+                        if (entry.type() == SidebarAdapter.EntryType.HEADER && !order.contains(entry.section())) order.add(entry.section());
+                    }
+                    PreferenceManager.getDefaultSharedPreferences(this).edit()
+                            .putString("sidebar_section_order", new Gson().toJson(order)).apply();
+                }
+                return true;
+            }
+            if (!source.section().equals(target.section())) return false;
+            if (source.type() == SidebarAdapter.EntryType.BOOKMARK) {
+                persistSidebarBookmarkMove(source, target);
+            }
+            if (sidebarAdapter.moveEntry(source, target) && source.type() == SidebarAdapter.EntryType.TOOL) {
+                PreferenceManager.getDefaultSharedPreferences(this).edit()
+                        .putString("sidebar_tool_order", new Gson().toJson(sidebarAdapter.getToolOrder())).apply();
+            }
+            return true;
+        }
+        return true;
+    }
+
+    private void showSidebarBookmarkMenu(SidebarAdapter.SidebarEntry entry, View anchor) {
+        String[] parts = entry.id().split("\\u0001", -1);
+        if (parts.length < 3) return;
+        BookmarkListController controller = parts[1].equals("bookmarks")
+                ? mainBookmarkController : groupControllers.get(parts[1]);
+        if (controller == null) return;
+        for (int i = 0; i < controller.items.size(); i++) {
+            if (parts[2].equals(controller.items.get(i).getPath())) {
+                showBookmarkItemMenu(controller, i, anchor);
+                return;
+            }
+        }
+    }
+
+    private void persistSidebarBookmarkMove(SidebarAdapter.SidebarEntry source, SidebarAdapter.SidebarEntry target) {
+        String[] sourceParts = source.id().split("\\u0001", -1);
+        String[] targetParts = target.id().split("\\u0001", -1);
+        if (sourceParts.length < 3 || targetParts.length < 3 || !sourceParts[1].equals(targetParts[1])) return;
+        BookmarkListController controller = sourceParts[1].equals("bookmarks") ? mainBookmarkController : groupControllers.get(sourceParts[1]);
+        if (controller == null) return;
+        int from = -1;
+        int to = -1;
+        for (int i = 0; i < controller.items.size(); i++) {
+            if (sourceParts[2].equals(controller.items.get(i).getPath())) from = i;
+            if (targetParts[2].equals(controller.items.get(i).getPath())) to = i;
+        }
+        if (from < 0 || to < 0 || from == to) return;
+        File file = controller.items.remove(from);
+        if (to > from) to--;
+        controller.items.add(to, file);
+        persistBookmarkOrder(controller);
+        controller.adapter.notifyDataSetChanged();
+    }
+
+
+    private void reduceDragSensitivity(ViewPager2 viewPager) {
+        try {
+            Field recyclerViewField = ViewPager2.class.getDeclaredField("mRecyclerView");
+            recyclerViewField.setAccessible(true);
+            RecyclerView recyclerView = (RecyclerView) recyclerViewField.get(viewPager);
+
+            Field touchSlopField = RecyclerView.class.getDeclaredField("mTouchSlop");
+            touchSlopField.setAccessible(true);
+            int touchSlop = (int) touchSlopField.get(recyclerView);
+            touchSlopField.set(recyclerView, touchSlop * 2);
+        } catch (Exception ignored) {
+        }
+    }
+
+    public RecyclerView getCurrentPane() {
+        return findViewById(lastPaneSelected == 1 ? R.id.listViewPane1 : R.id.listViewPane2);
+    }
+
+    private String lang;
+    public Resources rss;
+
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (systemTheme) {
+            int currentNightMode = newConfig.uiMode & Configuration.UI_MODE_NIGHT_MASK;
+            if (currentNightMode == Configuration.UI_MODE_NIGHT_YES) {
+                if (theme != R.style.Theme_MyApp_Dark) {
+                    setTheme(theme = R.style.Theme_MyApp_Dark);
+                    recreate();
+                }
+            } else if (currentNightMode == Configuration.UI_MODE_NIGHT_NO) {
+                if (theme != R.style.Theme_MyApp_Light) {
+                    setTheme(theme = R.style.Theme_MyApp_Light);
+                    recreate();
+                }
+            }
+        }
+    }
+
+    private ActivityResultLauncher<String> requestPermissionLauncher;
+    private Runnable notificationPermissionContinuation;
+    private final ActivityResultLauncher<String> notificationPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> {
+                Runnable continuation = notificationPermissionContinuation;
+                notificationPermissionContinuation = null;
+                if (continuation != null) continuation.run();
+            });
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            isServiceBound = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            isServiceBound = false;
+        }
+    };
+    private boolean isServiceBound = false;
+    private final ActivityResultLauncher<Intent> colorPickerLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+        if (result.getResultCode() == RESULT_OK) {
+            Intent serviceIntent = new Intent(this, ColorPickerService.class)
+            .putExtra(ColorPickerService.EXTRA_RESULT_CODE, result.getResultCode())
+            .putExtra(ColorPickerService.EXTRA_RESULT_DATA, result.getData());
+            if(Build.VERSION.SDK_INT > Build.VERSION_CODES.O) startForegroundService(serviceIntent);
+            else startService(serviceIntent);
+        } else {
+            Extensions.showMessage(this, rss.getString(R.string.screen_capture_permission_needed_for_color_picker));
+        }});
+
+    private void setupSystemBars() {
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return insets;
+        });
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.sidebar_drawer), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+            return insets;
+        });
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.bookmarks_drawer), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            v.setPadding(systemBars.left, v.getPaddingTop(), systemBars.right, systemBars.bottom);
+            return insets;
+        });
+
+        boolean lightBars = theme == R.style.Theme_MyApp_Light;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            int surfaceColor = MaterialColors.getColor(this, com.google.android.material.R.attr.colorSurface, Color.TRANSPARENT);
+            getWindow().setStatusBarColor(surfaceColor);
+            getWindow().setNavigationBarColor(surfaceColor);
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M && lightBars) {
+                // Old devices can't render dark status bar icons; use a dark bar so icons stay visible
+                int darkBar = MaterialColors.getColor(this, com.google.android.material.R.attr.colorPrimary, surfaceColor);
+                getWindow().setStatusBarColor(darkBar);
+                getWindow().setNavigationBarColor(darkBar);
+            }
+        }
+        WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        controller.setAppearanceLightStatusBars(lightBars);
+        controller.setAppearanceLightNavigationBars(lightBars);
+    }
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+        boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        setTheme(theme = settings.getInt("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light));
+        super.onCreate(savedInstanceState);
+        ShizukuFileOps.init(this);
+        ShizukuShell.warmUp(this);
+        DynamicColors.applyToActivitiesIfAvailable(getApplication());
+        //WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+
+        setContentView(R.layout.activity_main);
+        setupSystemBars();
+        checkStoragePerm();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) mediaProjectionManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+        String deviceLang = Locale.getDefault().getLanguage();
+        boolean supportedLang = deviceLang.equals("ar") || deviceLang.equals("es") || deviceLang.equals("de")
+                || deviceLang.equals("fr") || deviceLang.equals("in") || deviceLang.equals("it")
+                || deviceLang.equals("pt-BR") || deviceLang.equals("ru") || deviceLang.equals("tr")
+                || deviceLang.equals("uk") || deviceLang.equals("vi") || deviceLang.equals("zh-TW")
+                || deviceLang.equals("pl") || deviceLang.equals("hu") || deviceLang.equals("ko");
+
+        lang = settings.getString("lang", supportedLang ? deviceLang : "en");
+        boolean useDeviceRss = lang.equals(deviceLang);
+        rss = getResources();// /*useDeviceRss ? getResources() :*/ LocaleHelper.setLocale(this, Locale.getDefault().getLanguage()).getResources();
+
+        new Thread(() -> {
+            Security.addProvider(new BouncyCastleProvider());
+            Security.addProvider(new JavaKeyStoreProvider());
+        }).start();
+
+        requestPermissionLauncher = registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> { });
+
+        new Thread(() -> {
+            File frameworks = new File("/sdcard/Untrusted Manager/frameworks/");
+            if(!doesNotHaveStoragePerm(this) && !frameworks.exists()) try(
+                    InputStream is23 = rss.openRawResource(R.raw.android_23);
+                    InputStream is24 = rss.openRawResource(R.raw.android_24);
+                    InputStream is25 = rss.openRawResource(R.raw.android_25);
+                    InputStream is26 = rss.openRawResource(R.raw.android_26);
+                    InputStream is27 = rss.openRawResource(R.raw.android_27);
+                    InputStream is28 = rss.openRawResource(R.raw.android_28);
+                    InputStream is29 = rss.openRawResource(R.raw.android_29);
+                    InputStream is30 = rss.openRawResource(R.raw.android_30);
+                    InputStream is31 = rss.openRawResource(R.raw.android_31);
+                    InputStream is32 = rss.openRawResource(R.raw.android_32);
+                    InputStream is33 = rss.openRawResource(R.raw.android_33);
+                    InputStream is34 = rss.openRawResource(R.raw.android_34);
+                    InputStream is35 = rss.openRawResource(R.raw.android_35);
+                    InputStream is36 = rss.openRawResource(R.raw.android_36)
+            ) {
+                frameworks.mkdir();
+                FileUtils.copyFile(is23, new File(frameworks, "android_23.apk"));
+                FileUtils.copyFile(is24, new File(frameworks, "android_24.apk"));
+                FileUtils.copyFile(is25, new File(frameworks, "android_25.apk"));
+                FileUtils.copyFile(is26, new File(frameworks, "android_26.apk"));
+                FileUtils.copyFile(is27, new File(frameworks, "android_27.apk"));
+                FileUtils.copyFile(is28, new File(frameworks, "android_28.apk"));
+                FileUtils.copyFile(is29, new File(frameworks, "android_29.apk"));
+                FileUtils.copyFile(is30, new File(frameworks, "android_30.apk"));
+                FileUtils.copyFile(is31, new File(frameworks, "android_31.apk"));
+                FileUtils.copyFile(is32, new File(frameworks, "android_32.apk"));
+                FileUtils.copyFile(is33, new File(frameworks, "android_33.apk"));
+                FileUtils.copyFile(is34, new File(frameworks, "android_34.apk"));
+                FileUtils.copyFile(is35, new File(frameworks, "android_35.apk"));
+                FileUtils.copyFile(is36, new File(frameworks, "android_36.apk"));
+            } catch (Exception ignored) { }
+            setupPullToRefresh();
+        }).start();
+
+        handler = new Handler(Looper.getMainLooper());
+        drawerLayout = findViewById(R.id.drawer_layout);
+        View sidebarDrawer = findViewById(R.id.sidebar_drawer);
+
+        if (sidebarDrawer.getBackground() instanceof GradientDrawable sidebarBackground) {
+//            sidebarBackground.setColor(MaterialColors.getColor(this, com.google.android.material.R.attr.colorSurface, Color.BLACK));
+//            sidebarDrawer.setBackground(sidebarBackground);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            sidebarDrawer.setClipToOutline(true);
+        }
+        bottomSheetBehavior = BottomSheetBehavior.from(findViewById(R.id.bookmarks_drawer));
+        bottomSheetBehavior.setPeekHeight(0, false); // animate=false, keeps it hidden
+        bottomSheetBehavior.setHideable(true); // allows fully hidden state
+        bottomSheetBehavior.setState(BottomSheetBehavior.STATE_HIDDEN); // truly hidden at start
+
+        bottomSheetBehavior.addBottomSheetCallback(new BottomSheetBehavior.BottomSheetCallback() {
+            @Override
+            public void onStateChanged(@NonNull View bottomSheet, int newState) {
+                isBookmarksDrawerOpen = (newState == BottomSheetBehavior.STATE_EXPANDED || newState == BottomSheetBehavior.STATE_HALF_EXPANDED);
+            }
+
+            @Override
+            public void onSlide(@NonNull View bottomSheet, float slideOffset) {
+            }
+        });
+
+        drawerLayout.addDrawerListener(new DrawerLayout.SimpleDrawerListener() {
+            @Override
+            public void onDrawerOpened(View drawerView) {
+                isSidebarDrawerOpen = true;
+            }
+
+            @Override
+            public void onDrawerClosed(View drawerView) {
+                isSidebarDrawerOpen = false;
+            }
+        });
+
+        ListView bookmarksList = this.bookmarksList = new ListView(this);
+        bookmarksList.setDivider(null);
+        bookmarksList.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        bookmarksList.setOnTouchListener(getBookmarksSwipeDownCloseListener());
+        mainBookmarkController = new BookmarkListController("bookmarks", bookmarksList, getBookmarks());
+        bookmarksAdapter = mainBookmarkController.adapter;
+        bookmarksList.setAdapter(bookmarksAdapter);
+        bookmarksList.setOnItemClickListener((parent, view, position, id) -> {
+            if (handleBookmarkListClick(mainBookmarkController, position)) return;
+            File bookmarked = mainBookmarkController.items.get(position);
+            loadFolderInPane(bookmarked.isFile() ? bookmarked.getParentFile() : bookmarked, lastPaneSelected == 1);
+            closeBookmarksDrawer();
+        });
+        bookmarksList.setOnItemLongClickListener((parent, view, position, id) -> {
+            showBookmarkItemMenu(mainBookmarkController, position);
+            return true;
+        });
+
+        ListView historyList = this.historyList = new ListView(this);
+        historyList.setDivider(null);
+        historyList.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        historyList.setOnTouchListener(getBookmarksSwipeDownCloseListener());
+        historyList.setAdapter(historyAdapter = new HistoryAdapter(this, lastPaneSelected == 1 ? pane1History : pane2History));
+        historyList.setOnItemClickListener((parent, view, position, id) -> {
+            NavigationHistoryEntry entry = historyAdapter.getItem(position);
+            if (entry == null) return;
+            boolean pane1 = lastPaneSelected == 1;
+            List<NavigationHistoryEntry> history = pane1 ? pane1History : pane2History;
+            int idx = history.indexOf(entry);
+            if (idx >= 0) {
+                if (pane1) pane1HistoryIndex = idx;
+                else pane2HistoryIndex = idx;
+            }
+            if (entry.isZip()) loadZipFolderInPane(entry.file(), entry.zipPath(), pane1, false);
+            else loadFolderInPane(entry.file(), pane1, false);
+            updateNavigationButtons();
+            closeBookmarksDrawer();
+        });
+
+        loadBookmarkGroups();
+        loadBookmarkLabels();
+        bookmarksTabs = findViewById(R.id.bookmarksTabs);
+        bookmarksPager = findViewById(R.id.bookmarksPager);
+        rebuildBookmarksPager();
+        bookmarksTabs.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
+            @Override
+            public void onTabSelected(TabLayout.Tab tab) {
+                PreferenceManager.getDefaultSharedPreferences(MainActivity.this)
+                        .edit().putInt("bookmarks_last_tab", tab.getPosition()).apply();
+                if (batchController != null) exitBookmarkBatchMode();
+            }
+
+            @Override
+            public void onTabUnselected(TabLayout.Tab tab) {
+            }
+
+            @Override
+            public void onTabReselected(TabLayout.Tab tab) {
+            }
+        });
+
+        findViewById(R.id.bookmarksMenuButton).setOnClickListener(this::showBookmarksBarMenu);
+        findViewById(R.id.bookmarksCloseButton).setOnClickListener(v -> closeBookmarksDrawer());
+        findViewById(R.id.batchCopy).setOnClickListener(v -> batchCopyOrMove(true));
+        findViewById(R.id.batchMove).setOnClickListener(v -> batchCopyOrMove(false));
+        findViewById(R.id.batchDelete).setOnClickListener(v -> batchDeleteSelected());
+        findViewById(R.id.batchCancel).setOnClickListener(v -> exitBookmarkBatchMode());
+        applyBookmarksBarHeight(settings.getInt("bookmarks_bar_pct", 35));
+
+        View.OnClickListener toggleSidebarDrawer = v -> {
+            if (drawerLayout.isDrawerOpen(GravityCompat.START))
+                drawerLayout.closeDrawer(GravityCompat.START);
+            else
+                drawerLayout.openDrawer(GravityCompat.START);
+        };
+
+        findViewById(R.id.sidebarTitle).setOnClickListener(v -> uiHelper.showAboutDialog());
+        setupSidebar();
+        bottomBarGestureDetector = new GestureDetectorCompat(this,
+                new GestureDetector.SimpleOnGestureListener() {
+                    @Override
+                    public boolean onDown(@NonNull MotionEvent e) {
+                        return true; // MUST return true to receive subsequent events
+                    }
+
+                    @Override
+                    public boolean onFling(MotionEvent e1, @NonNull MotionEvent e2,
+                                           float velocityX, float velocityY) {
+                        // upward movement (px)
+                        if (e1 != null && e1.getY() - e2.getY() > 50 && velocityY < -200) { // negative = upward velocity
+                            openBookmarksDrawer();
+                            return true;
+                        }
+                        return false;
+                    }
+                });
+
+        bottomBarTouchListener = (v, event) -> {
+            bottomBarGestureDetector.onTouchEvent(event);
+            return v.getId() == R.id.bottomBar;
+        };
+
+        LinearLayout bottomBar = findViewById(R.id.bottomBar);
+        bottomBar.setOnTouchListener(bottomBarTouchListener);
+        for (int i = 0; i < bottomBar.getChildCount(); i++) {
+            bottomBar.getChildAt(i).setOnTouchListener(bottomBarTouchListener);
+        }
+
+        findViewById(R.id.hamburgerMenu).setOnClickListener(toggleSidebarDrawer);
+
+        dialogUtil = new DialogUtil(this);
+        uiHelper = new UIHelper(this);
+
+        logEnabled = settings.getBoolean("logEnabled", false);
+        systemTheme = settings.getBoolean("systemTheme", true);
+        String homeDir1Path = settings.getString("home1", null);
+        homeDir1 = TextUtils.isEmpty(homeDir1Path) ? Environment.getExternalStorageDirectory() : new File(homeDir1Path);
+        String homeDir2Path = settings.getString("home2", null);
+        homeDir2 = TextUtils.isEmpty(homeDir2Path) ? Environment.getExternalStorageDirectory() : new File(homeDir2Path);
+        try {
+            signatureKeyPath = settings.getString("keyPath", FileUtils.getDebugKeystore(this).getPath());
+        } catch (IOException e) {
+            new ErrorUtil(this).showError(e);
+        }
+
+        RecyclerView pane1 = findViewById(R.id.listViewPane1);
+        RecyclerView pane2 = findViewById(R.id.listViewPane2);
+
+        pane1.setLayoutManager(new LinearLayoutManager(this));
+        pane2.setLayoutManager(new LinearLayoutManager(this));
+
+        pane1.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                if (lastPaneSelected != 1) setCurrentPane(1);
+                onPaneTouched(1);
+            }
+            return false;
+        });
+
+
+
+        pane2.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                if (lastPaneSelected != 2) setCurrentPane(2);
+                onPaneTouched(2);
+            }
+            return false;
+        });
+
+        new Thread(() -> {
+            TextView currentFolderView = findViewById(R.id.currentFolderPath);
+            currentFolderView.setText(TextUtils.isEmpty(homeDir1Path) ? Environment.getExternalStorageDirectory().getPath() : homeDir1Path);
+            currentFolderView.setOnLongClickListener(v -> {
+                CopyUtil.copyToClipboard(this, ((TextView) v).getText());
+                return false;
+            });
+            currentFolderView.setOnClickListener(v -> {
+                View textInputLayout = LayoutInflater.from(this).inflate(R.layout.material_edittext, null);//new TextInputLayout(this, null, com.google.android.material.R.style.Widget_MaterialComponents_TextInputLayout_OutlinedBox);
+                EditText input = textInputLayout.findViewById(R.id.m_et_edittext);
+                input.setText(((TextView) v).getText());
+                AlertDialog ad = dialogUtil.getDialogBuilder()
+                        .setTitle(R.string.path)
+                        .setView(textInputLayout)
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .setNeutralButton(android.R.string.paste, null) // Note: Need to set it after otherwise the dialog auto close
+                        .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                            File inputPath = new File(input.getText().toString());
+                            boolean canOpen = inputPath.exists() && inputPath.isDirectory() || (!inputPath.exists() && inputPath.mkdirs());
+                            if (!canOpen) {
+                                try {
+                                    String abs = inputPath.getAbsolutePath();
+                                    if (AccessManager.exists(this, abs) && RootManager.getInstance(this).isDirectory(abs)) {
+                                        canOpen = true;
+                                    }
+                                } catch (Exception ignored) {
+                                }
+                            }
+                            if (canOpen) {
+                                boolean isPane1 = lastPaneSelected == 1;
+                                if (isPane1)
+                                    pane1Folder = inputPath;
+                                else
+                                    pane2Folder = inputPath;
+                                loadFolderInPane(inputPath, isPane1);
+                            } else {
+                                Extensions.showMessage(MainActivity.this, getString(R.string.navigate_create_failed, inputPath));
+                            }
+                        }).show();
+                ad.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener(v2 -> {
+                    int selectionStart = input.getSelectionStart();
+                    int selectionEnd = input.getSelectionEnd();
+                    if (selectionStart != selectionEnd) {
+                        input.getText().delete(selectionStart, selectionEnd);
+                    }
+                    CharSequence text = ((ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE)).getText();
+                    if (TextUtils.isEmpty(text)) Extensions.showMessage(this, rss.getString(R.string.nothing_found_to_paste));
+                    else input.getText().insert(selectionStart, text);
+                });
+            });
+            View addButton = findViewById(R.id.addButton);
+            addButton.setOnLongClickListener(this::showMsgOnLongPress);
+            addButton.setOnClickListener(v -> {
+                if (multiSelectUIActive) {
+                    for (MainFilesArrayAdapter a : activeMultiSelectAdapters()) a.exitMultiSelectMode();
+                    return;
+                } else if(getCurrentPane().getAdapter() instanceof MainFilesArrayAdapter adapter && adapter.isInZip) {
+                    adapter.setMultiSelectMode(true);
+                    return;
+                }
+                View textInputLayout = LayoutInflater.from(this).inflate(R.layout.enter_name, null);
+                EditText input = textInputLayout.findViewById(R.id.m_et_edittext);
+                AlertDialog ad = dialogUtil.getDialogBuilder()
+                        .setTitle(getString(R.string.create))
+                        .setView(textInputLayout)
+                        .setNegativeButton(rss.getString(R.string.folder), (dialog, which) -> {
+                            boolean isPane1 = lastPaneSelected == 1;
+                            File ogFolder = isPane1 ? pane1Folder : pane2Folder;
+                            String inputStr = input.getText().toString();
+                            if (new File(ogFolder, inputStr).mkdir()) loadFolderInPane(ogFolder, isPane1);
+                            else if (mkdirViaRoot(ogFolder, inputStr)) loadFolderInPane(ogFolder, isPane1);
+                            else Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_create_folder, inputStr));
+                        })
+                        .setNeutralButton(android.R.string.paste, null) // Note: Need to set it after otherwise the dialog auto close
+                        .setPositiveButton(rss.getString(R.string.file), (dialog, which) -> {
+                            boolean isPane1 = lastPaneSelected == 1;
+                            File ogFolder = isPane1 ? pane1Folder : pane2Folder;
+                            String inputStr = input.getText().toString();
+                            try {
+                                if (new File(ogFolder, inputStr).createNewFile()) loadFolderInPane(ogFolder, isPane1);
+                                else if (touchViaRoot(ogFolder, inputStr)) loadFolderInPane(ogFolder, isPane1);
+                                else Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_create_file, inputStr));
+                            } catch (IOException e) {
+                                if (touchViaRoot(ogFolder, inputStr)) loadFolderInPane(ogFolder, isPane1);
+                                else Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_create_file, inputStr));
+                            }
+                        }).show();
+                ad.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v2 -> {
+                    CharSequence text = ((ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE)).getText();
+                    if (TextUtils.isEmpty(text)) {
+                        Extensions.showMessage(MainActivity.this, rss.getString(R.string.nothing_found_to_paste)); return;
+                    }
+                    int selectionStart = input.getSelectionStart();
+                    int selectionEnd = input.getSelectionEnd();
+                    if (selectionStart != selectionEnd) {
+                        input.getText().delete(selectionStart, selectionEnd);
+                        input.getText().insert(selectionStart, text);
+                    } else if(selectionEnd == -1) { // Empty
+                        input.setText(text);
+                    }
+                });
+            });
+
+            View syncPaneButton = findViewById(R.id.syncPaneButton);
+            syncPaneButton.setOnLongClickListener(this::showMsgOnLongPress);
+            syncPaneButton.setOnClickListener(v -> {
+                RecyclerView.Adapter a = getCurrentPane().getAdapter();
+                if(a instanceof MainFilesArrayAdapter mainFilesArrayAdapter) {
+                    if (lastPaneSelected == 1)
+                        loadFolderInPane(pane2Folder = mainFilesArrayAdapter.isInZip ? pane1Folder.getParentFile() : pane1Folder, false);
+                    else
+                        loadFolderInPane(pane1Folder = mainFilesArrayAdapter.isInZip ? pane2Folder.getParentFile() : pane2Folder, true);
+                }
+            });
+
+            View moreOptionsMenu = findViewById(R.id.moreOptionsMenu);
+            moreOptionsMenu.setOnLongClickListener(this::showMsgOnLongPress);
+            moreOptionsMenu.setOnClickListener(v -> {
+                PopupMenu popup = new PopupMenu(MainActivity.this, v);
+                Menu menu = popup.getMenu();
+                menu.add(0, 0, 0, getString(R.string.menu_refresh)).setIcon(R.drawable.baseline_refresh_24);
+                menu.add(0, 1, 0, getString(R.string.filter)).setIcon(R.drawable.baseline_filter_list_24);
+                menu.add(0, 2, 0, getString(R.string.search)).setIcon(R.drawable.baseline_search_24);
+                menu.add(0, 15, 0, getString(R.string.find_in_files)).setIcon(R.drawable.ic_search_replace);
+                menu.add(0, 3, 0, getString(R.string.menu_select_all)).setIcon(R.drawable.baseline_select_all_24);
+                menu.add(0, 4, 0, getString(R.string.sort)).setIcon(R.drawable.baseline_sort_24);
+
+                SubMenu hiddenMenu = menu.addSubMenu(0, 5, 0, getString(R.string.menu_hidden_files));
+                hiddenMenu.setIcon(R.drawable.visibility_off_24px);
+                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(MainActivity.this);
+                MenuItem sysItem = hiddenMenu.add(0, 6, 0, getString(R.string.menu_show_system_hidden));
+                sysItem.setCheckable(true).setChecked(prefs.getBoolean("show_system_hidden", false));
+                MenuItem manItem = hiddenMenu.add(0, 7, 0, getString(R.string.menu_show_manual_hidden));
+                manItem.setCheckable(true).setChecked(prefs.getBoolean("show_manually_hidden", false));
+
+                RecyclerView.Adapter a = getCurrentPane().getAdapter();
+                if ((a instanceof MainFilesArrayAdapter)) {
+                    MainFilesArrayAdapter adapter = (MainFilesArrayAdapter) getCurrentPane().getAdapter();
+                    MenuItem hideSel = hiddenMenu.add(0, 8, 0, getString(R.string.menu_hide_selected));
+                    hideSel.setEnabled(adapter != null && adapter.isMultiSelectMode());
+                    hiddenMenu.add(0, 9, 0, getString(R.string.edit_hidden_files)).setIcon(R.drawable.baseline_drive_file_rename_outline_24);
+                }
+
+                menu.add(0, 10, 0, getString(R.string.menu_add_bookmark)).setIcon(R.drawable.baseline_bookmark_24);
+                menu.add(0, 11, 0, getString(R.string.set_as_home)).setIcon(R.drawable.baseline_home_24);
+                menu.add(0, 12, 0, getString(R.string.menu_swap_panes)).setIcon(R.drawable.baseline_swap_horiz_24);
+                menu.add(0, 13, 0, getString(R.string.preferences)).setIcon(R.drawable.baseline_settings_24);
+                menu.add(0, 14, 0, getString(R.string.exit)).setIcon(R.drawable.baseline_exit_to_app_24);
+
+                popup.setOnMenuItemClickListener(item -> {
+                    switch (item.getItemId()) {
+                        case 0:
+                            reloadCurrentFolder();
+                            break;
+                        case 1:
+                            LinearLayout topBar = findViewById(R.id.topBar);
+                            LinearLayout pathLayout = (LinearLayout) topBar.getChildAt(1);
+                            TextInputLayout filterBox = (TextInputLayout) topBar.getChildAt(2);
+                            EditText filterBar = filterBox.getEditText();
+                            if (pathLayout.getVisibility() == View.VISIBLE) {
+                                pathLayout.setVisibility(View.GONE);
+                                filterBox.setVisibility(View.VISIBLE);
+                                if (filterBar != null) {
+                                    filterBar.requestFocus();
+                                    try {
+                                        InputMethodManager imm =
+                                                (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                                        if (imm != null) imm.showSoftInput(filterBar, InputMethodManager.SHOW_IMPLICIT);
+                                    } catch (Exception ignored) {
+                                    }
+                                }
+                            } else {
+                                pathLayout.setVisibility(View.VISIBLE);
+                                filterBox.setVisibility(View.GONE);
+                                if (filterBar != null) filterBar.setText("");
+                                try {
+                                    InputMethodManager imm =
+                                            (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                                    if (imm != null) imm.hideSoftInputFromWindow(topBar.getWindowToken(), 0);
+                                } catch (Exception ignored) {
+                                }
+                            }
+                            break;
+                        case 2:
+                            showSearchDialog();
+                            break;
+                        case 15:
+                            showFindInFilesDialog();
+                            break;
+                        case 3:
+                            if (a instanceof MainFilesArrayAdapter) ((MainFilesArrayAdapter) a).selectAll();
+                            break;
+                        case 4:
+                            showSortDialog();
+                            break;
+                        case 6: {
+                            boolean isChecked = !item.isChecked();
+                            item.setChecked(isChecked);
+                            prefs.edit().putBoolean("show_system_hidden", isChecked).apply();
+                            reloadCurrentFolder();
+                            break;
+                        }
+                        case 7: {
+                            boolean isChecked = !item.isChecked();
+                            item.setChecked(isChecked);
+                            prefs.edit().putBoolean("show_manually_hidden", isChecked).apply();
+                            reloadCurrentFolder();
+                            break;
+                        }
+                        case 8:
+                            Set<String> manualHidden = new HashSet<>(prefs.getStringSet("manually_hidden_files", new HashSet<>()));
+                            for (Object obj : ((MainFilesArrayAdapter) a).getSelectedFiles()) {
+                                if (obj instanceof File)
+                                    manualHidden.add(((File) obj).getPath());
+                                else if (obj instanceof ZipEntryInfo)
+                                    manualHidden.add(((ZipEntryInfo) obj).getFullPath());
+                            }
+                            prefs.edit().putStringSet("manually_hidden_files", manualHidden).apply();
+                            ((MainFilesArrayAdapter) a).clearSelection();
+                            reloadCurrentFolder();
+                            break;
+                        case 9:
+                            showEditHiddenFilesDialog();
+                            break;
+                        case 10: {
+                            boolean isPane1 = lastPaneSelected == 1;
+                            File toBookmark = isPane1 ? pane1Folder : pane2Folder;
+                            addBookmark(toBookmark);
+                            Extensions.showMessage(MainActivity.this, rss.getString(R.string.added_to_bookmarks, toBookmark.getName()));
+                            break;
+                        }
+                        case 11: {
+                            boolean isPane1 = lastPaneSelected == 1;
+                            prefs.edit().putString(isPane1 ? "home1" : "home2", (isPane1 ? pane1Folder : pane2Folder).getPath())
+                                    .apply();
+                            Extensions.showMessage(MainActivity.this, R.string.set_as_home);
+                            break;
+                        }
+                        case 12:
+                            File temp = pane1Folder;
+                            pane1Folder = pane2Folder;
+                            pane2Folder = temp;
+                            loadFolderInPane(pane1Folder, true);
+                            loadFolderInPane(pane2Folder, false);
+                            break;
+                        case 13:
+                            showSettingsDialog();
+                            break;
+                        case 14:
+                            finishAffinity();
+                            break;
+                    }
+                    return true;
+                });
+                forceShowIcons(popup);
+                popup.show();
+            });
+
+            View upButton = findViewById(R.id.upButton);
+            upButton.setOnLongClickListener(this::showMsgOnLongPress);
+            upButton.setOnClickListener(v -> {
+                boolean isPane1 = lastPaneSelected == 1;
+                RecyclerView.Adapter a = getCurrentPane().getAdapter();
+                if ((a instanceof MainFilesArrayAdapter adapter)) {
+                    if (adapter.isInZip) {
+                        File zipFile = isPane1 ? pane1Folder : pane2Folder;
+                        if (TextUtils.isEmpty(adapter.currentZipPath)) {
+                            if (zipFile.getParentFile() != null)
+                                loadFolderInPane(zipFile.getParentFile(), isPane1);
+                        } else {
+                            File parentInZip = new File(adapter.currentZipPath).getParentFile();
+                            loadZipFolderInPane(zipFile, parentInZip != null ? parentInZip.getPath() : "", isPane1, true);
+                        }
+                    } else loadFolderInPane((File) adapter.getItem(0), isPane1);
+                } else {
+                    ftpClient.getCurDirPath(new OnEZFtpCallBack<>() {
+                        @Override
+                        public void onSuccess(String response) {
+                            int startIndex = response.indexOf(File.separator);
+                            int endIndex = response.lastIndexOf(File.separator);
+                            fetchFtpDirAndLoad((startIndex == endIndex) ? File.separator : response.substring(0, endIndex), isPane1);
+                        }
+
+                        @Override
+                        public void onFail(int code, String msg) {
+                        }
+                    });
+                }
+            });
+        }).start();
+
+        String locate = getIntent() == null ? null : getIntent().getStringExtra("locatePath");
+        handler.post(() -> {
+            setupFilterBar();
+            setupNavigationButtons();
+            refreshSidebar(getSidebarSectionOrder());
+            File[] dir1Files = homeDir1.listFiles();
+            if (dir1Files != null) {
+                File[] folders = homeDir1.listFiles(File::isDirectory);
+                int foldersCount = folders == null ? 0 : folders.length;
+                MainActivity.this.<TextView>findViewById(R.id.folderCount).setText(
+                        new StringBuilder("Folders: ").append(foldersCount).append(" Files: ")
+                                .append(dir1Files.length - foldersCount));
+            }
+            if(TextUtils.isEmpty(locate)) loadFolderInPane(resolveStartupFolder(true, homeDir1), true);
+            loadFolderInPane(resolveStartupFolder(false, homeDir2), false);
+            new Thread(() -> AccessManager.warmUp(MainActivity.this)).start();
+            new Thread(() -> {
+                try {
+                    RootManager rm = RootManager.getInstance(MainActivity.this);
+                    if (rm.autoEnableRootIfAvailable()) {
+                        handler.post(() -> {
+                            try {
+                                Extensions.showMessage(MainActivity.this, R.string.root_detected_enabled);
+                                refreshSidebar(getSidebarSectionOrder());
+                            } catch (Exception ignored) {
+                            }
+                        });
+                    }
+                    try {
+                        rm.kickNsProbe();
+                    } catch (Exception ignored) {
+                    }
+                } catch (Exception ignored) {
+                }
+            }).start();
+        });
+        if ((checkForUpdates = settings.getBoolean("checkForUpdates", true))) UpdateUtil.checkForUpdates(false, this);
+    }
+
+    private File resolveStartupFolder(boolean pane1, File home) {
+        try {
+            if ("last".equals(UiPrefs.startupMode(this, pane1))) {
+                String saved = PreferenceManager.getDefaultSharedPreferences(this)
+                        .getString(pane1 ? "last_path_1" : "last_path_2", null);
+                if (!TextUtils.isEmpty(saved)) {
+                    File f = new File(saved);
+                    if (f.isDirectory() || AccessManager.exists(this, saved)) return f;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return home;
+    }
+
+    private void setupNavigationButtons() {
+        View backButton = findViewById(R.id.backButton);
+        View forwardButton = findViewById(R.id.forwardButton);
+        backButton.setOnLongClickListener(this::showMsgOnLongPress);
+        forwardButton.setOnLongClickListener(this::showMsgOnLongPress);
+        backButton.setOnClickListener(v -> navigateBack(lastPaneSelected == 1));
+        forwardButton.setOnClickListener(v -> navigateForward(lastPaneSelected == 1));
+        updateNavigationButtons();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (isSidebarDrawerOpen) closeSidebarDrawer();
+        else if (isBookmarksDrawerOpen) closeBookmarksDrawer();
+        else {
+            ViewGroup topBar = findViewById(R.id.topBar);
+            TextInputLayout filterBox = (TextInputLayout) topBar.getChildAt(2);
+            EditText filterBar = filterBox.getEditText();
+            if (filterBox.getVisibility() == View.VISIBLE) {
+                topBar.getChildAt(1).setVisibility(View.VISIBLE);
+                filterBox.setVisibility(View.GONE);
+                if (filterBar != null) filterBar.setText("");
+            } else {
+                RecyclerView.Adapter a = getCurrentPane().getAdapter();
+                if(a instanceof MainFilesArrayAdapter adapter) {
+                    if (adapter.isMultiSelectMode()) adapter.clearSelection();
+                    else {
+                        String s = adapter.currentZipPath;
+                        if(adapter.isInZip && !StringsUtil.isEmpty(s)) {
+                            char[] chars = s.toCharArray();
+                            int i = 0;
+                            for(char c : chars) if (c == File.separatorChar) i++;
+                            boolean inOneLevelInZip = i < 2;
+                            loadZipFolderInPane(((ZipEntryInfo)adapter.values[0]).getZipFile(), inOneLevelInZip ? "" : s.substring(0, s.lastIndexOf('/', s.lastIndexOf('/') - 1)), adapter.pane1, true);
+                        } else {
+                            String path = this.<TextView>findViewById(R.id.currentFolderPath).getText().toString();
+                            File f = new File(path).getParentFile();
+                            if (f != null && (f.canRead() || canListViaRoot(f))) loadFolderInPane(f, lastPaneSelected == 1);
+                            else if (isBackPressedToExit) {
+                                handler.removeCallbacks(resetExitPrompt);
+                                finishAffinity();
+                            } else {
+                                isBackPressedToExit = true;
+                                Extensions.showMessage(this, rss.getString(R.string.press_back_again_to_exit));
+                                handler.postDelayed(resetExitPrompt, 2000);
+                            }
+                        }
+                    }
+                } else ftpClient.getCurDirPath(new OnEZFtpCallBack<>() {
+                    @Override
+                    public void onSuccess(String response) {
+                        int startIndex = response.indexOf(File.separator);
+                        int endIndex = response.lastIndexOf(File.separator);
+                        fetchFtpDirAndLoad((startIndex == endIndex) ? File.separator : response.substring(0, endIndex), lastPaneSelected == 1);
+                    }
+
+                    @Override
+                    public void onFail(int code, String msg) {
+                    }
+                });
+            }
+        }
+    }
+
+    public boolean navigateBack(boolean pane1) {
+        String suffix = " (Search Results)";
+        String s = this.<TextView>findViewById(R.id.currentFolderPath).getText().toString();
+        // We should not add search results on history but look for better way to do this
+        if(s.endsWith(suffix)) {
+            loadFolderInPane(new File(s.replace(suffix, "")), pane1, false);
+            return true;
+        }
+        else {
+            List<NavigationHistoryEntry> history = pane1 ? pane1History : pane2History;
+            int historyIndex = pane1 ? pane1HistoryIndex : pane2HistoryIndex;
+            if (historyIndex > 0 && historyIndex <= history.size()) {
+                NavigationHistoryEntry entry = history.get(--historyIndex);
+                if (pane1) pane1HistoryIndex = historyIndex;
+                else pane2HistoryIndex = historyIndex;
+                if (entry.isZip()) {
+                    loadZipFolderInPane(entry.file(), entry.zipPath(), pane1, false);
+                } else {
+                    loadFolderInPane(entry.file(), pane1, false);
+                }
+                return true;
+            } else return false;
+        }
+    }
+
+    public void navigateForward(boolean pane1) {
+        List<NavigationHistoryEntry> history = pane1 ? pane1History : pane2History;
+        int historyIndex = pane1 ? pane1HistoryIndex : pane2HistoryIndex;
+        if (historyIndex >= -1 && historyIndex < history.size() - 1) {
+            NavigationHistoryEntry entry = history.get(++historyIndex);
+            if (pane1)
+                pane1HistoryIndex = historyIndex;
+            else
+                pane2HistoryIndex = historyIndex;
+            if (entry.isZip()) {
+                loadZipFolderInPane(entry.file(), entry.zipPath(), pane1, false);
+            } else {
+                loadFolderInPane(entry.file(), pane1, false);
+            }
+        }
+    }
+
+    private void updateNavigationButtons() {
+        int backIndex = lastPaneSelected == 1 ? pane1HistoryIndex : pane2HistoryIndex;
+        int backSize = lastPaneSelected == 1 ? pane1History.size() : pane2History.size();
+        boolean canGoBack = backIndex > 0 && backIndex <= backSize;
+        boolean canGoForward = lastPaneSelected == 1 ? pane1HistoryIndex < pane1History.size() - 1
+                : pane2HistoryIndex < pane2History.size() - 1;
+        findViewById(R.id.backButton).setEnabled(canGoBack);
+        findViewById(R.id.forwardButton).setEnabled(canGoForward);
+    }
+
+    private void pushNavigationHistory(boolean pane1, NavigationHistoryEntry entry) {
+        List<NavigationHistoryEntry> history = pane1 ? pane1History : pane2History;
+        int historyIndex = pane1 ? pane1HistoryIndex : pane2HistoryIndex;
+        if (historyIndex < -1) historyIndex = -1;
+        if (historyIndex > history.size() - 1) historyIndex = history.size() - 1;
+        while (history.size() > historyIndex + 1) {
+            history.remove(history.size() - 1);
+        }
+        if (!history.isEmpty() && history.get(history.size() - 1).equals(entry)) {
+            historyIndex = history.size() - 1;
+        } else {
+            history.add(entry);
+            historyIndex = history.size() - 1;
+        }
+        if (pane1) pane1HistoryIndex = historyIndex;
+        else pane2HistoryIndex = historyIndex;
+        refreshHistoryTab();
+    }
+
+    private void refreshHistoryTab() {
+        try {
+            if (historyAdapter != null) {
+                historyAdapter.setData(lastPaneSelected == 1 ? pane1History : pane2History);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    public void loadFolderInPane(File folder, boolean pane1, boolean addToHistory) {
+        if (folder instanceof FTPFileWrapper) {
+            loadFtpFolderInPane((FTPFileWrapper) folder, pane1);
+            return;
+        }
+        if (folder.getName().endsWith(".zip")) {
+            loadZipFolderInPane(folder, "", pane1, addToHistory);
+            return;
+        }
+        boolean shizukuDir = ShizukuFile.isAndroidDataPath(folder);
+        File[] files = null;
+        String folderPath = folder.getAbsolutePath();
+        boolean rootListingPath = "/".equals(folderPath) || RootManager.isRootOnlyPath(folderPath);
+        if (rootListingPath && AccessManager.active(this) == AccessManager.Backend.ROOT && AccessManager.fileOpsOn(this)) {
+            files = AccessManager.listWithStat(this, folder.getAbsolutePath());
+            if (files != null) files = Arrays.stream(files).filter(this::isNotHidden).toArray(File[]::new);
+        }
+        if (files == null) files = folder.listFiles(this::isNotHidden);
+        if (files == null || (files.length == 0 && shizukuDir)) {
+            File[] viaShizuku = ShizukuFile.tryList(this, folder);
+            if (viaShizuku != null) files = viaShizuku;
+        }
+        if (files == null) {
+            if (shizukuDir) showShizukuGuideOnce(folder, pane1);
+            boolean elevated = AccessManager.fileOpsOn(this);
+            if (!elevated) {
+                try {
+                    elevated = RootPermissionHelper.hasElevatedShell(this);
+                } catch (Exception ignored) {
+                }
+            }
+            if (elevated) {
+            files = AccessManager.listWithStat(this, folderPath);
+
+                if (files != null) {
+                    files = Arrays.stream(files)
+                            .filter(this::isNotHidden)
+                            .toArray(File[]::new);
+                }
+            }
+            if (files == null) {
+                Extensions.showMessage(this, getString(R.string.open_folder_failed, folder.getName()));
+                return;
+            }
+        }
+        try {
+            PreferenceManager.getDefaultSharedPreferences(this).edit()
+                    .putString(pane1 ? "last_path_1" : "last_path_2", folder.getAbsolutePath()).apply();
+        } catch (Exception ignored) {
+        }
+        Arrays.sort(files);
+        View buildButton = findViewById(R.id.build);
+        boolean xml;
+        boolean json = false;
+        if(Arrays.binarySearch(files, new File(folder, "AndroidManifest.xml")) >= 0
+                && (Arrays.binarySearch(files, new File(folder, "classes.dex")) >= 0 || Arrays.binarySearch(files, new File(folder, "classes")) >= 0 || Arrays.binarySearch(files, new File(folder, "smali")) >= 0)
+                && ((xml = Arrays.binarySearch(files, new File(folder, "resources")) >= 0 || Arrays.binarySearch(files, new File(folder, "res")) >= 0)
+                || (json = Arrays.binarySearch(files, new File(folder, "uncompressed-files.json")) >= 0)
+                || (Arrays.binarySearch(files, new File(folder, "resources.arsc")) >= 0))) {
+            buildButton.setVisibility(View.VISIBLE);
+            boolean finalJson = json;
+            buildButton.setOnClickListener(v1 -> {
+                BuildOptions bo = new BuildOptions();
+                LayoutInflater inflater = LayoutInflater.from(this);
+                View content = inflater.inflate(R.layout.dialog_build_options_content, null, false);
+
+                RadioGroup rgExtract = content.findViewById(R.id.rg_extract_native_libs);
+                RadioGroup rgDexLib = content.findViewById(R.id.rg_dex_lib);
+
+                CheckBox cbVrd = content.findViewById(R.id.cb_vrd);
+                CheckBox cbNoCache = content.findViewById(R.id.cb_no_cache);
+                CheckBox cbDexProfile = content.findViewById(R.id.cb_dex_profile);
+
+                TextInputEditText etResDir = content.findViewById(R.id.et_res_dir);
+
+                rgExtract.addView(uiHelper.makeRadioButton("manifest", "Default"));
+                rgExtract.addView(uiHelper.makeRadioButton("none", "None"));
+                rgExtract.addView(uiHelper.makeRadioButton("false", "False"));
+                rgExtract.addView(uiHelper.makeRadioButton("true", "True"));
+                UIHelper.selectRadioByValue(rgExtract, bo.extractNativeLibs != null ? bo.extractNativeLibs : "Default");
+
+                rgDexLib.addView(uiHelper.makeRadioButton(BuildOptions.DEX_LIB_INTERNAL, "Internal (REAndroid)"));
+                rgDexLib.addView(uiHelper.makeRadioButton(BuildOptions.DEX_LIB_JF, "developer-krushna"));
+                UIHelper.selectRadioByValue(rgDexLib, bo.dexLib != null ? bo.dexLib : BuildOptions.DEX_LIB_INTERNAL);
+
+                cbVrd.setChecked(bo.validateResDir);
+                cbNoCache.setChecked(bo.noCache);
+                cbDexProfile.setChecked(bo.dexProfile);
+
+                if (bo.resDirName != null) etResDir.setText(bo.resDirName);
+                SharedPreferences settings = android.preference.PreferenceManager.getDefaultSharedPreferences(this);
+                final boolean[] sign = new boolean[1];
+                CheckBox autosign = content.findViewById(R.id.autosign);
+                autosign.setChecked(sign[0] = settings.getBoolean("autosign", true));
+                autosign.setOnCheckedChangeListener((buttonView, isChecked) -> settings.edit().putBoolean("autosign", sign[0] = isChecked).apply());
+                content.findViewById(R.id.sign_settings).setOnClickListener(uiHelper.showSignSettingsDialog());
+
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle(getString(R.string.build_options))
+                        .setView(content)
+                        .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                            SignWrapper[] wrapper = new SignWrapper[1];
+                            Runnable doBuild = () -> {
+                                ProgressManager pm = new ProgressManager(this, true).show();
+                                bo.type = xml ? BuildOptions.TYPE_XML : finalJson ? BuildOptions.TYPE_JSON : BuildOptions.TYPE_RAW;
+                                bo.extractNativeLibs = UIHelper.radioGroupValue(rgExtract, "manifest");
+                                bo.dexLib = UIHelper.radioGroupValue(rgDexLib, BuildOptions.DEX_LIB_INTERNAL);
+                                bo.validateResDir = cbVrd.isChecked();
+                                bo.noCache = cbNoCache.isChecked();
+                                bo.dexProfile = cbDexProfile.isChecked();
+                                CharSequence resDirName = (etResDir.getText());
+                                String resDir = TextUtils.isEmpty(resDirName) ? "" : resDirName.toString().trim();
+                                bo.resDirName = resDir.isEmpty() ? null : resDir;
+                                bo.inputFile = folder;
+                                bo.outputFile = new File(folder, folder.getName() + ".apk");
+                                new Thread(() -> {
+                                    try {
+                                        APKLogger logger = pm.getLogger();
+                                        new Builder(bo, logger).runCommand();
+                                        logger.close();
+                                        if(sign[0]) wrapper[0].signApk(bo.outputFile);
+                                        pm.dismiss();
+                                    } catch (Exception e) {
+                                        pm.dismiss();
+                                        new ErrorUtil(MainActivity.this).showError(e);
+                                    }
+                                }).start();
+                            };
+                            if(sign[0]) SignWrapper.requireAuth(this, sw -> {
+                                wrapper[0] = sw;
+                                doBuild.run();
+                            }); else doBuild.run();
+                        })
+                        .setNegativeButton(android.R.string.cancel, (dialog, which) -> dialog.dismiss())
+                        .show();
+            });
+        } else buildButton.setVisibility(View.GONE);
+
+        sortFiles(files, folder.getPath());
+
+        if (pane1) {
+            currentPane1Files = files;
+            pane1Folder = folder;
+            if (addToHistory) {
+                pushNavigationHistory(true, new NavigationHistoryEntry(folder, false, null));
+            }
+        } else {
+            currentPane2Files = files;
+            pane2Folder = folder;
+            if (addToHistory) {
+                pushNavigationHistory(false, new NavigationHistoryEntry(folder, false, null));
+            }
+        }
+        setCurrentFolder(folder, files);
+        RecyclerView pane = findViewById(pane1 ? R.id.listViewPane1 : R.id.listViewPane2);
+        File parent = folder.getParentFile() != null ? folder.getParentFile() : folder;
+        pane.setAdapter(new MainFilesArrayAdapter(this, files, parent, pane1, false, null));
+        // Fresh listing = no selection in this pane; sync the bottom bar if it's current.
+        if ((pane1 ? lastPaneSelected == 1 : lastPaneSelected == 2)) setMultiSelectModeUI(false);
+        updateNavigationButtons();
+    }
+
+    public void loadZipFolderInPane(File zipFile, String path, boolean pane1, boolean addToHistory) {
+        try {
+            List<ZipEntryInfo> entries = new ArrayList<>();
+            ZipEntryInfo parent = null;
+            HashSet<String> seenDirs = new HashSet<>() {
+            };
+            try (ZipFile zf = new ZipFile(zipFile)) {
+                String parentPath = TextUtils.isEmpty(path) ? "" : path;
+                if (!TextUtils.isEmpty(parentPath) && !parentPath.endsWith("/")) parentPath += "/";
+                if (TextUtils.isEmpty(path)) {
+                    entries.add(new ZipEntryInfo("..", null, true, 0L, 0L, zipFile));
+                } else {
+                    String parentDir = new File(path).getParent();
+                    if (parentDir == null) parentDir = "";
+                    String parentFull = parentDir.isEmpty() ? "" : parentDir.replaceAll("/+$","") + "/";
+                    parent = new ZipEntryInfo("..", parentFull, true, 0L, 0L, zipFile);
+                    entries.add(parent);
+                }
+
+                List<FileHeader> fhs = zf.getFileHeaders();
+                String prefix = parentPath; // already normalized with trailing slash if non-empty
+                for (FileHeader fh : fhs) {
+                    String entryPath = fh.getFileName().replace('\\','/');
+                    if (!entryPath.startsWith(prefix) || entryPath.equals(prefix)) continue;
+                    String rest = entryPath.substring(prefix.length()); // e.g., "subdir/file" or "file.txt" or "subdir/"
+                    // direct child if rest has no further '/'
+                    int nextSlash = rest.indexOf('/');
+                    if (nextSlash == -1) {
+                        // file directly inside current folder
+                        ZipEntryInfo info = new ZipEntryInfo(fh, zipFile, path);
+                        if (isNotHidden(info)) entries.add(info);
+                    } else {
+                        // it's inside a subdirectory; we should add a single synthetic directory entry for that subdir
+                        String childDirName = rest.substring(0, nextSlash + 1); // include trailing slash
+                        String childFullPath = prefix + childDirName; // full path of the child dir
+                        // add only once: track seen dirs with a Set<String>
+                        if (seenDirs.add(childFullPath)) {
+                            FileHeader syntheticDir = new FileHeader();
+                            syntheticDir.setFileName(childFullPath);
+                            ZipEntryInfo info = new ZipEntryInfo(syntheticDir, zipFile, path); // or use new ctor
+                            if (isNotHidden(info)) entries.add(info);
+                        }
+                    }
+                }
+            }
+            sortZipEntries(entries, zipFile.getPath() + "!" + path);
+            if (pane1) {
+                currentPane1ZipEntries = entries;
+                pane1Folder = zipFile;
+                if (addToHistory) {
+                    pushNavigationHistory(true, new NavigationHistoryEntry(zipFile, true, path));
+                }
+            } else {
+                currentPane2ZipEntries = entries;
+                pane2Folder = zipFile;
+                if (addToHistory) {
+                    pushNavigationHistory(false, new NavigationHistoryEntry(zipFile, true, path));
+                }
+            }
+
+            setCurrentFolder(zipFile.getPath() + "!" + path, entries);
+            RecyclerView pane = findViewById(pane1 ? R.id.listViewPane1 : R.id.listViewPane2);
+            ZipEntryInfo finalParent = parent;
+            boolean isCurrentPane = pane1 ? lastPaneSelected == 1 : lastPaneSelected == 2;
+            handler.post(() -> {
+                pane.setAdapter(new MainFilesArrayAdapter(this, entries.toArray(new ZipEntryInfo[0]), finalParent, pane1, true, path));
+                // Fresh listing = no selection in this pane; sync the bottom bar if it's current.
+                if (isCurrentPane) setMultiSelectModeUI(false);
+                updateNavigationButtons();
+            });
+        } catch (IOException e) {
+            new ErrorUtil(this).showError(e);
+        }
+    }
+
+    public void loadFolderInPane(File folder, boolean pane1) {
+        loadFolderInPane(folder, pane1, true);
+    }
+
+    private boolean canListViaRoot(File folder) {
+        try {
+            return AccessManager.fileOpsOn(this) && folder != null && AccessManager.exists(this, folder.getAbsolutePath());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean mkdirViaRoot(File parent, String name) {
+        try {
+            if (name == null || name.isEmpty() || name.contains("/") || name.contains("\0")) return false;
+            if (!AccessManager.fileOpsOn(this)) return false;
+            AccessManager.mkdir(this, new File(parent, name).getAbsolutePath(), true);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean touchViaRoot(File parent, String name) {
+        try {
+            if (name == null || name.isEmpty() || name.contains("/") || name.contains("\0")) return false;
+            if (!AccessManager.fileOpsOn(this)) return false;
+            String target = new File(parent, name).getAbsolutePath();
+            if (AccessManager.exists(this, target)) return false;
+            AccessManager.touch(this, target, true);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Nudge to install/start/grant Shizuku when the user hits an Android/data folder without it. */
+    private void showShizukuGuideOnce(File folder, boolean pane1) {
+        boolean installed = ShizukuShell.isInstalled(this);
+        String message;
+        int positiveLabel;
+        Runnable onPositive;
+        if (!installed) {
+            message = rss.getString(R.string.shizuku_needed);
+            positiveLabel = R.string.shizuku_install;
+            onPositive = () -> ShizukuShell.openShizukuApp(this);
+        } else if (!ShizukuShell.isAvailable()) {
+            message = rss.getString(R.string.shizuku_not_running_hint);
+            positiveLabel = R.string.shizuku_open;
+            onPositive = () -> ShizukuShell.openShizukuApp(this);
+        } else {
+            message = rss.getString(R.string.shizuku_needed);
+            positiveLabel = R.string.shizuku_grant;
+            onPositive = () -> ShizukuShell.requestPermission();
+        }
+        // Once the binder arrives (user started Shizuku / granted), reload this folder automatically.
+        ShizukuShell.onBinderReceived(() -> runOnUiThread(() -> {
+            if (ShizukuShell.isGranted()) loadFolderInPane(folder, pane1, false);
+        }));
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("Shizuku")
+                .setMessage(message)
+                .setPositiveButton(positiveLabel, (d, w) -> onPositive.run())
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private boolean showMsgOnLongPress(View v) {
+        CharSequence contentDescription = v.getContentDescription();
+        if(!TextUtils.isEmpty(contentDescription)) Extensions.showMessage(this, contentDescription);
+        return false;
+    }
+
+    public record NavigationHistoryEntry(File file, boolean isZip, String zipPath) {
+    }
+
+    public void reloadCurrentFolder() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            handler.post(this::reloadCurrentFolder);
+            return;
+        }
+        boolean isPane1 = lastPaneSelected == 1;
+        loadFolderInPane(isPane1 ? pane1Folder : pane2Folder, isPane1);
+    }
+
+    private void setupPullToRefresh() {
+        ((SwipeRefreshLayout) findViewById(R.id.swipeRefreshPane1)).setOnRefreshListener(() -> refreshPane(true));
+        ((SwipeRefreshLayout) findViewById(R.id.swipeRefreshPane2)).setOnRefreshListener(() -> refreshPane(false));
+    }
+
+    private void refreshPane(boolean pane1) {
+        try {
+            RecyclerView pane = findViewById(pane1 ? R.id.listViewPane1 : R.id.listViewPane2);
+            RecyclerView.Adapter<?> adapter = pane.getAdapter();
+            if (adapter instanceof MainFilesArrayAdapter filesAdapter) {
+                if (filesAdapter.isInZip) loadZipFolderInPane(pane1 ? pane1Folder : pane2Folder, filesAdapter.currentZipPath, pane1, false);
+                else loadFolderInPane(pane1 ? pane1Folder : pane2Folder, pane1, false);
+            } else if (adapter instanceof FtpFilesArrayAdapter ftpAdapter && ftpAdapter.getItemCount() > 0)
+                fetchFtpDirAndLoad(ftpAdapter.getItem(0).getParent(), pane1);
+        } catch (Exception e) {
+            new ErrorUtil(this).showError(e);
+        }
+        ((SwipeRefreshLayout) findViewById(pane1 ? R.id.swipeRefreshPane1 : R.id.swipeRefreshPane2)).setRefreshing(false);
+    }
+
+    public void setCurrentFolder(File curr, File[] files) {
+        int foldersCount = 0;
+        int totalCount;
+        if (files != null) {
+            // Count from the already-listed array (root listings carry
+            // isDirectory via RootFile). Re-listing with curr.listFiles()
+            // returns null on root-only dirs and would show 0 folders.
+            for (File f : files) {
+                try {
+                    if (f != null && f.isDirectory()) foldersCount++;
+                } catch (Exception ignored) {
+                }
+            }
+            totalCount = files.length - foldersCount;
+        } else totalCount = 0;
+        TextView currentFolderPath = findViewById(R.id.currentFolderPath);
+        int finalFoldersCount = foldersCount;
+        handler.post(() -> {
+            currentFolderPath.setText(curr.getPath());
+            uiHelper.scrollTextView(currentFolderPath);
+            this.<TextView>findViewById(R.id.folderCount).setText(rss.getString(R.string.folders_files_x, finalFoldersCount, totalCount));
+        });
+    }
+
+    public void setCurrentPane(int pane) {
+        lastPaneSelected = pane;
+        RecyclerView.Adapter a = getCurrentPane().getAdapter();
+        boolean b = a instanceof MainFilesArrayAdapter;
+        findViewById(R.id.syncPaneButton).setEnabled(b);
+        if (b) {
+            MainFilesArrayAdapter adapter = (MainFilesArrayAdapter) a;
+            if (adapter.isInZip) {
+                setCurrentFolder(adapter.currentZipPath, Arrays.asList(adapter.values));
+            } else {
+                File curr = pane == 1 ? pane1Folder : pane2Folder;
+                // ShizukuFile.listFiles() can't list; reuse the entries the adapter already shows.
+                File[] shown = adapter.getShownFiles();
+                setCurrentFolder(curr, shown != null ? shown : curr.listFiles());
+            }
+        }
+        updateNavigationButtons();
+    }
+
+    public void setSelectedPane(int pane) {
+        if (lastPaneSelected == pane) return;
+        lastPaneSelected = pane;
+        updateNavigationButtons();
+    }
+
+    public void setCurrentFolder(String path, List<?> files) {
+        new Thread(() -> {
+
+            //CollectionsUtils.removeIf(files, (Predicate<Object>) o -> o instanceof ZipEntryInfo && ((ZipEntryInfo) o).isDirectory());
+            int foldersCount = 0;
+            for(Object item : files) {
+                if(item instanceof ZipEntryInfo && ((ZipEntryInfo) item).isDirectory()) foldersCount++;
+                else if (item instanceof File && ((File) item).isDirectory()) foldersCount++;
+            }
+            int finalFoldersCount = foldersCount;
+            handler.post(() -> {
+                TextView currentFolderPath = findViewById(R.id.currentFolderPath);
+                currentFolderPath.setText(path);
+                uiHelper.scrollTextView(currentFolderPath);
+                this.<TextView>findViewById(R.id.folderCount).setText(
+                        new StringBuilder("Folders: ").append(finalFoldersCount).append(" Files: ")
+                                .append(files.size() - finalFoldersCount));
+            });
+        }).start();
+    }
+
+    public void setCurrentFolderFromSelected(File curr, Set<File> files) {
+        TextView currentFolderPath = findViewById(R.id.currentFolderPath);
+        currentFolderPath.setText(curr.getPath());
+        uiHelper.scrollTextView(currentFolderPath);
+        int foldersCount = 0;
+        for (File file : files)
+            if (file.isDirectory())
+                foldersCount++;
+        this.<TextView>findViewById(R.id.folderCount).setText(
+                new StringBuilder("Folders: ").append(foldersCount).append(" Files: ")
+                        .append(files.size() - foldersCount));
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        try {
+            if (Build.VERSION.SDK_INT > 32) {
+                registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+                        Context.RECEIVER_NOT_EXPORTED);
+            } else
+                registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+            checkPendingUpdateDownload();
+            String locate = getIntent() == null ? null : getIntent().getStringExtra("locatePath");
+            if (locate != null && !locate.isEmpty()) {
+                try {
+                    getIntent().removeExtra("locatePath");
+                } catch (Exception ignored) {
+                }
+                File target = new File(locate);
+                File folder = target.isFile() ? target.getParentFile() : target;
+                if (folder != null && folder.exists()) {
+                    loadFolderInPane(folder, true);
+                    Extensions.showMessage(this, rss.getString(R.string.loaded_X, target.getPath()));
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            if (sidebarAdapter != null) refreshSidebar(getSidebarSectionOrder());
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void registerStorageRefreshReceiver() {
+        try {
+            if (storageRefreshReceiver != null) return;
+            storageRefreshReceiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    handler.post(() -> {
+                        try {
+                            if (sidebarAdapter != null) refreshSidebar(getSidebarSectionOrder());
+                        } catch (Exception ignored) {
+                        }
+                    });
+                }
+            };
+            IntentFilter filter = new IntentFilter();
+            filter.addAction(Intent.ACTION_MEDIA_MOUNTED);
+            filter.addAction(Intent.ACTION_MEDIA_UNMOUNTED);
+            filter.addAction(Intent.ACTION_MEDIA_REMOVED);
+            filter.addAction(Intent.ACTION_MEDIA_EJECT);
+            filter.addAction(Intent.ACTION_MEDIA_BAD_REMOVAL);
+            filter.addDataScheme("file");
+            registerReceiver(storageRefreshReceiver, filter);
+        } catch (Exception ignored) {
+        }
+    }
+
+    public static boolean areFilesDifferent(File[] files1, File[] files2) throws IOException {
+        if (files1 == null || files2 == null)
+            return files1 != files2;
+        if (files1.length != files2.length - 1)
+            return true;
+        for (int i = 0; i < files1.length; i++) {
+            if (!files1[i].exists() || !files2[i + 1].exists() || files1[i].length() != files2[i + 1].length()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    protected void onDestroy() {
+        try {
+            File cache = getCacheDir();
+            File[] kids = cache.listFiles();
+            if (kids != null) {
+                for (File k : kids) {
+                    if (k.getName().equals("root_staging")) continue;
+                    FileUtil.deleteDirectory(k);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        try {
+            if (storageRefreshReceiver != null) {
+                unregisterReceiver(storageRefreshReceiver);
+                storageRefreshReceiver = null;
+            }
+        } catch (Exception ignored) {
+        }
+        if (isServiceBound) {
+            getApplicationContext().unbindService(serviceConnection);
+            isServiceBound = false;
+        }
+        super.onDestroy();
+    }
+
+    private void showSearchDialog() {
+        View dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_search_files, null);
+        AutoCompleteTextView searchQuery = dialogView.findViewById(R.id.searchQuery);
+        ImageView searchHistoryDropdown = dialogView.findViewById(R.id.searchHistoryDropdown);
+        CheckBox searchSubfolders = dialogView.findViewById(R.id.searchSubfolders);
+        TextView advancedSearchToggle = dialogView.findViewById(R.id.advancedSearchToggle);
+        LinearLayout advancedSearchLayout = dialogView.findViewById(R.id.advancedSearchLayout);
+        CheckBox matchCase = dialogView.findViewById(R.id.matchCase);
+        CheckBox useRegex = dialogView.findViewById(R.id.useRegex);
+        EditText textInsideFile = dialogView.findViewById(R.id.textInsideFile);
+        EditText minFileSize = dialogView.findViewById(R.id.minFileSize);
+        EditText maxFileSize = dialogView.findViewById(R.id.maxFileSize);
+
+        advancedSearchToggle.setOnClickListener(v -> {
+            boolean isVisible = advancedSearchLayout.getVisibility() == View.VISIBLE;
+            advancedSearchLayout.setVisibility(isVisible ? View.GONE : View.VISIBLE);
+            advancedSearchToggle.setText(isVisible ? "Advanced Search ▼" : "Advanced Search ▲");
+        });
+
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        List<SearchHistoryHelper.Item> historyItems =
+                SearchHistoryHelper.load(this, SearchHistoryHelper.KEY_MAIN);
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_dropdown_item_1line,
+                new ArrayList<>());
+        searchQuery.setAdapter(adapter);
+
+        searchHistoryDropdown.setOnClickListener(v -> {
+            List<SearchHistoryHelper.Item> hist =
+                    SearchHistoryHelper.load(this, SearchHistoryHelper.KEY_MAIN);
+            if (hist.isEmpty()) {
+                Extensions.showMessage(this, R.string.no_files_found);
+                return;
+            }
+            SearchHistoryDropdown.show(this, searchQuery, hist,
+                    new SearchHistoryDropdown.Listener() {
+                        @Override
+                        public void onSelect(String query) {
+                            searchQuery.setText(query);
+                            searchQuery.setSelection(query.length());
+                        }
+                        @Override
+                        public void onChanged(List<SearchHistoryHelper.Item> items) {
+                            SearchHistoryHelper.save(MainActivity.this, SearchHistoryHelper.KEY_MAIN, items);
+                        }
+                    });
+        });
+
+        AlertDialog dialog = dialogUtil.getDialogBuilder()
+                .setTitle(getString(android.R.string.search_go))
+                .setView(dialogView)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(getString(android.R.string.search_go), null) // Prevent auto-dismiss
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            Button positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            positiveButton.setOnClickListener(v -> {
+                CharSequence q = searchQuery.getText();
+                if (TextUtils.isEmpty(q)) {
+                    Extensions.showMessage(this, R.string.search_query_needed);
+                    return;
+                }
+                String query = q.toString();
+                SearchHistoryHelper.push(this, SearchHistoryHelper.KEY_MAIN, query);
+
+                boolean subfolders = searchSubfolders.isChecked();
+                boolean mCase = matchCase.isChecked();
+                boolean regex = useRegex.isChecked();
+                String textInside = textInsideFile.getText().toString();
+                long minSize = -1;
+                long maxSize = -1;
+                try {
+                    if (!TextUtils.isEmpty(minFileSize.getText()))
+                        minSize = Long.parseLong(minFileSize.getText().toString());
+                    if (!TextUtils.isEmpty(maxFileSize.getText()))
+                        maxSize = Long.parseLong(maxFileSize.getText().toString());
+                } catch (NumberFormatException ignored) {
+                }
+
+                dialog.dismiss();
+                executeSearch(query, subfolders, mCase, regex, textInside, minSize, maxSize);
+            });
+        });
+        dialogUtil.styleAlertDialog(dialog);
+        dialog.show();
+    }
+
+    private void executeSearch(String query, boolean subfolders, boolean mCase, boolean regex, String textInside,
+            long minSize, long maxSize) {
+        boolean isPane1 = lastPaneSelected == 1;
+        File startDir = isPane1 ? pane1Folder : pane2Folder;
+
+        RecyclerView.Adapter a = getCurrentPane().getAdapter();
+        if (!(a instanceof MainFilesArrayAdapter adapter)) {
+            Extensions.showMessage(this, R.string.search_ftp_unsupported);
+            return;
+        }
+        if(adapter.isInZip) {
+            Extensions.showMessage(this, R.string.search_zip_unsupported);
+            return;
+        }
+
+        ProgressManager pm = new ProgressManager(this, true).show();
+        pm.setText(rss.getString(R.string.searching));
+        final String finalQuery = query;
+
+        new Thread(() -> {
+            List<File> results = new ArrayList<>();
+            Pattern pattern = null;
+            if (regex) try {
+                pattern = Pattern.compile(finalQuery, mCase ? 0 : Pattern.CASE_INSENSITIVE);
+            } catch (Exception e) {
+                handler.post(() -> {
+                    pm.dismiss();
+                    Extensions.showMessage(this, R.string.invalid_regex);
+                });
+                return;
+            }
+
+            final Pattern finalPattern = pattern;
+
+            searchRecursive(startDir, results, mCase ? finalQuery : finalQuery.toLowerCase(), subfolders, mCase, regex,
+                    finalPattern, textInside, minSize,
+                    maxSize);
+
+            pm.dismiss();
+            handler.post(() -> {
+                if (results.isEmpty()) Extensions.showMessage(this, R.string.no_files_found);
+                else {
+                    File[] resArray = results.toArray(new File[0]);
+                    setCurrentFolder(startDir.getPath() + " (Search Results)", Arrays.asList(resArray));
+                    RecyclerView pane = findViewById(isPane1 ? R.id.listViewPane1 : R.id.listViewPane2);
+                    pane.setAdapter(new MainFilesArrayAdapter(this, resArray, startDir, isPane1, false, null));
+                }
+            });
+        }).start();
+    }
+
+    private void searchRecursive(File dir, List<File> results, String query, boolean subfolders, boolean mCase,
+            boolean regex, Pattern pattern, String textInside, long minSize, long maxSize) {
+        File[] files = dir.listFiles();
+        if (files == null) {
+            try {
+                if (AccessManager.fileOpsOn(this)
+                        && !TextUtils.isEmpty(textInside)) {
+                    return;
+                }
+                if (AccessManager.fileOpsOn(this)) {
+                    files = AccessManager.listWithStat(this, dir.getAbsolutePath());
+                }
+            } catch (Exception ignored) {
+            }
+            if (files == null)
+                return;
+        }
+        for (File f : files) {
+            boolean matchName;
+            String name = f.getName();
+            if (regex && pattern != null) {
+                matchName = pattern.matcher(name).find();
+            } else {
+                matchName = mCase ? name.contains(query) : name.toLowerCase().contains(query);
+            }
+
+            boolean matchSize = true;
+            if (f.isFile() && (minSize != -1 || maxSize != -1)) {
+                long len = f.length();
+                if (minSize != -1 && len < minSize)
+                    matchSize = false;
+                if (maxSize != -1 && len > maxSize)
+                    matchSize = false;
+            }
+
+            boolean matchText = true;
+            if (f.isFile() && !TextUtils.isEmpty(textInside)) {
+                matchText = false;
+                if (f.length() < 10485760) { // Limit to 10MB files to prevent OOM
+                    try (BufferedReader br = new BufferedReader(new FileReader(f))) {
+                        String line;
+                        while ((line = br.readLine()) != null) {
+                            if (mCase ? line.contains(textInside)
+                                    : line.toLowerCase().contains(textInside.toLowerCase())) {
+                                matchText = true;
+                                break;
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+
+            if (matchName && matchSize && matchText) {
+                results.add(f);
+            }
+
+            if (subfolders && f.isDirectory()) {
+                searchRecursive(f, results, query, subfolders, mCase, regex, pattern, textInside, minSize, maxSize);
+            }
+        }
+    }
+
+    private record ContentHit(File file, int line, String snippet) {
+    }
+
+    private void showFindInFilesDialog() {
+        boolean isPane1 = lastPaneSelected == 1;
+        RecyclerView.Adapter a = getCurrentPane().getAdapter();
+        if (!(a instanceof MainFilesArrayAdapter)) {
+            Extensions.showMessage(this, R.string.find_needs_folder);
+            return;
+        }
+        if (((MainFilesArrayAdapter) a).isInZip) {
+            Extensions.showMessage(this, R.string.find_needs_folder);
+            return;
+        }
+        File startDir = isPane1 ? pane1Folder : pane2Folder;
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density + 0.5f);
+        root.setPadding(pad, pad / 2, pad, 0);
+        TextInputLayout box =
+                UiFields.box(this, "Text to find");
+        EditText queryInput = UiFields.field(box, InputType.TYPE_CLASS_TEXT);
+        root.addView(box);
+        CheckBox cbCase = new CheckBox(this);
+        cbCase.setText(getString(R.string.match_case));
+        CheckBox cbRegex = new CheckBox(this);
+        cbRegex.setText(getString(R.string.regex));
+        root.addView(cbCase);
+        root.addView(cbRegex);
+        TextView scope = new TextView(this);
+        scope.setText(startDir.getPath());
+        scope.setTextSize(12);
+        root.addView(scope);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.find_in_files))
+                .setView(root)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.search_go, (d, w) -> {
+                    String q = queryInput.getText() == null ? "" : queryInput.getText().toString();
+                    if (q.isEmpty()) {
+                        Extensions.showMessage(this, R.string.search_query_needed);
+                        return;
+                    }
+                    runFindInFiles(startDir, q, cbCase.isChecked(), cbRegex.isChecked());
+                }).show();
+    }
+
+    private void runFindInFiles(File startDir, String query, boolean matchCase, boolean regex) {
+        Pattern pattern = null;
+        if (regex) {
+            try {
+                pattern = Pattern.compile(query, matchCase ? 0 : Pattern.CASE_INSENSITIVE);
+            } catch (Exception e) {
+                Extensions.showMessage(this, R.string.invalid_regex);
+                return;
+            }
+        }
+        final Pattern finalPattern = pattern;
+        final String needle = matchCase ? query : query.toLowerCase();
+        ProgressManager pm = new ProgressManager(this, true).show();
+        pm.setText(rss.getString(R.string.searching));
+        new Thread(() -> {
+            List<ContentHit> hits = new ArrayList<>();
+            int[] scanned = {0};
+            findInFilesRecursive(startDir, needle, matchCase, regex, finalPattern, hits, scanned, pm);
+            pm.dismiss();
+            handler.post(() -> {
+                if (hits.isEmpty()) {
+                    Extensions.showMessage(this, R.string.no_files_found);
+                    return;
+                }
+                showContentHitsDialog(hits, query, regex, matchCase);
+            });
+        }).start();
+    }
+
+    private void findInFilesRecursive(File dir, String needle, boolean matchCase, boolean regex,
+                                      Pattern pattern, List<ContentHit> hits, int[] scanned, ProgressManager pm) {
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            if (hits.size() >= 500) return;
+            if (f.isDirectory()) {
+                findInFilesRecursive(f, needle, matchCase, regex, pattern, hits, scanned, pm);
+            } else if (f.isFile() && f.length() < 2097152) {
+                scanned[0]++;
+                if (scanned[0] % 50 == 0 && pm.dialog != null && pm.dialog.isShowing()) {
+                    pm.setText(scanned[0] + " files…");
+                }
+                try (BufferedReader br = new BufferedReader(new FileReader(f))) {
+                    String line;
+                    int lineNo = 0;
+                    while ((line = br.readLine()) != null) {
+                        lineNo++;
+                        if (lineNo == 1 && line.indexOf('\0') >= 0) break;
+                        boolean hit;
+                        if (regex && pattern != null) hit = pattern.matcher(line).find();
+                        else hit = matchCase ? line.contains(needle) : line.toLowerCase().contains(needle);
+                        if (hit) {
+                            String snippet = line.trim();
+                            if (snippet.length() > 140) snippet = snippet.substring(0, 140) + "…";
+                            hits.add(new ContentHit(f, lineNo, snippet));
+                            if (hits.size() >= 500) return;
+                        }
+                        if (lineNo > 20000) break;
+                    }
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
+    private void showContentHitsDialog(List<ContentHit> hits, String query, boolean regex, boolean matchCase) {
+        RecyclerView list = new RecyclerView(this);
+        list.setLayoutManager(new LinearLayoutManager(this));
+        AlertDialog dialog = dialogUtil.getDialogBuilder()
+                .setTitle(getString(R.string.matches_x, hits.size()))
+                .setView(list)
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        list.setAdapter(new RecyclerView.Adapter<>() {
+            @NonNull
+            @Override
+            public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+                LinearLayout row = new LinearLayout(MainActivity.this);
+                row.setOrientation(LinearLayout.VERTICAL);
+                int pad = (int) (12 * getResources().getDisplayMetrics().density + 0.5f);
+                row.setPadding(pad, dpToPx(8), pad, dpToPx(8));
+                TextView title = new TextView(MainActivity.this);
+                title.setTextSize(14);
+                title.setSingleLine(true);
+                title.setEllipsize(TextUtils.TruncateAt.END);
+                TextView sub = new TextView(MainActivity.this);
+                sub.setTextSize(12);
+                sub.setTypeface(Typeface.MONOSPACE);
+                sub.setSingleLine(true);
+                sub.setEllipsize(TextUtils.TruncateAt.END);
+                row.addView(title);
+                row.addView(sub);
+                return new RecyclerView.ViewHolder(row) {
+                };
+            }
+
+            @Override
+            public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+                ContentHit hit = hits.get(position);
+                LinearLayout row = (LinearLayout) holder.itemView;
+                ((TextView) row.getChildAt(0)).setText(hit.file.getName() + " :" + hit.line);
+                ((TextView) row.getChildAt(1)).setText(hit.snippet);
+                row.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    startActivity(new Intent(MainActivity.this,
+                            TextEditorActivity.class)
+                            .putExtra("path", hit.file.getAbsolutePath())
+                            .putExtra("search", query)
+                            .putExtra("searchRegex", regex)
+                            .putExtra("searchMatchCase", matchCase));
+                });
+            }
+
+            @Override
+            public int getItemCount() {
+                return hits.size();
+            }
+        });
+        dialogUtil.styleAlertDialog(dialog);
+    }
+
+    private int dpToPx(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private void showSettingsDialog() {
+        SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
+        ScrollView settingsDialog = (ScrollView) LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_settings, null);
+
+        MaterialButtonToggleGroup themeButtons = settingsDialog.findViewById(R.id.themeToggleGroup);
+        themeButtons.check(
+                systemTheme ? R.id.systemThemeButton
+                        : theme == R.style.Theme_MyApp_Light ? R.id.lightThemeButton
+                                : theme == R.style.Theme_MyApp_Dark ? R.id.darkThemeButton
+                                        : R.id.blackThemeButton);
+        for (int i = 0; i < themeButtons.getChildCount(); i++) {
+            View child = themeButtons.getChildAt(i);
+            if (child instanceof MaterialButton) {
+                child.setOnLongClickListener(v3 -> {
+                    int buttonId = v3.getId();
+                    if (buttonId == R.id.lightThemeButton) {
+                        Extensions.showMessage(this, R.string.light_theme);
+                    } else if (buttonId == R.id.darkThemeButton) {
+                        Extensions.showMessage(this, R.string.dark_theme);
+                    } else if (buttonId == R.id.blackThemeButton) {
+                        Extensions.showMessage(this, R.string.black_theme);
+                    } else if (buttonId == R.id.systemThemeButton) {
+                        Extensions.showMessage(this, R.string.system_theme);
+                    }
+                    return true;
+                });
+            }
+        }
+
+        themeButtons.addOnButtonCheckedListener((group, checkedId, isChecked) -> {
+            if (isChecked) {
+                systemTheme = false;
+                if (checkedId == R.id.lightThemeButton) {
+                    themeButtons.check(R.id.lightThemeButton);
+                    theme = R.style.Theme_MyApp_Light;
+                } else if (checkedId == R.id.darkThemeButton) {
+                    themeButtons.findViewById(R.id.darkThemeButton);
+                    theme = R.style.Theme_MyApp_Dark;
+                } else if (checkedId == R.id.blackThemeButton) {
+                    themeButtons.check(R.id.blackThemeButton);
+                    theme = R.style.Theme_MyApp_Black;
+                } else {
+                    systemTheme = true;
+                    themeButtons.check(R.id.systemThemeButton);
+                    theme = ((getResources().getConfiguration().uiMode
+                            & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES)
+                                    ? R.style.Theme_MyApp_Dark
+                                    : R.style.Theme_MyApp_Light;
+                }
+
+                settings.edit().putInt("theme", theme).apply();
+                setTheme(theme);
+                recreate();
+            }
+        });
+
+        CompoundButton logSwitch = settingsDialog.findViewById(R.id.logToggle);
+        logSwitch.setChecked(logEnabled);
+        logSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> PreferenceManager.getDefaultSharedPreferences(this).edit().putBoolean("logEnabled", logEnabled = isChecked).apply());
+
+        CompoundButton playerModeSwitch = settingsDialog.findViewById(R.id.playerModeToggle);
+        playerModeSwitch.setChecked(settings.getBoolean("player_open_activity", false));
+        playerModeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> settings.edit().putBoolean("player_open_activity", isChecked).apply());
+
+        CompoundButton fixMimeTypeToggle = settingsDialog.findViewById(R.id.fixMimeTypeToggle);
+        fixMimeTypeToggle.setChecked(settings.getBoolean("fix_mime_type", false));
+        fixMimeTypeToggle.setOnCheckedChangeListener((buttonView, isChecked) -> settings.edit().putBoolean("fix_mime_type", isChecked).apply());
+
+        CompoundButton askBookmarkTabToggle = settingsDialog.findViewById(R.id.askBookmarkTabToggle);
+        askBookmarkTabToggle.setChecked(settings.getBoolean("ask_bookmark_tab", false));
+        askBookmarkTabToggle.setOnCheckedChangeListener((buttonView, isChecked) -> settings.edit().putBoolean("ask_bookmark_tab", isChecked).apply());
+
+        CompoundButton sidebarBookmarksToggle = settingsDialog.findViewById(R.id.sidebarBookmarksToggle);
+        sidebarBookmarksToggle.setChecked(settings.getBoolean("sidebar_show_bookmarks", true));
+        sidebarBookmarksToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            settings.edit().putBoolean("sidebar_show_bookmarks", isChecked).apply();
+            refreshSidebar(getSidebarSectionOrder());
+        });
+
+        CompoundButton sidebarBookmarkGroupsToggle = settingsDialog.findViewById(R.id.sidebarBookmarkGroupsToggle);
+        sidebarBookmarkGroupsToggle.setChecked(settings.getBoolean("sidebar_show_bookmark_groups", false));
+        sidebarBookmarkGroupsToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            settings.edit().putBoolean("sidebar_show_bookmark_groups", isChecked).apply();
+            refreshSidebar(getSidebarSectionOrder());
+        });
+
+        EditText searchHistoryLimitEt = settingsDialog.findViewById(R.id.searchHistoryLimitEt);
+        if (searchHistoryLimitEt != null) {
+            int limit = settings.getInt("search_history_limit", 50);
+            searchHistoryLimitEt.setText(String.valueOf(limit));
+        }
+
+        CheckBox autosign = settingsDialog.findViewById(R.id.autosign);
+        autosign.setChecked(settings.getBoolean("autosign", true));
+        autosign.setOnCheckedChangeListener((buttonView, isChecked) -> settings.edit().putBoolean("autosign", isChecked).apply());
+        settingsDialog.findViewById(R.id.sign_settings).setOnClickListener(uiHelper.showSignSettingsDialog());
+        setupAppearanceSettings(settingsDialog, settings);
+        setupLanguageSettings(settingsDialog);
+        setupFolderSettings(settingsDialog, settings);
+        setupFileOpsSettings(settingsDialog, settings);
+        setupAccessSettings(settingsDialog, settings);
+
+        View checkUpdateNow = settingsDialog.findViewById(R.id.checkUpdateNow);
+        CompoundButton updateSwitch = settingsDialog.findViewById(R.id.checkUpdatesToggle);
+        updateSwitch.setChecked(checkForUpdates);
+        updateSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> checkUpdateNow.setVisibility((checkForUpdates = isChecked) ? View.GONE : View.VISIBLE));
+        checkUpdateNow.setVisibility(checkForUpdates ? View.GONE : View.VISIBLE);
+        checkUpdateNow.setOnClickListener(v1 -> UpdateUtil.checkForUpdates(true, this));
+        settingsDialog.findViewById(R.id.about).setOnClickListener(v -> uiHelper.showAboutDialog());
+        AlertDialog settingsAlert = new MaterialAlertDialogBuilder(this).setTitle(getString(R.string.settings)).setView(settingsDialog).create();
+        settingsAlert.setOnDismissListener(d -> {
+            saveSuCommand(settingsDialog);
+            saveDateFormat(settingsDialog);
+            saveSearchHistoryLimit(settingsDialog);
+            refreshFileLists();
+        });
+        settingsAlert.show();
+    }
+
+    private void setupLanguageSettings(ScrollView root) {
+        AutoCompleteTextView languageTv = root.findViewById(R.id.languageTv);
+        String[] langTags = {"", "en", "ru", "zh-CN"};
+        String[] langLabels = {getString(R.string.language_system), "English", "Русский", "中文 (简体)"};
+        languageTv.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, langLabels));
+        String current = AppCompatDelegate.getApplicationLocales().toLanguageTags();
+        int selected = 0;
+        for (int i = 0; i < langTags.length; i++) {
+            if (langTags[i].equals(current)) {
+                selected = i;
+                break;
+            }
+        }
+        languageTv.setText(langLabels[selected], false);
+        languageTv.setOnItemClickListener((p, v, pos, id) ->
+                AppCompatDelegate.setApplicationLocales(langTags[pos].isEmpty()
+                        ? LocaleListCompat.getEmptyLocaleList()
+                        : LocaleListCompat.forLanguageTags(langTags[pos])));
+    }
+
+    private void setupAppearanceSettings(ScrollView root, SharedPreferences settings) {
+        TextView sizeLabel = root.findViewById(R.id.fileSizeLabel);
+        SeekBar sizeSeek = root.findViewById(R.id.fileSizeSeek);
+        TextView linesLabel = root.findViewById(R.id.fileLinesLabel);
+        SeekBar linesSeek = root.findViewById(R.id.fileLinesSeek);
+        AutoCompleteTextView dateTv = root.findViewById(R.id.dateFormatTv);
+        LinearLayout previewHolder = root.findViewById(R.id.fileSizePreview);
+        View previewRow = LayoutInflater.from(this).inflate(R.layout.list_file, previewHolder, false);
+        TextView pvName = previewRow.findViewById(R.id.fileName);
+        TextView pvDate = previewRow.findViewById(R.id.fileDate);
+        ImageView pvIcon = previewRow.findViewById(R.id.fileIcon);
+        pvName.setText(getString(R.string.preview_sample_name));
+        pvIcon.setImageResource(R.drawable.baseline_insert_drive_file_24);
+        previewHolder.addView(previewRow);
+
+        int scale = UiPrefs.getScale(this);
+        sizeSeek.setProgress(scale - 60);
+        int lines = UiPrefs.getMaxLines(this);
+        linesSeek.setProgress(lines - 1);
+
+        Runnable updatePreview = () -> {
+            int sc = 60 + sizeSeek.getProgress();
+            int ln = 1 + linesSeek.getProgress();
+            sizeLabel.setText(getString(R.string.file_list_size, sc));
+            linesLabel.setText(getString(R.string.filename_max_lines, ln));
+            pvName.setTextSize(UiPrefs.nameSize(sc));
+            pvName.setMaxLines(ln);
+            pvName.setEllipsize(TextUtils.TruncateAt.END);
+            pvDate.setTextSize(UiPrefs.dateSize(sc));
+            String pattern = dateTv.getText() != null ? dateTv.getText().toString() : "";
+            String dateText;
+            try {
+                dateText = new SimpleDateFormat(
+                        pattern.isEmpty() ? UiPrefs.DATE_PRESETS[0] : pattern,
+                        Locale.getDefault()).format(new Date());
+            } catch (Exception e) {
+                dateText = UiPrefs.formatDate(this, System.currentTimeMillis());
+            }
+            pvDate.setText(dateText + " 1.2 MB");
+            int px = UiPrefs.iconDp(this, sc);
+            ViewGroup.LayoutParams lp = pvIcon.getLayoutParams();
+            if (lp != null) {
+                lp.width = px;
+                lp.height = px;
+                pvIcon.setLayoutParams(lp);
+            }
+        };
+
+        sizeSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
+                updatePreview.run();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar s) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar s) {
+                settings.edit().putInt("file_list_scale", 60 + s.getProgress()).apply();
+                refreshFileLists();
+            }
+        });
+        linesSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
+                updatePreview.run();
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar s) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar s) {
+                settings.edit().putInt("filename_max_lines", 1 + s.getProgress()).apply();
+                refreshFileLists();
+            }
+        });
+
+        ArrayAdapter<String> dateAdapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, UiPrefs.DATE_PRESETS);
+        dateTv.setAdapter(dateAdapter);
+        dateTv.setText(UiPrefs.getDatePattern(this), false);
+        dateTv.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int a, int b, int c) {
+                updatePreview.run();
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+            }
+        });
+        updatePreview.run();
+    }
+
+    private void saveDateFormat(ScrollView root) {
+        try {
+            AutoCompleteTextView dateTv = root.findViewById(R.id.dateFormatTv);
+            String pattern = dateTv.getText() != null ? dateTv.getText().toString().trim() : "";
+            if (pattern.isEmpty()) return;
+            new SimpleDateFormat(pattern, Locale.getDefault());
+            PreferenceManager.getDefaultSharedPreferences(this).edit()
+                    .putString("date_format", pattern).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void saveSearchHistoryLimit(ScrollView root) {
+        try {
+            EditText et = root.findViewById(R.id.searchHistoryLimitEt);
+            if (et == null || et.getText() == null) return;
+            String s = et.getText().toString().trim();
+            if (s.isEmpty()) return;
+            int v = Integer.parseInt(s);
+            if (v < 5) v = 5;
+            if (v > 500) v = 500;
+            PreferenceManager.getDefaultSharedPreferences(this).edit().putInt("search_history_limit", v).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void setupFolderSettings(ScrollView root, SharedPreferences settings) {
+        AutoCompleteTextView startup1 = root.findViewById(R.id.startupTv1);
+        AutoCompleteTextView startup2 = root.findViewById(R.id.startupTv2);
+        String[] labels = {getString(R.string.opt_home_folder), getString(R.string.opt_last_opened)};
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, labels);
+        startup1.setAdapter(adapter);
+        startup2.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, labels));
+        startup1.setText("last".equals(UiPrefs.startupMode(this, true)) ? labels[1] : labels[0], false);
+        startup2.setText("last".equals(UiPrefs.startupMode(this, false)) ? labels[1] : labels[0], false);
+        startup1.setOnItemClickListener((p, v, pos, id) ->
+                settings.edit().putString("startup_1", pos == 1 ? "last" : "home").apply());
+        startup2.setOnItemClickListener((p, v, pos, id) ->
+                settings.edit().putString("startup_2", pos == 1 ? "last" : "home").apply());
+
+        TextView homeTv1 = root.findViewById(R.id.homePathTv1);
+        TextView homeTv2 = root.findViewById(R.id.homePathTv2);
+        homeTv1.setText(homeDir1 != null ? homeDir1.getPath() : "");
+        homeTv2.setText(homeDir2 != null ? homeDir2.getPath() : "");
+        root.findViewById(R.id.pickHomeBtn1).setOnClickListener(v ->
+                pickDirInto(homeTv1, chosen -> {
+                    settings.edit().putString("home1", chosen).apply();
+                    homeDir1 = new File(chosen);
+                }));
+        root.findViewById(R.id.pickHomeBtn2).setOnClickListener(v ->
+                pickDirInto(homeTv2, chosen -> {
+                    settings.edit().putString("home2", chosen).apply();
+                    homeDir2 = new File(chosen);
+                }));
+
+        TextView appPathTv = root.findViewById(R.id.appPathTv);
+        appPathTv.setText(UiPrefs.appPathDir(this,
+                new File(Environment.getExternalStorageDirectory(), "Untrusted Manager").getPath()));
+        root.findViewById(R.id.pickAppPathBtn).setOnClickListener(v ->
+                pickDirInto(appPathTv, chosen ->
+                        settings.edit().putString("app_path_dir", chosen).apply()));
+    }
+
+    private interface DirPicked {
+        void onPicked(String path);
+    }
+
+    private void pickDirInto(TextView label, DirPicked cb) {
+        FilePickerDialog.Properties props = new FilePickerDialog.Properties();
+        props.selection_mode = FilePickerDialog.SINGLE_MODE;
+        props.selection_type = FilePickerDialog.DIR_SELECT;
+        props.root = Environment.getExternalStorageDirectory();
+        FilePickerDialog picker = new FilePickerDialog(this, props);
+        picker.setTitle(getString(R.string.pick_folder));
+        picker.setDialogSelectionListener(files -> {
+            if (files != null && files.length > 0 && files[0] != null) {
+                label.setText(files[0]);
+                cb.onPicked(files[0]);
+            }
+        });
+        picker.show();
+    }
+
+    private void setupFileOpsSettings(ScrollView root, SharedPreferences settings) {
+        CompoundButton backupSwitch = root.findViewById(R.id.backupSwitch);
+        backupSwitch.setChecked(settings.getBoolean("gen_backup", true));
+        backupSwitch.setOnCheckedChangeListener((v, checked) ->
+                settings.edit().putBoolean("gen_backup", checked).apply());
+
+        CompoundButton preserveSwitch = root.findViewById(R.id.preserveSwitch);
+        preserveSwitch.setChecked(settings.getBoolean("preserve_mtime", true));
+        preserveSwitch.setOnCheckedChangeListener((v, checked) ->
+                settings.edit().putBoolean("preserve_mtime", checked).apply());
+
+        root.findViewById(R.id.customizeMenuBtn).setOnClickListener(v ->
+                FileMenuCustomizer.show(this));
+
+        CompoundButton fileMenuTwoColumnSwitch = root.findViewById(R.id.fileMenuTwoColumnSwitch);
+        fileMenuTwoColumnSwitch.setChecked(FileMenuOrder.isTwoColumn(this));
+        fileMenuTwoColumnSwitch.setOnCheckedChangeListener((v, checked) ->
+                FileMenuOrder.setTwoColumn(this, checked));
+
+        AutoCompleteTextView compressTv = root.findViewById(R.id.compressLevelTv);
+        List<String> levels = new ArrayList<>();
+        for (CompressionLevel cl
+                : CompressionLevel.values()) {
+            levels.add(cl.name());
+        }
+        compressTv.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, levels));
+        compressTv.setText(settings.getString("compressLevel",
+                CompressionLevel.NO_COMPRESSION.name()), false);
+        compressTv.setOnItemClickListener((p, v, pos, id) ->
+                settings.edit().putString("compressLevel", levels.get(pos)).apply());
+    }
+
+    private void setupAccessSettings(ScrollView root, SharedPreferences settings) {
+        RootManager rootManager = RootManager.getInstance(this);
+        AutoCompleteTextView workingModeTv = root.findViewById(R.id.workingModeTv);
+        MaterialSwitch rootStatusSwitch = root.findViewById(R.id.rootStatusSwitch);
+        MaterialSwitch shizukuStatusSwitch = root.findViewById(R.id.shizukuStatusSwitch);
+        MaterialButton grantShizukuBtn = root.findViewById(R.id.grantShizukuBtn);
+        MaterialSwitch silentInstallToggle = root.findViewById(R.id.silentInstallToggle);
+        MaterialSwitch rootFileOpsToggle = root.findViewById(R.id.rootFileOpsToggle);
+        MaterialSwitch shizukuFileOpsToggle = root.findViewById(R.id.shizukuFileOpsToggle);
+        MaterialSwitch rootExtractorToggle = root.findViewById(R.id.rootExtractorToggle);
+        MaterialButton rebootMenuBtn = root.findViewById(R.id.rebootMenuBtn);
+        TextInputEditText suCommandEt = root.findViewById(R.id.suCommandEt);
+        suCommandEt.setText(settings.getString("su_command", ""));
+
+        String labelNonRoot = rss.getString(R.string.non_root);
+        String labelRoot = rss.getString(R.string.root);
+        String labelShizuku = rss.getString(R.string.shizuku_mode);
+        boolean shizukuSupported = Build.VERSION.SDK_INT >= 23;
+        List<String> modeLabels = new ArrayList<>();
+        modeLabels.add(labelNonRoot);
+        modeLabels.add(labelRoot);
+        if (shizukuSupported) modeLabels.add(labelShizuku);
+        workingModeTv.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_dropdown_item_1line, modeLabels));
+
+        RootManager.WorkingMode current = rootManager.getWorkingMode();
+        if (current == RootManager.WorkingMode.ROOT) workingModeTv.setText(labelRoot, false);
+        else if (current == RootManager.WorkingMode.SHIZUKU && shizukuSupported) {
+            workingModeTv.setText(labelShizuku, false);
+        } else workingModeTv.setText(labelNonRoot, false);
+
+        rootStatusSwitch.setChecked(false);
+        Runnable refreshShizukuRow = () -> {
+            boolean running = ShizukuManager.isRunning();
+            boolean granted = ShizukuManager.hasPermission();
+            shizukuStatusSwitch.setChecked(running && granted);
+            if (!shizukuSupported) {
+                shizukuStatusSwitch.setText(getString(R.string.shizuku_unsupported));
+            } else if (granted) {
+                shizukuStatusSwitch.setText(getString(R.string.shizuku_ready));
+            } else if (running) {
+                shizukuStatusSwitch.setText(getString(R.string.shizuku_running_no_perm));
+            } else {
+                shizukuStatusSwitch.setText(getString(R.string.shizuku_not_running));
+            }
+            grantShizukuBtn.setVisibility(
+                    rootManager.getWorkingMode() == RootManager.WorkingMode.SHIZUKU
+                            && running && !granted ? View.VISIBLE : View.GONE);
+        };
+        refreshShizukuRow.run();
+
+        Runnable applyModeUi = () -> {
+            RootManager.WorkingMode mode = rootManager.getWorkingMode();
+            boolean isRoot = mode == RootManager.WorkingMode.ROOT;
+            boolean isSh = mode == RootManager.WorkingMode.SHIZUKU;
+            silentInstallToggle.setEnabled(isRoot);
+            rootFileOpsToggle.setEnabled(isRoot);
+            shizukuFileOpsToggle.setEnabled(isSh);
+            rootExtractorToggle.setEnabled(isRoot);
+            rebootMenuBtn.setVisibility(isRoot && rootStatusSwitch.isChecked() ? View.VISIBLE : View.GONE);
+            refreshShizukuRow.run();
+        };
+        applyModeUi.run();
+
+        workingModeTv.setOnItemClickListener((parent, view, position, id) -> {
+            String picked = modeLabels.get(position);
+            if (picked.equals(labelRoot)) {
+                workingModeTv.setText(labelRoot, false);
+                Extensions.showMessage(this, "Checking root…");
+                new Thread(() -> {
+                    boolean ok = rootManager.isRootAvailable();
+                    handler.post(() -> {
+                        if (ok) {
+                            rootManager.setWorkingMode(RootManager.WorkingMode.ROOT);
+                            rootStatusSwitch.setChecked(true);
+                        } else {
+                            Extensions.showMessage(this, R.string.root_denied_msg);
+                            rootStatusSwitch.setChecked(false);
+                            workingModeTv.setText(rootManager.getWorkingMode() == RootManager.WorkingMode.SHIZUKU
+                                    ? labelShizuku : labelNonRoot, false);
+                        }
+                        applyModeUi.run();
+                    });
+                }).start();
+                return;
+            }
+            if (picked.equals(labelShizuku)) {
+                if (!shizukuSupported || !ShizukuManager.isRunning()) {
+                    Extensions.showMessage(this, R.string.shizuku_not_running);
+                    workingModeTv.setText(labelNonRoot, false);
+                    return;
+                }
+                rootManager.setWorkingMode(RootManager.WorkingMode.SHIZUKU);
+                rootStatusSwitch.setChecked(false);
+                applyModeUi.run();
+                new Thread(() -> ShizukuManager.warmUp(MainActivity.this)).start();
+                if (!ShizukuManager.hasPermission()) {
+                    requestShizukuPerm(refreshShizukuRow);
+                }
+                return;
+            }
+            rootManager.setWorkingMode(RootManager.WorkingMode.NON_ROOT);
+            rootStatusSwitch.setChecked(false);
+            applyModeUi.run();
+        });
+
+        grantShizukuBtn.setOnClickListener(v -> requestShizukuPerm(refreshShizukuRow));
+
+        silentInstallToggle.setChecked(settings.getBoolean("silent_install", false));
+        silentInstallToggle.setOnCheckedChangeListener((v, checked) -> settings.edit().putBoolean("silent_install", checked).apply());
+
+        rootFileOpsToggle.setChecked(settings.getBoolean("root_file_ops", false));
+        rootFileOpsToggle.setOnCheckedChangeListener((v, checked) -> settings.edit().putBoolean("root_file_ops", checked).apply());
+
+        shizukuFileOpsToggle.setChecked(settings.getBoolean("shizuku_file_ops", false));
+        shizukuFileOpsToggle.setOnCheckedChangeListener((v, checked) -> {
+            settings.edit().putBoolean("shizuku_file_ops", checked).apply();
+            if (checked) new Thread(() -> ShizukuManager.warmUp(MainActivity.this)).start();
+        });
+
+        rootExtractorToggle.setChecked(settings.getBoolean("root_extractor", false));
+        rootExtractorToggle.setOnCheckedChangeListener((v, checked) -> settings.edit().putBoolean("root_extractor", checked).apply());
+
+        rebootMenuBtn.setOnClickListener(v -> showRebootDialog());
+    }
+
+    private void requestShizukuPerm(Runnable onResult) {
+        final Shizuku.OnRequestPermissionResultListener[] holder =
+                new Shizuku.OnRequestPermissionResultListener[1];
+        holder[0] = (code, result) -> {
+            ShizukuManager.removePermissionListener(holder[0]);
+            handler.post(() -> {
+                if (result == PackageManager.PERMISSION_GRANTED) {
+                    new Thread(() -> ShizukuManager.warmUp(MainActivity.this)).start();
+                } else {
+                    Extensions.showMessage(this, R.string.shizuku_running_no_perm);
+                }
+                onResult.run();
+            });
+        };
+        ShizukuManager.requestPermission(this, holder[0]);
+    }
+
+    private void saveSuCommand(ScrollView root) {
+        try {
+            TextInputEditText suCommandEt = root.findViewById(R.id.suCommandEt);
+            String cmd = suCommandEt.getText() != null ? suCommandEt.getText().toString().trim() : "";
+            if (!cmd.isEmpty() && !cmd.matches("^[A-Za-z0-9_./-]+$")) {
+                Extensions.showMessage(this, "Invalid su command, keeping previous");
+                return;
+            }
+            PreferenceManager.getDefaultSharedPreferences(this).edit()
+                    .putString("su_command", cmd).apply();
+            RootManager.getInstance(this).refreshRootCache();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void refreshFileLists() {
+        try {
+            for (int id : new int[]{R.id.listViewPane1, R.id.listViewPane2}) {
+                RecyclerView pane = findViewById(id);
+                if (pane != null && pane.getAdapter() != null) {
+                    pane.getAdapter().notifyDataSetChanged();
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void showRebootDialog() {
+        RootManager rootManager = RootManager.getInstance(this);
+        if (!rootManager.isRootMode()) {
+            Extensions.showMessage(this, R.string.root_mode_is_disabled);
+            return;
+        }
+
+        String[] options = {getString(R.string.reboot), getString(R.string.reboot_recovery), getString(R.string.reboot_bootloader), getString(R.string.power_off)};
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.reboot_options)
+                .setItems(options, (dialog, which) -> {
+                    String message;
+                    switch (which) {
+                        case 0: message = getString(R.string.reboot_the_device_now); break;
+                        case 1: message = getString(R.string.reboot_into_recovery_mode); break;
+                        case 2: message = getString(R.string.reboot_into_bootloader_fastboot); break;
+                        case 3: message = getString(R.string.power_off_the_device); break;
+                        default: return;
+                    }
+                    new MaterialAlertDialogBuilder(this)
+                            .setTitle(options[which])
+                            .setMessage(message)
+                            .setPositiveButton(getString(R.string.confirm), (d2, w2) -> {
+                                try {
+                                    switch (which) {
+                                        case 0: rootManager.reboot(null); break;
+                                        case 1: rootManager.reboot("recovery"); break;
+                                        case 2: rootManager.reboot("bootloader"); break;
+                                        case 3: rootManager.reboot("-p"); break;
+                                    }
+                                    Extensions.showMessage(this, "Rebooting...");
+                                } catch (Exception e) {
+                                    Extensions.showMessage(this, "Reboot failed: " + e.getMessage());
+                                }
+                            })
+                            .setNegativeButton(android.R.string.cancel, null)
+                            .show();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void setupFilterBar() {
+        LinearLayout topBar = findViewById(R.id.topBar);
+        TextInputLayout filterBox =
+                UiFields.box(this, "Filter...");
+        EditText filterBar = UiFields.field(filterBox, 0);
+        filterBox.setVisibility(View.GONE);
+        filterBox.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        filterBar.setSingleLine(true);
+        topBar.addView(filterBox, 2);
+
+        filterBar.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (lastPaneSelected == 1) currentPane1Filter = s.toString().toLowerCase();
+                else currentPane2Filter = s.toString().toLowerCase();
+                applyFilterToCurrentPane();
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+            }
+        });
+    }
+
+    private void applyFilterToCurrentPane() {
+        boolean isPane1 = lastPaneSelected == 1;
+        String filter = isPane1 ? currentPane1Filter : currentPane2Filter;
+        RecyclerView pane = findViewById(isPane1 ? R.id.listViewPane1 : R.id.listViewPane2);
+
+        RecyclerView.Adapter a = getCurrentPane().getAdapter();
+        if (!(a instanceof MainFilesArrayAdapter)) return;
+        MainFilesArrayAdapter adapter = (MainFilesArrayAdapter) pane.getAdapter();
+
+        if (adapter.isInZip) {
+            List<ZipEntryInfo> entries = isPane1 ? currentPane1ZipEntries : currentPane2ZipEntries;
+            if (entries == null)
+                return;
+            List<ZipEntryInfo> filtered = new ArrayList<>();
+            for (ZipEntryInfo e : entries) {
+                if (e.getName().toLowerCase().contains(filter) || e.getName().equals("..")) {
+                    filtered.add(e);
+                }
+            }
+            pane.setAdapter(new MainFilesArrayAdapter(this, filtered.toArray(new ZipEntryInfo[0]), null, isPane1, true,
+                    adapter.currentZipPath));
+        } else {
+            File[] files = isPane1 ? currentPane1Files : currentPane2Files;
+            if (files == null)
+                return;
+            List<File> filtered = new ArrayList<>();
+            for (File f : files) {
+                if (f.getName().toLowerCase().contains(filter) || f.getName().equals("..")) {
+                    filtered.add(f);
+                }
+            }
+            pane.setAdapter(new MainFilesArrayAdapter(this, filtered.toArray(new File[0]),
+                    (isPane1 ? pane1Folder : pane2Folder).getParentFile(), isPane1, false, null));
+        }
+    }
+
+    private boolean isNotHidden(File f) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        boolean showSystem = prefs.getBoolean("show_system_hidden", false);
+        boolean showManual = prefs.getBoolean("show_manually_hidden", false);
+        return (showSystem || (!f.isHidden() && !f.getName().startsWith("."))) && (showManual || !prefs.getStringSet("manually_hidden_files", new HashSet<>()).contains(f.getPath()));
+    }
+
+    private boolean isNotHidden(ZipEntryInfo e) {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        boolean showSystem = prefs.getBoolean("show_system_hidden", false);
+        boolean showManual = prefs.getBoolean("show_manually_hidden", false);
+        return (showSystem || !e.getName().startsWith(".")) && (showManual || !prefs.getStringSet("manually_hidden_files", new HashSet<>()).contains(e.getFullPath()));
+    }
+
+    private void showSortDialog() {
+        boolean isPane1 = lastPaneSelected == 1;
+        RecyclerView.Adapter a = getCurrentPane().getAdapter();
+        if (!(a instanceof MainFilesArrayAdapter)) return;
+        MainFilesArrayAdapter adapter = (MainFilesArrayAdapter) getCurrentPane().getAdapter();
+        String currentPath = adapter.isInZip ? adapter.currentZipPath : (isPane1 ? pane1Folder.getPath() : pane2Folder.getPath());
+
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        int sortBy = prefs.getInt("sort_by_" + currentPath, prefs.getInt("sort_by", 0));
+        boolean reverse = prefs.getBoolean("sort_reverse_" + currentPath, prefs.getBoolean("sort_reverse", false));
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(32, 32, 32, 32);
+
+        String[] sortOptions = { rss.getString(R.string.name), rss.getString(R.string.size), rss.getString(R.string.sort_date), rss.getString(R.string.type) };
+        RadioGroup radioGroup = new RadioGroup(this);
+        for (int i = 0; i < sortOptions.length; i++) {
+            RadioButton rb = new RadioButton(this);
+            rb.setText(sortOptions[i]);
+            rb.setId(i);
+            radioGroup.addView(rb);
+        }
+        radioGroup.check(sortBy);
+        layout.addView(radioGroup);
+
+        CheckBox cbOnlyThisFolder = new CheckBox(this);
+        cbOnlyThisFolder.setText(rss.getString(R.string.only_for_this_folder));
+        layout.addView(cbOnlyThisFolder);
+
+        SortDirectionToggle directionToggle =
+                new SortDirectionToggle(this);
+        directionToggle.setDescending(reverse);
+        layout.addView(directionToggle);
+
+        dialogUtil.getDialogBuilder()
+                .setTitle(getString(R.string.sort))
+                .setView(layout)
+                .setPositiveButton(getString(R.string.apply), (dialog, which) -> {
+                    int selectedSort = radioGroup.getCheckedRadioButtonId();
+                    boolean selectedReverse = directionToggle.isDescending();
+                    SharedPreferences.Editor editor = prefs.edit();
+                    if (cbOnlyThisFolder.isChecked()) {
+                        editor.putInt("sort_by_" + currentPath, selectedSort);
+                        editor.putBoolean("sort_reverse_" + currentPath, selectedReverse);
+                    } else {
+                        editor.putInt("sort_by", selectedSort);
+                        editor.putBoolean("sort_reverse", selectedReverse);
+                    }
+                    editor.apply();
+                    reloadCurrentFolder();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void showEditHiddenFilesDialog() {
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        Set<String> manualHidden = prefs.getStringSet("manually_hidden_files", new HashSet<>());
+        List<String> hiddenList = new ArrayList<>(manualHidden);
+
+        ListView listView = new ListView(this);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, hiddenList);
+        listView.setAdapter(adapter);
+
+        AlertDialog dialog = dialogUtil.getDialogBuilder()
+                .setTitle(R.string.edit_hidden_files)
+                .setView(listView)
+                .setPositiveButton(R.string.done, (d, w) -> reloadCurrentFolder())
+                .create();
+
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            String path = hiddenList.get(position);
+            hiddenList.remove(position);
+            HashSet<String> values = new HashSet<>(manualHidden);
+            values.remove(path);
+            prefs.edit().putStringSet("manually_hidden_files", values).apply();
+            adapter.notifyDataSetChanged();
+            Extensions.showMessage(this, getString(R.string.unhidden, path));
+        });
+
+        dialog.show();
+    }
+
+    private String getExt(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot == -1 ? "" : name.substring(dot + 1);
+    }
+
+    private void sortFiles(File[] files, String folderPath) {
+        if (files == null)
+            return;
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        int sortBy = prefs.getInt("sort_by_" + folderPath, prefs.getInt("sort_by", 0));
+        boolean reverse = prefs.getBoolean("sort_reverse_" + folderPath, prefs.getBoolean("sort_reverse", false));
+        Arrays.sort(files, (f1, f2) -> {
+            int result;
+            switch (sortBy) {
+                case 1:
+                    result = Long.compare(f1.length(), f2.length());
+                    break;
+                case 2:
+                    result = Long.compare(f1.lastModified(), f2.lastModified());
+                    break;
+                case 3:
+                    String ext1 = this.getExt(f1.getName());
+                    String ext2 = this.getExt(f2.getName());
+                    result = ext1.compareToIgnoreCase(ext2);
+                    if (result == 0) result = f1.getName().compareToIgnoreCase(f2.getName());
+                    break;
+                default:
+                    result = f1.getName().compareToIgnoreCase(f2.getName());
+                    break;
+            }
+            if (f1.isDirectory() && !f2.isDirectory())
+                return -1;
+            if (!f1.isDirectory() && f2.isDirectory())
+                return 1;
+            return reverse ? -result : result;
+        });
+    }
+
+    private void sortZipEntries(List<ZipEntryInfo> entries, String folderPath) {
+        if (entries == null)
+            return;
+        boolean isApk = isZipFolderApk(folderPath);
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        int sortBy = prefs.getInt("sort_by_" + folderPath, prefs.getInt("sort_by", 0));
+        boolean reverse = prefs.getBoolean("sort_reverse_" + folderPath, prefs.getBoolean("sort_reverse", false));
+        Collections.sort(entries, (e1, e2) -> {
+            if (e1.getName().equals(".."))
+                return -1;
+            if (e2.getName().equals(".."))
+                return 1;
+            if (isApk) {
+                int p1 = apkEntryPriority(e1);
+                int p2 = apkEntryPriority(e2);
+                if (p1 != p2)
+                    return Integer.compare(p1, p2);
+                if (p1 == APK_PRIORITY_CLASSES) return Integer.compare(classesDexIndex(e1.getName()), classesDexIndex(e2.getName()));
+                return compareZipEntries(e1, e2, sortBy);
+            }
+            int result = compareZipEntries(e1, e2, sortBy);
+            if (e1.isDirectory() && !e2.isDirectory())
+                return -1;
+            if (!e1.isDirectory() && e2.isDirectory())
+                return 1;
+            return reverse ? -result : result;
+        });
+    }
+
+    private static final int APK_PRIORITY_DIR = 0;
+    private static final int APK_PRIORITY_MANIFEST = 1;
+    private static final int APK_PRIORITY_CLASSES = 2;
+    private static final int APK_PRIORITY_ARSC = 3;
+    private static final int APK_PRIORITY_OTHER = 4;
+
+    private boolean isZipFolderApk(String folderPath) {
+        int bang = folderPath.indexOf('!');
+        String zipPath = bang == -1 ? folderPath : folderPath.substring(0, bang);
+        return zipPath.toLowerCase().endsWith(".apk");
+    }
+
+    private int apkEntryPriority(ZipEntryInfo entry) {
+        if (entry.isDirectory()) return APK_PRIORITY_DIR;
+        String name = entry.getName();
+        if (name.equalsIgnoreCase("AndroidManifest.xml")) return APK_PRIORITY_MANIFEST;
+        if (name.matches("classes\\d*\\.dex")) return APK_PRIORITY_CLASSES;
+        if (name.equals("resources.arsc")) return APK_PRIORITY_ARSC;
+        return APK_PRIORITY_OTHER;
+    }
+
+    private int classesDexIndex(String name) {
+        String num = name.substring("classes".length(), name.length() - ".dex".length());
+        if (num.isEmpty()) return 1;
+        try {
+            return Integer.parseInt(num);
+        } catch (NumberFormatException e) {
+            return Integer.MAX_VALUE;
+        }
+    }
+
+    private int compareZipEntries(ZipEntryInfo e1, ZipEntryInfo e2, int sortBy) {
+        return switch (sortBy) {
+            case 1 -> Long.compare(e1.getSize(), e2.getSize());
+            case 2 -> Long.compare(e1.getLastModified(), e2.getLastModified());
+            case 3 -> {
+                int ext = getExt(e1.getName()).compareToIgnoreCase(getExt(e2.getName()));
+                yield ext == 0 ? e1.getName().compareToIgnoreCase(e2.getName()) : ext;
+            }
+            default -> e1.getName().compareToIgnoreCase(e2.getName());
+        };
+    }
+
+    private void forceShowIcons(PopupMenu popupMenu) {
+        try {
+            Field field = popupMenu.getClass().getDeclaredField("mPopup");
+            field.setAccessible(true);
+            Object menuPopupHelper = field.get(popupMenu);
+            Method setForceIcons = menuPopupHelper.getClass().getDeclaredMethod("setForceShowIcon",
+                    boolean.class);
+            setForceIcons.invoke(menuPopupHelper, true);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static IEZFtpServer ftpServer;
+
+    public interface ImagePickCallback {
+        void onImagePicked(Uri uri);
+    }
+
+    public static ImagePickCallback overlayImageCallback;
+
+    private void showFtpServerDialog() {
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_ftp_server, null);
+        FrameLayout container = view.findViewById(R.id.container);
+        View header = LayoutInflater.from(this).inflate(R.layout.dialog_ftp_server_header, container, false);
+        container.addView(header, 0);
+
+        WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        int ipAddress = wifiManager.getConnectionInfo().getIpAddress();
+        String ipString = Formatter.formatIpAddress(ipAddress);
+        TextView ipTv = view.findViewById(R.id.ip);
+        ipTv.setText(rss.getString(R.string.ip, ipString));
+        ipTv.setOnLongClickListener(v -> {
+            ((android.text.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE)).setText(ipString);
+            Extensions.showMessage(this, rss.getString(R.string.copied));
+            return false;
+        });
+        view.findViewById(R.id.copy).setOnClickListener(v -> {
+            ((android.text.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE)).setText(ipString);
+            Extensions.showMessage(this, rss.getString(R.string.copied));
+        });
+        view.findViewById(R.id.share).setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_TEXT, ipString).setType("text/plain")));
+        EditText portInput = view.findViewById(R.id.portInput);
+        EditText userInput = view.findViewById(R.id.userInput);
+        EditText passInput = view.findViewById(R.id.passInput);
+        MaterialAutoCompleteTextView securityInput = view.findViewById(R.id.securityInput);
+        String[] securityOptions = rss.getStringArray(R.array.ftp_security_options);
+        securityInput.setSimpleItems(securityOptions);
+        securityInput.setText(securityOptions[0], false);
+        profileSpinner = header.findViewById(R.id.profile_spinner);
+        profileManageButton = header.findViewById(R.id.manage_profiles);
+        new ProfileHelper(this, null, portInput, userInput, passInput, securityInput, profileSpinner, profileManageButton).setupProfileSpinner(true);
+
+        boolean serverNotStarted = ftpServer == null;
+        portInput.setEnabled(serverNotStarted);
+        userInput.setEnabled(serverNotStarted);
+        passInput.setEnabled(serverNotStarted);
+        View pl = header.findViewById(R.id.profile_layout);
+        pl.setEnabled(serverNotStarted);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)) {
+            Extensions.showMessage(this, "Please allow notifications to show FTP server running");
+            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+        }
+
+        // This is very important to have notification so user remember that the FTP server is running and can stop it easily and should be shown always not just if dialog or app closed
+        Intent serviceIntent = new Intent(this, FtpForegroundService.class);
+        serviceIntent.putExtra("untrusted.manager.um.UMManager.ip", ipString);
+
+        String start = rss.getString(R.string.start);
+        String stop = rss.getString(R.string.stop);
+        AlertDialog ad = dialogUtil.getDialogBuilder()
+                .setTitle(rss.getString(R.string.ftp_server))
+                .setView(view)
+                .setOnDismissListener(null)
+                .setPositiveButton(serverNotStarted ? start : stop, null)
+                .show();
+                ad.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    TextView tv = (TextView) v;
+                    boolean wasStarted = stop.equals(tv.getText().toString());
+                    tv.setText(wasStarted ? start : stop);
+                    portInput.setEnabled(wasStarted);
+                    userInput.setEnabled(wasStarted);
+                    passInput.setEnabled(wasStarted);
+                    pl.setEnabled(serverNotStarted);
+                    if(wasStarted) {
+                        if(ftpServer != null) ftpServer.stop();
+                        ftpServer = null;
+                        stopService(serviceIntent);
+                        Extensions.showMessage(MainActivity.this, rss.getString(R.string.ftp_server_stopped));
+                    } else {
+                        int port = Integer.parseInt(portInput.getText().toString());
+                        String user = userInput.getText().toString();
+                        String pass = passInput.getText().toString();
+                        int securityType = getSecurityTypeIndex(securityInput.getText().toString());
+
+                        try {
+                            EZFtpServer.Builder builder = new EZFtpServer.Builder()
+                                    .setListenPort(port)
+                                    .addUser(new EZFtpUser(user, pass, Environment.getExternalStorageDirectory().getPath(), EZFtpUserPermission.WRITE));
+                            if (securityType > 0) {
+                                boolean implicit = securityType == 2;
+                                File keystoreFile = FtpsCertificateUtil.ensureKeystore(new File(getCacheDir(), "ftps-keystore.jks"));
+                                builder.setFtps(keystoreFile, FtpsCertificateUtil.getPasswordString(), implicit);
+                            }
+                            ftpServer = builder.create();
+                            ftpServer.start();
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                startForegroundService(serviceIntent);
+                            } else {
+                                startService(serviceIntent);
+                            }
+                            Extensions.showMessage(MainActivity.this, rss.getString(R.string.ftp_server_started, port));
+                        } catch (Exception e) {
+                            stopService(serviceIntent);
+                            portInput.setEnabled(true);
+                            userInput.setEnabled(true);
+                            passInput.setEnabled(true);
+                            pl.setEnabled(true);
+                            if(ftpServer != null) ftpServer.stop();
+                            tv.setText(rss.getString(R.string.start));
+                            e.printStackTrace();
+                            Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_start_ftp_server, e.getMessage()));
+                        }
+                        BroadcastReceiver ftpStopReceiver = new BroadcastReceiver() {
+                            @Override
+                            public void onReceive(Context context, Intent intent) {
+                                if (ad.isShowing()) {
+                                    tv.setText(rss.getString(R.string.start));
+                                    portInput.setEnabled(true);
+                                    userInput.setEnabled(true);
+                                    passInput.setEnabled(true);
+                                    header.setEnabled(true);
+                                }
+                                unregisterReceiver(this);
+                            }
+                        };
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            registerReceiver(ftpStopReceiver, new IntentFilter("untrusted.manager.um.FTP_STOPPED"), Context.RECEIVER_NOT_EXPORTED);
+                        } else registerReceiver(ftpStopReceiver, new IntentFilter("untrusted.manager.um.FTP_STOPPED"));
+                    }
+                });
+    }
+
+    private void showFtpClientDialog() {
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_ftp_client, null);
+        EditText ipInput = view.findViewById(R.id.ipInput);
+        EditText portInput = view.findViewById(R.id.portInput);
+        EditText userInput = view.findViewById(R.id.userInput);
+        EditText passInput = view.findViewById(R.id.passInput);
+        MaterialAutoCompleteTextView securityInput = view.findViewById(R.id.securityInput);
+        String[] securityOptions = rss.getStringArray(R.array.ftp_security_options);
+        securityInput.setSimpleItems(securityOptions);
+        securityInput.setText(securityOptions[0], false);
+        FrameLayout container = view.findViewById(R.id.container);
+        View header = LayoutInflater.from(this).inflate(R.layout.dialog_ftp_client_header, container, false);
+        container.addView(header, 0);
+
+        profileSpinner = header.findViewById(R.id.profile_spinner);
+        profileManageButton = header.findViewById(R.id.manage_profiles);
+
+        new ProfileHelper(this, ipInput, portInput, userInput, passInput, securityInput, profileSpinner, profileManageButton).setupProfileSpinner(false);
+        dialogUtil.getDialogBuilder()
+                .setTitle(rss.getString(R.string.ftp_client))
+                .setView(view)
+                .setPositiveButton(rss.getString(R.string.connect), (dialog, which) -> {
+
+                    String ip = ipInput.getText().toString().trim();
+                    int port = Integer.parseInt(portInput.getText().toString());
+                    String user = userInput.getText().toString();
+                    String pass = passInput.getText().toString();
+                    int securityType = getSecurityTypeIndex(securityInput.getText().toString());
+
+                    ftpClient = new EZFtpClient();
+                    ftpClient.connect(ip, port, user, pass, securityType, new OnEZFtpCallBack<>() {
+                        @Override
+                        public void onSuccess(Void response) {
+                            runOnUiThread(() -> {
+                                Extensions.showMessage(MainActivity.this, rss.getString(R.string.connected_to_ftp));
+                                fetchFtpDirAndLoad(File.separator, lastPaneSelected == 1);
+                            });
+                        }
+
+                        @Override
+                        public void onFail(int code, String msg) {
+                            runOnUiThread(() -> Extensions.showMessage(MainActivity.this, rss.getString(R.string.ftp_connect_failed, msg)));
+                        }
+                    });
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private IEZFtpClient ftpClient;
+
+    private int getSecurityTypeIndex(String text) {
+        String[] options = rss.getStringArray(R.array.ftp_security_options);
+        for (int i = 0; i < options.length; i++) {
+            if (options[i].equals(text)) {
+                return i;
+            }
+        }
+        return 0;
+    }
+    
+    public void fetchFtpDirAndLoad(String path, boolean pane1) {
+        if (ftpClient == null || !ftpClient.isConnected()) return;
+        
+        ftpClient.changeDirectory(path, new OnEZFtpCallBack<>() {
+            @Override
+            public void onSuccess(String newPath) {
+                ftpClient.getCurDirFileList(new OnEZFtpCallBack<>() {
+                    @Override
+                    public void onSuccess(List<EZFtpFile> response) {
+                        runOnUiThread(() -> {
+                            List<FTPFileWrapper> files = new ArrayList<>();
+                            files.add(new FTPFileWrapper(newPath, new EZFtpFile("..", "", 0, 0, new Date())));
+                            int foldersCount = 0;
+                            //int filesCount = 0;
+                            if (response != null) {
+                                for (EZFtpFile f : response) {
+                                    if (f.getType() == EZFtpFile.TYPE_DIRECTORY) foldersCount++;
+                                    //else filesCount++;
+                                    files.add(new FTPFileWrapper(newPath, f));
+                                }
+                            }
+                            RecyclerView pane = findViewById(pane1 ? R.id.listViewPane1 : R.id.listViewPane2);
+                            pane.setAdapter(new FtpFilesArrayAdapter(MainActivity.this, files.toArray(new FTPFileWrapper[0]), pane1, ftpClient));
+                            TextView currentFolderPath = findViewById(R.id.currentFolderPath);
+                            currentFolderPath.setText(rss.getString(R.string.ftp, path));
+                            uiHelper.scrollTextView(currentFolderPath);
+
+                            MainActivity.this.<TextView>findViewById(R.id.folderCount).setText(new StringBuilder("Folders: ").append(foldersCount).append(" Files: ").append(response.size() - foldersCount));
+                        });
+                    }
+
+                    @Override
+                    public void onFail(int code, String msg) {
+                    }
+                });
+            }
+
+            @Override
+            public void onFail(int code, String msg) {
+            }
+        });
+    }
+
+    private void loadFtpFolderInPane(FTPFileWrapper folder, boolean pane1) {
+        if (folder.getName().equals("..")) {
+            if (ftpClient != null) {
+                ftpClient.getCurDirPath(new OnEZFtpCallBack<>() {
+                    @Override
+                    public void onSuccess(String response) {
+                        int startIndex = response.indexOf(File.separator);
+                        int endIndex = response.lastIndexOf(File.separator);
+                        fetchFtpDirAndLoad((startIndex == endIndex) ? File.separator : response.substring(0, endIndex), lastPaneSelected == 1);
+                    }
+
+                    @Override
+                    public void onFail(int code, String msg) {
+                    }
+                });
+            }
+        } else if (folder.isDirectory()) {
+            fetchFtpDirAndLoad(folder.getFtpFile().getName(), pane1);
+        } else {
+            Extensions.showMessage(this, "FTP File Download coming soon");
+        }
+    }
+}

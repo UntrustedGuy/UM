@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.MyApp.Black" parent="Theme.Material3.DynamicColors.Dark.NoActionBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="colorSurface">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+    <style name="Theme.MyApp.Dark" parent="Theme.Material3.DynamicColors.Dark.NoActionBar">
+        <item name="android:statusBarColor">?attr/colorSurface</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <style name="Theme.MyApp.Light" parent="Theme.Material3.DynamicColors.Light.NoActionBar">
+        <item name="android:statusBarColor">?attr/colorSurface</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+    <style name="AppTheme.AppBarOverlay" parent="ThemeOverlay.MaterialComponents.Dark.ActionBar" />
+    <style name="AppTheme.PopupOverlay" parent="ThemeOverlay.MaterialComponents">
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="tint">?attr/colorOnSurface</item>
+    </style>
+    <style name="text_action_popup_animation">
+        <item name="android:windowEnterAnimation">@anim/anim_text_action_popup_enter</item>
+        <item name="android:windowExitAnimation">@anim/anim_text_action_popup_exit</item>
+    </style>
+    <style name="TabTextAppearance" parent="TextAppearance.Design.Tab">
+        <item name="android:textStyle">normal</item>
+    </style>
+    <style name="ToolbarSmallSubtitle" parent="TextAppearance.AppCompat.Widget.ActionBar.Subtitle">
+        <item name="android:textSize">10sp</item>
+        <item name="textSize">10sp</item>
+    </style>
+    <style name="inspectorDialogTheme" parent="@style/Theme.Material3.DayNight.NoActionBar">
+        <item name="alertDialogTheme">@style/AppCompat.Dialog</item>
+    </style>
+
+    <style name="AppCompat.Dialog" parent="@style/ThemeOverlay.Material3.Dialog.Alert">
+        <item name="android:windowTitleStyle">@style/RtlOverlay.DialogWindowTitle.AppCompat</item>
+        <item name="buttonBarButtonStyle">@style/Widget.Material3.Button.TextButton.Dialog.Flush</item>
+    </style>
+
+    <style name="HexCell">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+    </style>
+
+    <!-- Literal colors on purpose: theme attrs (?attr/colorSurfaceVariant etc.) rendered
+         invisibly for some users, so the keys get a fixed medium-gray fill + white text
+         which contrasts against both light and dark surfaces -->
+    <style name="HexKey">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginStart">4dp</item>
+        <item name="android:layout_marginEnd">4dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">?attr/colorOnSurface</item>
+        <item name="android:background">?attr/selectableItemBackgroundBorderless</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+    </style>
+</resources>
