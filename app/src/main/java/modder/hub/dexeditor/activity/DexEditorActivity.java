@@ -1222,7 +1222,7 @@ public class DexEditorActivity extends AppCompatActivity {
                 if (fragment != null && fragment.getEditor() != null) {
                     String currentText = fragment.getEditor().getText().toString();
                     tab.content = currentText; // Update current content to preserve it on recreation
-                    
+
                     boolean actuallyModified = !currentText.equals(tab.originalContent);
 
                     if (tab.isModified != actuallyModified) {
@@ -1515,6 +1515,18 @@ public class DexEditorActivity extends AppCompatActivity {
         modifiedNodes.clear();
         searchNodes.clear();
         stringList.clear();
+
+        // A direct/quick exit after saving must return the saved editor target to the
+        // caller. MainActivity uses RESULT_CODE 757 to repack a modified dex back
+        // into the original APK/ZIP entry. Losing this result silently discarded
+        // otherwise-successful Dex Editor saves.
+        if (isSaved) {
+            Intent resultIntent = new Intent();
+            resultIntent.putExtra("uri", getIntent().getStringExtra("uri"));
+            resultIntent.putExtra("zipEntryPath", getIntent().getStringExtra("zipEntryPath"));
+            resultIntent.putExtra("zipFilePath", getIntent().getStringExtra("zipFilePath"));
+            setResult(757, resultIntent);
+        }
         isSaved = false;
         isChanged = false;
         finish();

@@ -83,7 +83,11 @@ public final class AccessManager {
         Backend backend = active(context);
         try {
             if (backend == Backend.ROOT) return RootManager.getInstance(context).exists(absPath);
-            if (backend == Backend.SHIZUKU) return ShizukuManager.exists(context, absPath);
+            if (backend == Backend.SHIZUKU) {
+                SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+                if (!prefs.getBoolean("shizuku_file_ops", false) || !ShizukuManager.ready()) return false;
+                return ShizukuManager.exists(context, absPath);
+            }
         } catch (Exception ignored) {
         }
         return false;
@@ -95,6 +99,8 @@ public final class AccessManager {
             return RootManager.getInstance(context).listRootFilesWithStat(dirPath);
         }
         if (backend == Backend.SHIZUKU) {
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+            if (!prefs.getBoolean("shizuku_file_ops", false) || !ShizukuManager.ready()) return null;
             return ShizukuManager.listWithStat(context, dirPath);
         }
         return null;
@@ -103,7 +109,11 @@ public final class AccessManager {
     public static long getSize(Context context, String absPath) {
         Backend backend = active(context);
         if (backend == Backend.ROOT) return RootManager.getInstance(context).getFileSize(absPath);
-        if (backend == Backend.SHIZUKU) return ShizukuManager.getFileSize(context, absPath);
+        if (backend == Backend.SHIZUKU) {
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+            if (!prefs.getBoolean("shizuku_file_ops", false) || !ShizukuManager.ready()) return -1;
+            return ShizukuManager.getFileSize(context, absPath);
+        }
         try {
             return new File(absPath).length();
         } catch (Exception e) {
@@ -117,7 +127,11 @@ public final class AccessManager {
             RootManager.RootEntry e = RootManager.getInstance(context).statEntry(absPath);
             return e != null ? e.lastModified() : 0;
         }
-        if (backend == Backend.SHIZUKU) return ShizukuManager.getMtime(context, absPath);
+        if (backend == Backend.SHIZUKU) {
+            SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+            if (!prefs.getBoolean("shizuku_file_ops", false) || !ShizukuManager.ready()) return 0;
+            return ShizukuManager.getMtime(context, absPath);
+        }
         try {
             return new File(absPath).lastModified();
         } catch (Exception e) {

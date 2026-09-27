@@ -208,6 +208,10 @@ public class FileOperationsHelper {
                         AccessManager.delete(context, f.getAbsolutePath(), true);
                         continue;
                     } catch (Exception e) {
+                        if (AccessManager.needsElevated(context, f.getAbsolutePath())
+                                || AccessManager.needsElevated(context, destinationFolder.getAbsolutePath())) {
+                            throw new IOException("Elevated move failed for " + f.getName(), e);
+                        }
                     }
                 }
                 if (ShizukuFileOps.involvesShizukuPath(f, destinationFolder) && ShizukuFileOps.shellMove(f, destinationFolder, dest.getName()))
@@ -217,7 +221,10 @@ public class FileOperationsHelper {
                     if (useElevated) {
                         try {
                             AccessManager.mkdir(context, dest.getAbsolutePath(), true);
-                        } catch (Exception ignored) {
+                        } catch (Exception e) {
+                            if (AccessManager.needsElevated(context, dest.getAbsolutePath())) {
+                                throw new IOException("Elevated directory creation failed: " + dest, e);
+                            }
                             //noinspection ResultOfMethodCallIgnored
                             dest.mkdir();
                         }
@@ -324,6 +331,10 @@ public class FileOperationsHelper {
                         AccessManager.preserveTime(context, f.getAbsolutePath(), dest.getAbsolutePath());
                         continue;
                     } catch (Exception e) {
+                        if (AccessManager.needsElevated(context, f.getAbsolutePath())
+                                || AccessManager.needsElevated(context, destinationFolder.getAbsolutePath())) {
+                            throw new IOException("Elevated copy failed for " + f.getName(), e);
+                        }
                     }
                 }
                 if (ShizukuFileOps.involvesShizukuPath(f, destinationFolder) && ShizukuFileOps.shellCopy(f, destinationFolder, dest.getName()) != null)
@@ -332,7 +343,10 @@ public class FileOperationsHelper {
                     if (useElevated) {
                         try {
                             AccessManager.mkdir(context, dest.getAbsolutePath(), true);
-                        } catch (Exception ignored) {
+                        } catch (Exception e) {
+                            if (AccessManager.needsElevated(context, dest.getAbsolutePath())) {
+                                throw new IOException("Elevated directory creation failed: " + dest, e);
+                            }
                             //noinspection ResultOfMethodCallIgnored
                             dest.mkdir();
                         }

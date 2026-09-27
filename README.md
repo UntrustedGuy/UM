@@ -289,7 +289,7 @@ Choose between system, light, dark and black theme all with Material theme and D
 
 The original TODO items have been implemented or integrated into the current codebase:
 
-* APK Patcher: integrated safe APK Editor `patch.txt` support for file/text patch rules and LPZIP package import; executable DEX patch rules are rejected explicitly rather than producing an unsafe result.
+* APK Patcher: integrated APK Editor `patch.txt` rules (`ADD_FILES`, `REMOVE_FILES`, `MATCH_REPLACE`, `MATCH_ASSIGN`, `MATCH_GOTO`, `GOTO`, `MERGE`, `EXECUTE_DEX`, `DUMMY`) plus Lucky Patcher `CLASSES`/`ODEX`/`LIB` byte-pattern patches with wildcard and sequential R/W capture support. APK Editor `.zip` patches and standalone Lucky Patcher text patches are accepted.
 * Root and Shizuku file management: integrated through the existing AccessManager/RootManager/Shizuku backend.
 * APK optimization: batch and deep optimization are integrated through ApkOptimizer and ApkDeepOptimizer.
 

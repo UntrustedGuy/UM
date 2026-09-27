@@ -13,6 +13,7 @@ import net.lingala.zip4j.model.enums.CompressionLevel;
 import net.lingala.zip4j.model.enums.CompressionMethod;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
@@ -22,7 +23,11 @@ public class ApkOptimizer {
         String fileName = apk.getName();
         String filePath = apk.getPath();
         File tempFolder = new File(context.getCacheDir(), System.currentTimeMillis() + '_' + fileName);
-        File optFile = FileUtils.getUnusedFile(filePath.replace(".apk", "_opt.apk"));
+        File optFile = FileUtils.getUnusedFile(filePath.replaceFirst("(?i)\\.apk$", "_opt.apk"));
+        File parent = optFile.getParentFile();
+        if (parent != null && !parent.isDirectory() && !parent.mkdirs() && !parent.isDirectory()) {
+            throw new IOException("Cannot create optimizer output directory");
+        }
         try (ZipFile zf = new ZipFile(apk); ZipFile opt = new ZipFile(optFile)) {
             zf.extractAll(tempFolder.getPath());
             ZipParameters zp = new ZipParameters();
@@ -64,7 +69,24 @@ public class ApkOptimizer {
                 params.setFileNameInZip(relativePath);
                 opt.addFile(f, params);
             }
+        } finally {
+            deleteRecursive(tempFolder);
         }
+        // APK installation requires specific uncompressed/aligned entries.
+        // Rebuild/alignment is done after compression so optimization cannot leave
+        // a technically valid ZIP that Android rejects as an APK.
+        ApkZipAlignUtil.ensureInstallable(optFile);
+        if (!optFile.isFile() || optFile.length() == 0) throw new IOException("Optimizer produced an empty APK");
         return optFile;
+    }
+
+    private static void deleteRecursive(File file) {
+        if (file == null || !file.exists()) return;
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) for (File child : children) deleteRecursive(child);
+        }
+        //noinspection ResultOfMethodCallIgnored
+        file.delete();
     }
 }

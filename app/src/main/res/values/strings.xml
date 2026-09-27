@@ -674,7 +674,6 @@ Layout Inspector
     <string name="batch_operations">Batch operations</string>
     <string name="ask_bookmark_tab">Ask which tab to save bookmarks in</string>
     <string name="deep_optimize">Remove unused resources &amp; code (deep)</string>
-    <string name="deep_optimize_phase_b">Optimize resource IDs</string>
     <string name="deep_optimize_preserve_debug">Keep debug info (line numbers)</string>
     <string name="deep_optimize_remove_classes">Remove unused classes</string>
     <string name="deep_optimize_remove_methods">Remove unused methods</string>

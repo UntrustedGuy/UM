@@ -466,9 +466,6 @@ public class ApkToolsHandler {
                             CheckBox deepOptimize = ll.findViewById(R.id.deep_optimize);
                             deepOptimize.setChecked(deepOpt[0] = settings.getBoolean("deep_optimize", false));
                             deepOptimize.setOnCheckedChangeListener((buttonView, isChecked) -> settings.edit().putBoolean("deep_optimize", deepOpt[0] = isChecked).apply());
-                            MaterialCheckBox phaseB = ll.findViewById(R.id.deep_optimize_phase_b);
-                            phaseB.setChecked(settings.getBoolean("deep_opt_phase_b", false));
-                            phaseB.setOnCheckedChangeListener((buttonView, isChecked) -> settings.edit().putBoolean("deep_opt_phase_b", isChecked).apply());
                             MaterialCheckBox preserveDebug = ll.findViewById(R.id.deep_optimize_preserve_debug);
                             preserveDebug.setChecked(settings.getBoolean("deep_opt_preserve_debug", true));
                             preserveDebug.setOnCheckedChangeListener((buttonView, isChecked) -> settings.edit().putBoolean("deep_opt_preserve_debug", isChecked).apply());

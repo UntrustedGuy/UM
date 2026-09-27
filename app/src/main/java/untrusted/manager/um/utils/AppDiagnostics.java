@@ -4,7 +4,6 @@ import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.os.Looper;
 import android.view.Choreographer;
 
 /** Lightweight app-wide diagnostics for lag and network state. */

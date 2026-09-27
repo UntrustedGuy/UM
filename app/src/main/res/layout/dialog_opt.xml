@@ -41,14 +41,6 @@
         android:layout_marginTop="8dp" />
 
     <com.google.android.material.checkbox.MaterialCheckBox
-        android:text="@string/deep_optimize_phase_b"
-        android:textSize="20sp"
-        android:id="@+id/deep_optimize_phase_b"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp" />
-
-    <com.google.android.material.checkbox.MaterialCheckBox
         android:text="@string/deep_optimize_preserve_debug"
         android:textSize="20sp"
         android:id="@+id/deep_optimize_preserve_debug"

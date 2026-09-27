@@ -4675,10 +4675,10 @@ public class MainActivity extends AppCompatActivity {
         }
         return 0;
     }
-    
+
     public void fetchFtpDirAndLoad(String path, boolean pane1) {
         if (ftpClient == null || !ftpClient.isConnected()) return;
-        
+
         ftpClient.changeDirectory(path, new OnEZFtpCallBack<>() {
             @Override
             public void onSuccess(String newPath) {

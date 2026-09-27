@@ -191,6 +191,7 @@ public class APKExtractorActivity extends AppCompatActivity {
         setTheme(theme = themeSettings.getInt("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light));
 
         WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
         handler = new Handler(Looper.getMainLooper());
         setContentView(R.layout.activity_extractor);
         Toolbar toolbar = findViewById(R.id.toolbar);

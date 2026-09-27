@@ -639,7 +639,6 @@
     <string name="batch_operations">Пакетные операции</string>
     <string name="ask_bookmark_tab">Спрашивать, в какой вкладке сохранять закладки</string>
     <string name="deep_optimize">Удалить неиспользуемые ресурсы &amp; код (глубоко)</string>
-    <string name="deep_optimize_phase_b">Оптимизировать ID ресурсов</string>
     <string name="deep_optimize_preserve_debug">Сохранять отладочную информацию (номера строк)</string>
     <string name="deep_optimize_remove_classes">Удалять неиспользуемые классы</string>
     <string name="deep_optimize_remove_methods">Удалять неиспользуемые методы</string>

@@ -660,7 +660,6 @@ Layout Inspector
     <string name="batch_operations">批量操作</string>
     <string name="ask_bookmark_tab">询问将书签保存到哪个标签页</string>
     <string name="deep_optimize">移除未使用的资源 &amp; 代码（深度）</string>
-    <string name="deep_optimize_phase_b">优化资源 ID</string>
     <string name="deep_optimize_preserve_debug">保留调试信息（行号）</string>
     <string name="deep_optimize_remove_classes">移除未使用的类</string>
     <string name="deep_optimize_remove_methods">移除未使用的方法</string>

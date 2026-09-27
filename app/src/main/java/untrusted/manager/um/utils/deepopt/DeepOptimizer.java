@@ -161,6 +161,10 @@ public class DeepOptimizer {
         compressAll(module);
         module.writeApk(outFile, (path, method, length) -> {
         });
+        // Normalize APK-required stored/aligned entries after the deep optimizer
+        // has finished its own compression pass.
+        ApkZipAlignUtil.ensureInstallable(outFile);
+        log("APK alignment/installability pass complete");
         log("Deep optimization complete: " + outFile.getName());
 
         if (verifyOutput) {
