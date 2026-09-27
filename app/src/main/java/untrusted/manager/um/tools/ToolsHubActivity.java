@@ -1,5 +1,7 @@
 package untrusted.manager.um.tools;
 
+import untrusted.manager.um.R;
+
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;

@@ -1,5 +1,7 @@
 package untrusted.manager.um.UMManager;
 
+import untrusted.manager.um.R;
+
 import static untrusted.manager.um.utils.FileUtils.doesNotHaveStoragePerm;
 
 import android.Manifest;

@@ -1,5 +1,7 @@
 package untrusted.manager.um.tools;
 
+import untrusted.manager.um.R;
+
 import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
