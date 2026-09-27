@@ -58,7 +58,7 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
     //implementation files('libs/animato.jar')
     implementation files('libs/antlr.jar')
-    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0-alpha01'
     implementation files('libs/JCommand.jar')
     implementation files('libs/bin-zip.jar')
     implementation files('libs/arsc-parser.jar')
