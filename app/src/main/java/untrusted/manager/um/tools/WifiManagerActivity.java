@@ -127,6 +127,7 @@ public class WifiManagerActivity extends AppCompatActivity {
         scroll.addView(box, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
         buildConnection(box);
         buildDns(box);
         buildPasswords(box);

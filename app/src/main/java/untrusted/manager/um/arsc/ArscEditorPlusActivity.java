@@ -205,6 +205,7 @@ public class ArscEditorPlusActivity extends AppCompatActivity {
         main.addView(batchBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         root.addView(main, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
         if (MODE_TRANSLATE.equals(mode)) pager.setCurrentItem(3, false);
     }
 

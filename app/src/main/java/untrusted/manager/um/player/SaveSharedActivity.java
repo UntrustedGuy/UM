@@ -80,6 +80,7 @@ public class SaveSharedActivity extends AppCompatActivity {
         cancelBtn.setOnClickListener(v -> finish());
         root.addView(cancelBtn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         setContentView(root);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
         pickFolder();
     }
 

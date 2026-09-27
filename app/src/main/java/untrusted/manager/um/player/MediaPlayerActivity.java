@@ -78,6 +78,7 @@ public class MediaPlayerActivity extends AppCompatActivity implements
         if (themeId != 0) setTheme(themeId);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_media_player);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
 
         playerManager = PlayerManager.getInstance(this);
         prefs = PreferenceManager.getDefaultSharedPreferences(this);

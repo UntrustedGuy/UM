@@ -180,6 +180,7 @@ public class ImageEditActivity extends AppCompatActivity {
         main.addView(buildOpsRow(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         main.addView(buildMetaRow(), new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         setContentView(main);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
         prepareWorkingCopy();
     }
 

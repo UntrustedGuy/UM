@@ -82,6 +82,7 @@ public class ToolsHubActivity extends AppCompatActivity {
         grid.setPadding(gridPad, gridPad, gridPad, gridPad);
         root.addView(grid, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
         allTools = ToolRegistry.getTools(this);
         toolbar.setSubtitle(allTools.size() + " tools");
         adapter = new ToolAdapter(buildRows(allTools));

@@ -207,6 +207,7 @@ public class ArscEditorActivity extends AppCompatActivity {
         rv.setAdapter(adapter);
         main.addView(rv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(main);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
     }
 
     private void loadAsync(File arsc, File apk, String entryPath) {

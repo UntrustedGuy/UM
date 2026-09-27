@@ -131,6 +131,7 @@ public class HexEditorActivity extends AppCompatActivity {
         setTheme(themeSettings.getInt("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light));
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_hex_editor);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
 
         String path = getIntent().getStringExtra("path");
         file = path != null ? new File(path) : null;

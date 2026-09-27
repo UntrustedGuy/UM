@@ -44,6 +44,7 @@ public class EditorSettingsActivity extends AppCompatActivity {
                 .beginTransaction()
                 .replace(android.R.id.content, new SettingsFragment())
                 .commit();
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
 
         if (getSupportActionBar() != null) {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);

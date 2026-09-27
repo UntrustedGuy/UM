@@ -167,6 +167,7 @@ public class ArscTextActivity extends AppCompatActivity {
         holder.setId(R.id.arsc_text_editor_container);
         main.addView(holder, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(main);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
         fragment = UnifiedEditorFragment.newInstance(null, "ArscText", null, UnifiedEditorFragment.TYPE_TEXT);
         getSupportFragmentManager().beginTransaction().replace(R.id.arsc_text_editor_container, fragment).commit();
         getSupportFragmentManager().executePendingTransactions();

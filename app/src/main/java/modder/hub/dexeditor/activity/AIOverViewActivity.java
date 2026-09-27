@@ -87,6 +87,7 @@ public class AIOverViewActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.ai_overview_activity);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
         initialize(savedInstanceState);
         initializeLogic();
 

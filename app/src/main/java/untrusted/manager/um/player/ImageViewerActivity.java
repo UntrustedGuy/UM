@@ -109,6 +109,7 @@ public class ImageViewerActivity extends AppCompatActivity {
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_image_viewer);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
 
         pager = findViewById(R.id.pager);
         titleText = findViewById(R.id.titleText);

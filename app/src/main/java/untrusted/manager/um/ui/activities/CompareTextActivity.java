@@ -31,6 +31,7 @@ public class CompareTextActivity extends AppCompatActivity {
         webView.getSettings().setBuiltInZoomControls(true);
         webView.getSettings().setDisplayZoomControls(false);
         setContentView(webView);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
 
         Intent intent = getIntent();
         String path1 = intent.getStringExtra("file1");

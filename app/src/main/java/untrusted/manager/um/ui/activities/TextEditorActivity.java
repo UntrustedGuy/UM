@@ -91,6 +91,7 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_editor);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
 
         initViews();
         setupListeners();

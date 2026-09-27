@@ -57,6 +57,7 @@ public class SettingsActivity extends AppCompatActivity {
 	protected void onCreate(Bundle _savedInstanceState) {
 		super.onCreate(_savedInstanceState);
 		setContentView(R.layout.settings);
+		untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
 		initialize();
 		initializeLogic();
 	}

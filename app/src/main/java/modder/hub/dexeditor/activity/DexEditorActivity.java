@@ -201,6 +201,7 @@ public class DexEditorActivity extends AppCompatActivity {
         int theme = getIntent().getIntExtra("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light);
         setTheme(theme);
         setContentView(R.layout.dex_editor);
+        untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
 
         initialize(savedInstanceState);
 
