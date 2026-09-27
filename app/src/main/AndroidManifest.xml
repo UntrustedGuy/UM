@@ -292,5 +292,7 @@
            </service>
            <activity android:name="untrusted.manager.um.patcher.PatcherActivity" android:exported="false" android:label="APK Patcher" />
            <activity android:name="untrusted.manager.um.gameanalysis.GameAnalysisActivity" android:exported="false" android:label="Game Analysis" />
+           <activity android:name="untrusted.manager.um.gameanalysis.Il2CppEditorActivity" android:exported="false" android:label="IL2CPP Editor" />
+           <activity android:name="untrusted.manager.um.gameanalysis.FridaToolkitActivity" android:exported="false" android:label="Frida Runtime Kit" />
     </application>
 </manifest>

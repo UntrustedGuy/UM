@@ -40,6 +40,8 @@ public class GameAnalysisActivity extends AppCompatActivity {
     private File inputFile;
     private File companionFile;
     private TextView status;
+    private TextView inputPath;
+    private TextView companionPath;
     private Button runButton;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -75,7 +77,7 @@ public class GameAnalysisActivity extends AppCompatActivity {
         inputLabel.setText("Primary input");
         inputLabel.setTextSize(16);
         inputBox.addView(inputLabel);
-        TextView inputPath = new TextView(this);
+        inputPath = new TextView(this);
         inputPath.setText("Nothing selected");
         inputPath.setTextIsSelectable(true);
         inputBox.addView(inputPath, lp(0, 0, 0, 8));
@@ -93,7 +95,7 @@ public class GameAnalysisActivity extends AppCompatActivity {
         companionLabel.setText("Companion input (optional)");
         companionLabel.setTextSize(16);
         companionBox.addView(companionLabel);
-        TextView companionPath = new TextView(this);
+        companionPath = new TextView(this);
         companionPath.setText("Use when the APK/file does not contain the matching libil2cpp.so or global-metadata.dat");
         companionPath.setTextIsSelectable(true);
         companionBox.addView(companionPath, lp(0, 0, 0, 8));
@@ -114,6 +116,8 @@ public class GameAnalysisActivity extends AppCompatActivity {
             box.addView(label, lp(0,0,0,8));
             addAction(box, "APK Patcher", v -> startActivity(new Intent(this, PatcherActivity.class)));
             addAction(box, "APK Extractor", v -> startActivity(new Intent(this, APKExtractorActivity.class)));
+            addAction(box, "IL2CPP Editor", v -> startActivity(new Intent(this, Il2CppEditorActivity.class).putExtra("path", inputFile != null ? inputFile.getAbsolutePath() : "")));
+            addAction(box, "Frida Runtime Kit", v -> startActivity(new Intent(this, FridaToolkitActivity.class)));
             Button hex = new MaterialButton(this);
             hex.setText("Hex Editor — selected file");
             hex.setOnClickListener(v -> {
@@ -164,7 +168,7 @@ public class GameAnalysisActivity extends AppCompatActivity {
                 File f = materialize(uri);
                 runOnUiThread(() -> {
                     if (requestCode == PICK_INPUT) { inputFile = f; status.setText("Selected: " + f.getAbsolutePath()); }
-                    else { companionFile = f; status.setText("Companion: " + f.getAbsolutePath()); }
+                    else { companionFile = f; companionPath.setText(f.getAbsolutePath()); status.setText("Companion: " + f.getAbsolutePath()); }
                 });
             } catch (Exception e) {
                 AppLogs.writeEvent("game_analysis", "picker materialization failed", e);
@@ -252,7 +256,7 @@ public class GameAnalysisActivity extends AppCompatActivity {
             case "il2cpp" -> "Analyze a Unity IL2CPP native library together with global-metadata.dat. UM generates metadata-backed dump.cs, native ELF information, strings and reproducible hashes. A matching runtime/memory dump can also be supplied when the on-disk representation is protected.";
             case "metadata" -> "Validate global-metadata.dat, recover standard enveloped/simple-XOR representations when safely detectable, export the metadata string table and generate a metadata-backed dump.cs skeleton.";
             case "encryption" -> "Inspect whether a selected game artifact resembles standard IL2CPP metadata, a simple transformed representation, an ELF native library or a packaged archive. This is static analysis, not a universal decryption or protection-bypass engine.";
-            case "modding" -> "Use the existing UM APK Patcher, APK Extractor and Hex Editor alongside the IL2CPP/static analysis output. No separate launcher or companion application is installed.";
+            case "modding" -> "Use the existing UM APK Patcher, APK Extractor and Hex Editor alongside the IL2CPP Editor and Frida Runtime Kit. No separate launcher or companion application is installed.";
             default -> "Analyze APK/XAPK/APKM/AAB/ZIP files and automatically locate libil2cpp.so and global-metadata.dat, including nested APKs. Results are written to the UM Dump directory.";
         };
     }

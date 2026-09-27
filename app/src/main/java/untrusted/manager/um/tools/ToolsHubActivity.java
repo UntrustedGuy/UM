@@ -132,6 +132,10 @@ public class ToolsHubActivity extends AppCompatActivity {
     private void openTool(ToolRegistry.ToolItem item) {
         if ("patcher".equals(item.id())) {
             startActivity(new Intent(this, PatcherActivity.class));
+        } else if ("il2cppeditor".equals(item.id())) {
+            startActivity(new Intent(this, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class));
+        } else if ("frida".equals(item.id())) {
+            startActivity(new Intent(this, untrusted.manager.um.gameanalysis.FridaToolkitActivity.class));
         } else if ("il2cpp".equals(item.id()) || "metadata".equals(item.id()) || "gameanalyzer".equals(item.id())
                 || "encryption".equals(item.id()) || "gamemodding".equals(item.id())) {
             startActivity(new Intent(this, GameAnalysisActivity.class).putExtra("mode", item.id()));

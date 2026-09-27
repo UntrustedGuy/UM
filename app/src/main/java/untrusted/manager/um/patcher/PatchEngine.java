@@ -73,10 +73,10 @@ public final class PatchEngine {
             File patchTxt = findPatchTxt(extractedPatch);
             File lucky = findLuckyPatchTxt(extractedPatch);
             if (patchTxt == null) {
-                if (lucky == null) return fail("Patch archive contains neither patch.txt nor a Lucky Patcher patch text");
+                if (lucky == null) return failAndCleanup(work, "Patch archive contains neither patch.txt nor a Lucky Patcher patch text");
                 boolean changed = applyLuckyPatcher(apkWork, lucky);
-                if (!changed) return fail("Lucky Patcher patch did not change the selected APK");
-                return finish(apk, outputDir, apkWork, work, "Lucky Patcher patch applied");
+                if (!changed) return failAndCleanup(work, "Lucky Patcher patch did not change the selected APK");
+                return finish(apk, effectiveOutputDir, apkWork, work, "Lucky Patcher patch applied");
             }
             // Lucky Patcher archives are also commonly named patch.txt. Prefer
             // their byte-pattern grammar when the file contains LP sections and
@@ -84,8 +84,8 @@ public final class PatchEngine {
             String patchText = Files.readString(patchTxt.toPath(), StandardCharsets.UTF_8);
             if (looksLikeLuckyPatcher(patchText) && !looksLikeApkEditorPatch(patchText)) {
                 boolean changed = applyLuckyPatcher(apkWork, patchTxt);
-                if (!changed) return fail("Lucky Patcher patch did not change the selected APK");
-                return finish(apk, outputDir, apkWork, work, "Lucky Patcher patch applied");
+                if (!changed) return failAndCleanup(work, "Lucky Patcher patch did not change the selected APK");
+                return finish(apk, effectiveOutputDir, apkWork, work, "Lucky Patcher patch applied");
             }
 
             List<Rule> rules = parse(patchTxt);
@@ -99,7 +99,7 @@ public final class PatchEngine {
             if (!packageConstraint.isEmpty() && !"*".equals(packageConstraint)) {
                 String actualPackage = readPackageName(context, apk);
                 if (actualPackage == null || !packageConstraint.equals(actualPackage)) {
-                    return fail("Patch package mismatch: expected " + packageConstraint + ", APK is " + (actualPackage == null ? "unknown" : actualPackage));
+                    return failAndCleanup(work, "Patch package mismatch: expected " + packageConstraint + ", APK is " + (actualPackage == null ? "unknown" : actualPackage));
                 }
             }
             boolean changed = false;
@@ -117,8 +117,8 @@ public final class PatchEngine {
                 switch (r.type) {
                     case "DUMMY":
                         // DUMMY is a named terminal label in the APK Editor engine.
-                        return changed ? finish(apk, outputDir, apkWork, work, "Patch applied")
-                                : fail("Patch reached DUMMY before making a change");
+                        return changed ? finish(apk, effectiveOutputDir, apkWork, work, "Patch applied")
+                                : failAndCleanup(work, "Patch reached DUMMY before making a change");
                     case "GOTO": {
                         int j = indexOf(rules, r.get("GOTO"));
                         if (j < 0) throw new IOException("GOTO target not found: " + r.get("GOTO"));
@@ -187,8 +187,8 @@ public final class PatchEngine {
                 }
             }
             if (smaliPrepared && smaliDirty) rebuildChangedSmali(apkWork, work);
-            if (!changed) return fail("Patch made no changes");
-            return finish(apk, outputDir, apkWork, work, "APK Editor patch applied");
+            if (!changed) return failAndCleanup(work, "Patch made no changes");
+            return finish(apk, effectiveOutputDir, apkWork, work, "APK Editor patch applied");
         } catch (Throwable e) {
             delete(work);
             String message = e.getMessage();
@@ -207,6 +207,8 @@ public final class PatchEngine {
     }
 
     private static Result fail(String message) { return new Result(false, message, null); }
+
+    private static Result failAndCleanup(File work, String message) { delete(work); return fail(message); }
 
     private static void requireFile(File f, String label) throws IOException {
         if (f == null || !f.isFile() || !f.canRead()) throw new IOException("Cannot read " + label);
