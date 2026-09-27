@@ -11,6 +11,7 @@ import androidx.exifinterface.media.ExifInterface;
 import android.graphics.Matrix;
 import android.graphics.Typeface;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.format.DateFormat;
 import android.view.View;
@@ -380,6 +381,194 @@ public class ImageViewerActivity extends AppCompatActivity {
             });
         }, "UM-ImageMetadata").start();
     }
+
+    private String formatFileSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format(Locale.US, "%.1f KB", bytes / 1024f);
+        if (bytes < 1024 * 1024 * 1024) return String.format(Locale.US, "%.1f MB", bytes / (1024f * 1024));
+        return String.format(Locale.US, "%.1f GB", bytes / (1024f * 1024 * 1024));
+    }
+
+    private Uri getFileUri(String path) {
+        return FileProvider.getUriForFile(this,
+                "untrusted.manager.um.UMManager.provider", new File(path));
+    }
+
+    private void shareImage(int pos) {
+        if (pos < 0 || pos >= imagePaths.size()) return;
+        Uri uri = getFileUri(imagePaths.get(pos));
+        Intent intent = new Intent(Intent.ACTION_SEND)
+                .setType("image/*")
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(intent, "Share image"));
+    }
+
+    private void shareImages(List<Integer> positions) {
+        if (positions.isEmpty()) return;
+        ArrayList<Uri> uris = new ArrayList<>();
+        for (int p : positions) uris.add(getFileUri(imagePaths.get(p)));
+        Intent intent = new Intent(Intent.ACTION_SEND_MULTIPLE)
+                .setType("image/*")
+                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(intent, "Share images"));
+    }
+
+    private void openWithImage(int pos) {
+        if (pos < 0 || pos >= imagePaths.size()) return;
+        Uri uri = getFileUri(imagePaths.get(pos));
+        Intent intent = new Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "image/*")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(intent, "Open with"));
+    }
+
+    private void openWithImages(List<Integer> positions) {
+        if (positions.isEmpty()) return;
+        if (positions.size() == 1) {
+            openWithImage(positions.get(0));
+            return;
+        }
+        ArrayList<Uri> uris = new ArrayList<>();
+        for (int p : positions) uris.add(getFileUri(imagePaths.get(p)));
+        Intent intent = new Intent(Intent.ACTION_VIEW)
+                .setType("image/*")
+                .putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        startActivity(Intent.createChooser(intent, "Open with"));
+    }
+
+    private boolean isJpegFile(String path) {
+        String lower = path.toLowerCase(Locale.US);
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return true;
+        try (FileInputStream fis = new FileInputStream(path)) {
+            return fis.read() == 0xFF && fis.read() == 0xD8;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private void refreshCurrentImage() {
+        if (pagerAdapter != null) pagerAdapter.notifyItemChanged(currentIndex);
+        updateForPosition(currentIndex);
+    }
+
+    private boolean isPngFile(String path) {
+        return path.toLowerCase(Locale.US).endsWith(".png");
+    }
+
+    static final int REQ_EDIT_IMAGE = 1401;
+
+    private void showEditMenu(int pos) {
+        if (pos < 0 || pos >= imagePaths.size()) return;
+        String path = imagePaths.get(pos);
+        boolean jpeg = isJpegFile(path);
+        if (!jpeg && !isPngFile(path)) {
+            showError("Only JPEG and PNG supported");
+            return;
+        }
+        ImageEditActivity.sessionPath = path;
+        startActivityForResult(new Intent(this, ImageEditActivity.class), REQ_EDIT_IMAGE);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_EDIT_IMAGE && resultCode == RESULT_OK) {
+            refreshCurrentImage();
+        }
+    }
+
+    private void checkNativeTools() {
+        ProgressManager pm = new ProgressManager(this, true).show();
+        new Thread(() -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append(NativeToolManager.diagnoseExec(ImageViewerActivity.this));
+            sb.append("ABI: ").append(NativeToolManager.deviceAbi()).append("\n");
+            File pack = new File(getFilesDir(), "native/native-" + NativeToolManager.deviceAbi());
+            sb.append("Pack dir: ").append(pack.isDirectory() ? "present" : "missing").append("\n");
+            try {
+                File nativeLibDir = new File(getApplicationInfo().nativeLibraryDir);
+                String[] bundled = nativeLibDir.list((dir, name) ->
+                        name.equals("libperl.so") || name.equals("libjpegtran.so") || name.startsWith("libperl_xs_"));
+                sb.append("Bundled tools: ");
+                if (bundled == null || bundled.length == 0) sb.append("none\n");
+                else {
+                    for (int i = 0; i < bundled.length; i++) {
+                        if (i > 0) sb.append(", ");
+                        sb.append(bundled[i]);
+                    }
+                    sb.append("\n");
+                }
+            } catch (Exception e) {
+                sb.append("Bundled tools: error ").append(e.getMessage()).append("\n");
+            }
+            File jpegtran = NativeToolManager.jpegtranBinary(this);
+            sb.append("jpegtran: ").append(NativeToolManager.describeFile(jpegtran)).append("\n");
+            if (jpegtran.isFile()) {
+                try {
+                    System.load(jpegtran.getAbsolutePath());
+                    sb.append("System.load probe: LOADED\n");
+                } catch (Throwable t) {
+                    sb.append("System.load probe: FAILED ").append(t.getMessage()).append("\n");
+                }
+            }
+            if (jpegtran.isFile()) {
+                try {
+                    List<String> cmd = new ArrayList<>();
+                    cmd.add(jpegtran.getAbsolutePath());
+                    Process process = new ProcessBuilder(cmd).redirectErrorStream(true).start();
+                    StringBuilder out = new StringBuilder();
+                    try (BufferedReader br = new BufferedReader(
+                            new InputStreamReader(process.getInputStream()))) {
+                        char[] buf = new char[2048];
+                        int n;
+                        while ((n = br.read(buf)) != -1 && out.length() < 2048) out.append(buf, 0, n);
+                    }
+                    process.waitFor();
+                    String firstLine = out.length() == 0 ? "(no output)" : out.toString().split("\n")[0];
+                    sb.append("jpegtran exec: OK (").append(firstLine.trim()).append(")\n");
+                } catch (Exception e) {
+                    sb.append("jpegtran exec: FAILED ").append(e.getMessage()).append("\n");
+                }
+            }
+            File jniLib = new File(getFilesDir(), "native/" + "native-" + NativeToolManager.deviceAbi() + "/lib/libjpegtran_jni.so");
+            sb.append("jni lib: ").append(NativeToolManager.describeFile(jniLib)).append("\n");
+            if (jniLib.isFile()) {
+                try {
+                    if (JpegtranJni.load(jniLib.getAbsolutePath())) {
+                        sb.append("JNI load probe: LOADED\n");
+                    } else {
+                        sb.append("JNI load probe: FAILED\n");
+                    }
+                } catch (Throwable t) {
+                    sb.append("JNI load probe: FAILED ").append(t.getMessage()).append("\n");
+                }
+            }
+            pm.dismiss();
+            String report = sb.toString();
+            runOnUiThread(() -> {
+                TextView text = new TextView(this);
+                text.setTextSize(13);
+                text.setTypeface(Typeface.MONOSPACE);
+                text.setTextIsSelectable(true);
+                int pad = dp(12);
+                text.setPadding(pad, pad, pad, pad);
+                text.setText(report.trim());
+                ScrollView scroll = new ScrollView(this);
+                scroll.addView(text);
+                new MaterialAlertDialogBuilder(this)
+                        .setTitle(getString(R.string.native_required))
+                        .setView(scroll)
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show();
+            });
+        }).start();
+    }
+
+
+
 
     private void showError(String message) {
         Extensions.showMessage(this, message);
