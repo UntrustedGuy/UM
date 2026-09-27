@@ -40,6 +40,7 @@ import java.util.Map;
 
 import untrusted.manager.um.ui.UiFields;
 import untrusted.manager.um.patcher.PatcherActivity;
+import untrusted.manager.um.gameanalysis.GameAnalysisActivity;
 
 public class ToolsHubActivity extends AppCompatActivity {
     private RecyclerView grid;
@@ -131,6 +132,9 @@ public class ToolsHubActivity extends AppCompatActivity {
     private void openTool(ToolRegistry.ToolItem item) {
         if ("patcher".equals(item.id())) {
             startActivity(new Intent(this, PatcherActivity.class));
+        } else if ("il2cpp".equals(item.id()) || "metadata".equals(item.id()) || "gameanalyzer".equals(item.id())
+                || "encryption".equals(item.id()) || "gamemodding".equals(item.id())) {
+            startActivity(new Intent(this, GameAnalysisActivity.class).putExtra("mode", item.id()));
         } else if ("wifimanager".equals(item.id())) {
             startActivity(new Intent(this, WifiManagerActivity.class));
         } else if ("storagemanager".equals(item.id())) {

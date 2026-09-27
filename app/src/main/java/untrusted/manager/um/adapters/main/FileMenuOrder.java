@@ -36,12 +36,17 @@ public final class FileMenuOrder {
     public static final String BATCH_CROP = "batch_crop";
     public static final String BATCH_EXIF = "batch_exif";
     public static final String BATCH_STRIP_META = "batch_strip_meta";
+    public static final String GAME_ANALYZER = "game_analyzer";
+    public static final String IL2CPP = "il2cpp";
+    public static final String METADATA = "metadata";
+    public static final String GAME_ENCRYPTION = "game_encryption";
+    public static final String GAME_MODDING = "game_modding";
 
     public static final String[] DEFAULT_ORDER = {
             COPY, MOVE, RENAME, DELETE, COMPRESS, PROPERTIES, SHARE, OPEN_WITH,
             BOOKMARK, CMD, CHECK, EXTRACT, BATCH_SIGN, BATCH_OPT, BATCH_INSTALL,
             CMP_ZIP, CMP_ARSC, CMP_TEXT, CMP_HASH, CMP_APK,
-            BATCH_CROP, BATCH_EXIF, BATCH_STRIP_META
+            BATCH_CROP, BATCH_EXIF, BATCH_STRIP_META, GAME_ANALYZER, IL2CPP, METADATA, GAME_ENCRYPTION, GAME_MODDING
     };
 
     private FileMenuOrder() {
@@ -133,6 +138,11 @@ public final class FileMenuOrder {
             case BATCH_CROP -> context.getString(R.string.crop_images);
             case BATCH_EXIF -> context.getString(R.string.set_exif_tags);
             case BATCH_STRIP_META -> context.getString(R.string.remove_metadata);
+            case GAME_ANALYZER -> "Game Analyzer";
+            case IL2CPP -> "IL2CPP Dumper";
+            case METADATA -> "Global Metadata";
+            case GAME_ENCRYPTION -> "Game Encryption";
+            case GAME_MODDING -> "Game Modding Toolkit";
             default -> id;
         };
     }
@@ -157,6 +167,10 @@ public final class FileMenuOrder {
             case BATCH_CROP -> R.drawable.edit_24px;
             case BATCH_EXIF -> R.drawable.baseline_text_snippet_24;
             case BATCH_STRIP_META -> R.drawable.baseline_delete_24;
+            case GAME_ANALYZER, IL2CPP -> R.drawable.ic_inspect;
+            case METADATA -> R.drawable.baseline_info_24;
+            case GAME_ENCRYPTION -> R.drawable.lock_24px;
+            case GAME_MODDING -> R.drawable.ic_inspect;
             default -> 0;
         };
     }

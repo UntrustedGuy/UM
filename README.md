@@ -294,3 +294,16 @@ The original TODO items have been implemented or integrated into the current cod
 * APK optimization: batch and deep optimization are integrated through ApkOptimizer and ApkDeepOptimizer.
 
 The app also records asynchronous crash, lag, network and operational diagnostics under `/storage/emulated/0/Untrusted Manager/logs`.
+
+## Game Analysis & Modding
+
+Game analysis is integrated into the main Tools Kit and file context menu; it is not a separate application.
+
+* **Game Analyzer** accepts APK/XAPK/APKM/AAB/ZIP files and automatically locates `libil2cpp.so` and `global-metadata.dat`, including nested APKs.
+* **IL2CPP Dumper** parses the standard IL2CPP metadata format, generates a metadata-backed `dump.cs`, exports the metadata string table/layout, and analyzes the matching ELF native library. A supplied memory-dumped native library or metadata file can be analyzed the same way.
+* **Global Metadata** validates supported metadata versions and safely recovers standard metadata wrapped in a file envelope or simple repeating XOR transformation when the recovered header is structurally valid. It never fabricates a dump when the representation cannot be validated.
+* **Game Encryption** reports standard metadata/ELF signatures, simple transformations, entropy and protected/non-standard representations. Arbitrary game-specific encryption is not treated as universally solvable.
+* **Game Modding Toolkit** links to the existing APK Patcher, APK Extractor and Hex Editor and keeps their output/logging inside UM.
+* Results are written to `/storage/emulated/0/Untrusted Manager/Dump/` in timestamped directories with SHA-256 hashes and an `analysis_report.txt`.
+
+The IL2CPP metadata implementation follows the public version-gated structures used by open-source projects such as Perfare/Il2CppDumper. Archive/envelope handling is informed by modern open-source IL2CPP dumpers, while runtime-decrypted metadata is treated as an input that must first be obtained from the target process; UM's static analyzer does not inject into processes or disable anti-cheat, anti-debugging, licensing or integrity mechanisms.

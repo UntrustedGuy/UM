@@ -89,6 +89,7 @@ import untrusted.manager.um.listeners.SwipeTouchListener;
 import untrusted.manager.um.ui.UIHelper;
 import untrusted.manager.um.ui.activities.CompareTextActivity;
 import untrusted.manager.um.ui.activities.HexEditorActivity;
+import untrusted.manager.um.gameanalysis.GameAnalysisActivity;
 import untrusted.manager.um.ui.activities.TextEditorActivity;
 import untrusted.manager.um.ui.dialogs.CompareArscDialog;
 import untrusted.manager.um.ui.dialogs.CompareZipDialog;
@@ -330,6 +331,24 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                 if (!multi && !isInZip && !file.isDirectory() && ArchiveUtil.isSupportedArchive(fileName)) {
                     visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.EXTRACT, FileMenuOrder.labelFor(context, FileMenuOrder.EXTRACT, direction)));
                 }
+                if (!multi && !isInZip && file != null && file.isFile()) {
+                    String lowerGameName = fileName.toLowerCase(Locale.ENGLISH);
+                    if (isGameArchiveName(lowerGameName)) {
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_ANALYZER, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_ANALYZER, direction)));
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_ENCRYPTION, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_ENCRYPTION, direction)));
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_MODDING, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_MODDING, direction)));
+                    } else if (lowerGameName.equals("global-metadata.dat") || lowerGameName.endsWith("global-metadata.dat")) {
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.METADATA, FileMenuOrder.labelFor(context, FileMenuOrder.METADATA, direction)));
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.IL2CPP, FileMenuOrder.labelFor(context, FileMenuOrder.IL2CPP, direction)));
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_ENCRYPTION, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_ENCRYPTION, direction)));
+                    } else if (lowerGameName.endsWith("libil2cpp.so")) {
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.IL2CPP, FileMenuOrder.labelFor(context, FileMenuOrder.IL2CPP, direction)));
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_ENCRYPTION, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_ENCRYPTION, direction)));
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_MODDING, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_MODDING, direction)));
+                    } else if (lowerGameName.endsWith(".so") || lowerGameName.endsWith(".dll") || lowerGameName.endsWith(".dylib")) {
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_MODDING, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_MODDING, direction)));
+                    }
+                }
 
                 RecyclerView.Adapter a = ((RecyclerView) context.findViewById(pane1 ? R.id.listViewPane2 : R.id.listViewPane1)).getAdapter();
                 Object compareFile1 = null;
@@ -400,6 +419,21 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                     try {
                         String actionId = itemIds[position1];
                         switch (actionId) {
+                            case FileMenuOrder.GAME_ANALYZER:
+                                openGameAnalysis("analyzer", file);
+                                return;
+                            case FileMenuOrder.IL2CPP:
+                                openGameAnalysis("il2cpp", file);
+                                return;
+                            case FileMenuOrder.METADATA:
+                                openGameAnalysis("metadata", file);
+                                return;
+                            case FileMenuOrder.GAME_ENCRYPTION:
+                                openGameAnalysis("encryption", file);
+                                return;
+                            case FileMenuOrder.GAME_MODDING:
+                                openGameAnalysis("modding", file);
+                                return;
                             case FileMenuOrder.CMP_TEXT:
                                 context.startActivity(new Intent(context, CompareTextActivity.class)
                                         .putExtra("file1", finalCompareFile1 instanceof File ? ((File) finalCompareFile1).getAbsolutePath() : ((ZipEntryInfo) finalCompareFile1).getFullPath())
@@ -1517,6 +1551,17 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
         withReadableCopy(file, readable ->
                 context.startActivity(rootAwareEditorIntent(readable, file)
                         .putExtra("path", readable.getAbsolutePath())));
+    }
+
+    private boolean isGameArchiveName(String name) {
+        return name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apkm") || name.endsWith(".apks") || name.endsWith(".aab");
+    }
+
+    private void openGameAnalysis(String mode, File file) {
+        if (file == null || !file.isFile()) return;
+        context.startActivity(new Intent(context, GameAnalysisActivity.class)
+                .putExtra("mode", mode)
+                .putExtra("input_path", file.getAbsolutePath()));
     }
 
     private void openHexEditorRootAware(File file) {

@@ -8,6 +8,7 @@ import java.util.List;
 public class ToolRegistry {
     public static final String CAT_NETWORK = "Wi-Fi & Network";
     public static final String CAT_STORAGE = "Storage & Apps";
+    public static final String CAT_GAME = "Game Analysis & Modding";
     public static final String CAT_DEVICE = "Device & Hardware";
     public static final String CAT_MATH = "Math & Finance";
     public static final String CAT_TIME = "Time & Productivity";
@@ -32,6 +33,11 @@ public class ToolRegistry {
         } catch (Exception ignored) {
         }
         tools.add(new ToolItem("patcher", "APK Patcher", "APK Editor patches and LPZIP packages", resId(context, "apk_document_24px", pkg), CAT_STORAGE));
+        tools.add(new ToolItem("gameanalyzer", "Game Analyzer", "Detect APK, IL2CPP, metadata and native game files", resId(context, "apk_document_24px", pkg), CAT_GAME));
+        tools.add(new ToolItem("il2cpp", "IL2CPP Dumper", "Dump matching libil2cpp.so + global-metadata.dat", resId(context, "ic_inspect", pkg), CAT_GAME));
+        tools.add(new ToolItem("metadata", "Global Metadata", "Validate and inspect global-metadata.dat", resId(context, "baseline_info_24", pkg), CAT_GAME));
+        tools.add(new ToolItem("encryption", "Game Encryption", "Inspect protected and transformed game data", resId(context, "lock_24px", pkg), CAT_GAME));
+        tools.add(new ToolItem("gamemodding", "Game Modding Toolkit", "APK, DEX, native and IL2CPP analysis tools", resId(context, "ic_inspect", pkg), CAT_GAME));
         tools.add(new ToolItem("wifimanager", "Wi-Fi Manager", "DNS profiles passwords usage", resId(context, "wifi_24px", pkg), CAT_NETWORK));
         tools.add(new ToolItem("connectivity", "Connectivity Hub", "Network data Bluetooth NFC", resId(context, "wifi_24px", pkg), CAT_NETWORK));
         tools.add(new ToolItem("qrgen", "QR Generator", "Text URL Wi-Fi to QR", resId(context, "qr_24px", pkg), CAT_NETWORK));
@@ -95,7 +101,7 @@ public class ToolRegistry {
         return tools;
     }
     public static String[] categoriesInOrder() {
-        return new String[]{CAT_NETWORK, CAT_STORAGE, CAT_DEVICE, CAT_MATH, CAT_TIME, CAT_TEXT, CAT_MEDIA, CAT_RAND};
+        return new String[]{CAT_NETWORK, CAT_STORAGE, CAT_GAME, CAT_DEVICE, CAT_MATH, CAT_TIME, CAT_TEXT, CAT_MEDIA, CAT_RAND};
     }
     private static int resId(Context context, String name, int fallback) {
         try {
