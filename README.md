@@ -6,9 +6,9 @@ A free dual pane, Material Design file manager for Android with focus on APKs an
   <img src="./images/Ss1.png" width="200" alt="Untrusted Manager screenshot"> <img src="./images/Ss2.png" width="200" alt="Untrusted Manager screenshot">
 </p>
 
-[![GitHub Release](https://img.shields.io/github/v/release/AbdurazaaqMohammed/MP-Manager?style=for-the-badge&logo=github&label=Download&color=purple)](https://github.com/AbdurazaaqMohammed/MP-Manager/releases)
+[![GitHub Release](https://img.shields.io/github/v/release/AbdurazaaqMohammed/MP-Manager?style=for-the-badge&logo=github&label=Download&color=purple)](https://github.com/UntrustedGuy/UM/releases)
 
-[![Telegram Discussion](https://img.shields.io/badge/Telegram%20Discussion-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/MP_Manager_Discussion)
+[![Telegram Discussion](https://img.shields.io/badge/Telegram%20Discussion-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://github.com/UntrustedGuy/UM/discussions)
 ## Features
 
 ### File Manager
@@ -285,10 +285,12 @@ Choose between system, light, dark and black theme all with Material theme and D
 </p>
 </details>
 
-# Todo
+# Todo / Status
 
-This app still has lots of work to do and probably many bugs to fix but you can try it
+The original TODO items have been implemented or integrated into the current codebase:
 
-* Add patcher to support multiple patch formats like APK Editor and Lucky Patcher
-* Add root and Shizuku file management
-* Add improvements to APK optimization
+* APK Patcher: integrated safe APK Editor `patch.txt` support for file/text patch rules and LPZIP package import; executable DEX patch rules are rejected explicitly rather than producing an unsafe result.
+* Root and Shizuku file management: integrated through the existing AccessManager/RootManager/Shizuku backend.
+* APK optimization: batch and deep optimization are integrated through ApkOptimizer and ApkDeepOptimizer.
+
+The app also records asynchronous crash, lag, network and operational diagnostics under `/storage/emulated/0/Untrusted Manager/logs`.

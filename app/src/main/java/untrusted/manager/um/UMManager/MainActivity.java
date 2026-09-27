@@ -1940,6 +1940,7 @@ public class MainActivity extends AppCompatActivity {
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
         setTheme(theme = settings.getInt("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light));
         super.onCreate(savedInstanceState);
+        untrusted.manager.um.utils.AppDiagnostics.install(this);
         ShizukuFileOps.init(this);
         ShizukuShell.warmUp(this);
         DynamicColors.applyToActivitiesIfAvailable(getApplication());

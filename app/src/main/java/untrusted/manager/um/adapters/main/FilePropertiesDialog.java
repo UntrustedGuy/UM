@@ -99,6 +99,13 @@ public class FilePropertiesDialog {
         addPropertyRow(propRows, context.getString(R.string.name), displayName);
         if (!isInZip && file.getParentFile() != null)
             addPropertyRow(propRows, context.getString(R.string.parent), file.getParentFile().getName());
+        if (!multi) {
+            String pathValue = isInZip
+                    ? entry.getZipFile().getAbsolutePath() + "!" + entry.getFullPath()
+                    : file.getAbsolutePath();
+            TextView pathView = addPropertyRow(propRows, context.getString(R.string.path), pathValue);
+            pathView.setSingleLine(false);
+        }
         addPropertyRow(propRows, context.getString(R.string.type), typeStr);
 
         long size = 0;

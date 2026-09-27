@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 
 import untrusted.manager.um.ui.UiFields;
+import untrusted.manager.um.patcher.PatcherActivity;
 
 public class ToolsHubActivity extends AppCompatActivity {
     private RecyclerView grid;
@@ -128,7 +129,9 @@ public class ToolsHubActivity extends AppCompatActivity {
         return rows;
     }
     private void openTool(ToolRegistry.ToolItem item) {
-        if ("wifimanager".equals(item.id())) {
+        if ("patcher".equals(item.id())) {
+            startActivity(new Intent(this, PatcherActivity.class));
+        } else if ("wifimanager".equals(item.id())) {
             startActivity(new Intent(this, WifiManagerActivity.class));
         } else if ("storagemanager".equals(item.id())) {
             startActivity(new Intent(this, StorageManagerActivity.class));

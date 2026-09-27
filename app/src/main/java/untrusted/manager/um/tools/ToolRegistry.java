@@ -31,6 +31,7 @@ public class ToolRegistry {
             pkg = context.getResources().getIdentifier("hex_keyboard_24px", "drawable", context.getPackageName());
         } catch (Exception ignored) {
         }
+        tools.add(new ToolItem("patcher", "APK Patcher", "APK Editor patches and LPZIP packages", resId(context, "apk_document_24px", pkg), CAT_STORAGE));
         tools.add(new ToolItem("wifimanager", "Wi-Fi Manager", "DNS profiles passwords usage", resId(context, "wifi_24px", pkg), CAT_NETWORK));
         tools.add(new ToolItem("connectivity", "Connectivity Hub", "Network data Bluetooth NFC", resId(context, "wifi_24px", pkg), CAT_NETWORK));
         tools.add(new ToolItem("qrgen", "QR Generator", "Text URL Wi-Fi to QR", resId(context, "qr_24px", pkg), CAT_NETWORK));

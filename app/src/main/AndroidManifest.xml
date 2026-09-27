@@ -290,5 +290,6 @@
                    android:name="android.accessibilityservice"
                    android:resource="@xml/accessibility_service" />
            </service>
-       </application>
+           <activity android:name="untrusted.manager.um.patcher.PatcherActivity" android:exported="false" android:label="APK Patcher" />
+    </application>
 </manifest>

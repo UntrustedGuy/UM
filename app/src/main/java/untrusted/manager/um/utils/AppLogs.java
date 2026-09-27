@@ -101,4 +101,14 @@ public class AppLogs {
             }
         });
     }
+
+    /** Asynchronously records operational diagnostics without blocking UI work. */
+    public static void writeEvent(String category, String message) {
+        DiagnosticWriter.write(category, message, null);
+    }
+
+    public static void writeEvent(String category, String message, Throwable error) {
+        DiagnosticWriter.write(category, message, error);
+    }
+
 }
