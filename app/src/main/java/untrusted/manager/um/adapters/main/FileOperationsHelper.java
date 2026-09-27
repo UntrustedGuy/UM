@@ -799,6 +799,16 @@ public class FileOperationsHelper {
         }
     }
 
+    // Call after writing a modified dex back into zipFile so the next dex-editor
+    // open re-extracts fresh bytes instead of serving the stale pre-extracted
+    // session still sitting in dexPreExtracts (fixes edits appearing to "not save").
+    public static synchronized void invalidateDexCache(File zipFile) {
+        if (zipFile == null) return;
+        String key = zipFile.getAbsolutePath();
+        DexPreExtract existing = dexPreExtracts.remove(key);
+        if (existing != null) deleteQuietly(existing.outputDir);
+    }
+
     private static synchronized DexPreExtract preExtractAllDex(Context ctx, File zipFile, boolean force) {
         String key = zipFile.getAbsolutePath();
         DexPreExtract existing = dexPreExtracts.get(key);

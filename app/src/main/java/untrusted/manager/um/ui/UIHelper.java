@@ -62,7 +62,7 @@ public class UIHelper {
         } catch (PackageManager.NameNotFoundException ignored) {
         }
 
-        aboutView.findViewById(R.id.aboutGithub).setOnClickListener(v -> context.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/AbdurazaaqMohammed/MP-Manager"))));
+        aboutView.findViewById(R.id.aboutGithub).setOnClickListener(v -> context.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/UntrustedGuy/UM"))));
         aboutView.findViewById(R.id.aboutTg).setOnClickListener(v -> context.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/MP_Manager_Discussion"))));
 
         List<AboutLibrary> libraries = Arrays.asList(

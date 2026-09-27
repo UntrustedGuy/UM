@@ -454,7 +454,7 @@
     <string name="available_tl">Available system translations</string>
     <string name="termux_no">Warning: Termux was not found on the device</string>
     <string name="get_termux">Download Termux Now</string>
-    <string name="exit_directly">Exit Directly</string>
+    <string name="exit_directly">Discard Changes and Exit</string>
     <string name="compile_save_prompt">Do you want to compile and save the dex files?</string>
     <string name="edit_string">Edit string</string>
     <string name="unsaved_changes">Unsaved changes</string>

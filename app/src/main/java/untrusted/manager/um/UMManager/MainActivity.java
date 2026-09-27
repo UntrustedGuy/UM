@@ -171,6 +171,7 @@ import untrusted.manager.um.adapters.HistoryAdapter;
 import untrusted.manager.um.adapters.ZipEntryInfo;
 import untrusted.manager.um.adapters.main.FileMenuCustomizer;
 import untrusted.manager.um.adapters.main.FileMenuOrder;
+import untrusted.manager.um.adapters.main.FileOperationsHelper;
 import untrusted.manager.um.adapters.main.MainFilesArrayAdapter;
 import untrusted.manager.um.player.ImageViewerActivity;
 import untrusted.manager.um.player.MediaPlayerActivity;
@@ -642,6 +643,9 @@ public class MainActivity extends AppCompatActivity {
                                             File[] dexFiles = folder == null ? null : folder.listFiles((dir, name1) -> name1.endsWith(".dex"));
                                             if (dexFiles == null || dexFiles.length == 0) throw new IOException("No dex files found");
                                             zf.addFiles(Arrays.asList(dexFiles));
+                                            // The dex editor's pre-extraction cache for this zip is now stale -
+                                            // drop it so the next open re-reads the bytes we just wrote.
+                                            FileOperationsHelper.invalidateDexCache(zipFile);
                                         } else {
                                             ZipParameters zp = new ZipParameters();
                                             boolean store = modifiedFileName.equals("AndroidManifest.xml") || modifiedFileName.equals("resources.arsc");

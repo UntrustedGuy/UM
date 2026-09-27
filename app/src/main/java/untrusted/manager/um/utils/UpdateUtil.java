@@ -110,7 +110,7 @@ public class UpdateUtil {
                                     })
                                     .setNegativeButton("Go to GitHub Release", (dialog, which) -> context
                                             .startActivity(new Intent(Intent.ACTION_VIEW).setData(Uri.parse(
-                                                    "https://github.com/AbdurazaaqMohammed/MP-Manager/releases/latest"))))
+                                                    "https://github.com/UntrustedGuy/UM/releases/latest"))))
                                     .setNeutralButton(rss.getString(android.R.string.cancel), null).create();
                             alertDialog.setOnDismissListener(dialog -> context.lastVerChecked = finalLatestVersion);
                             alertDialog.show();
@@ -129,7 +129,7 @@ public class UpdateUtil {
 
     @NonNull
     private static HttpURLConnection getHttpURLConnection() throws IOException {
-        HttpURLConnection conn = (HttpURLConnection) new URL("https://api.github.com/repos/AbdurazaaqMohammed/MP-Manager/releases").openConnection();
+        HttpURLConnection conn = (HttpURLConnection) new URL("https://api.github.com/repos/UntrustedGuy/UM/releases").openConnection();
         conn.setRequestMethod("GET");
         conn.setRequestProperty("User-Agent",
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0");
