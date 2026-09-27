@@ -41,6 +41,15 @@ import untrusted.manager.um.utils.FastDexPatch;
  * invalidates an existing APK v2/v3/v4 signature; callers must sign before install.
  */
 public final class PatchEngine {
+    private static String readUtf8(java.nio.file.Path path) throws java.io.IOException {
+        return new String(java.nio.file.Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static void writeUtf8(java.nio.file.Path path, String content) throws java.io.IOException {
+        java.nio.file.Files.write(path, content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+
     public record Result(boolean success, String message, File output) {}
 
     private static final int MAX_PATCH_ARCHIVE_BYTES = 256 * 1024 * 1024;
@@ -81,7 +90,7 @@ public final class PatchEngine {
             // Lucky Patcher archives are also commonly named patch.txt. Prefer
             // their byte-pattern grammar when the file contains LP sections and
             // no APK Editor rule headers; otherwise retain normal patch.txt semantics.
-            String patchText = Files.readString(patchTxt.toPath(), StandardCharsets.UTF_8);
+            String patchText = readUtf8(patchTxt.toPath(), StandardCharsets.UTF_8);
             if (looksLikeLuckyPatcher(patchText) && !looksLikeApkEditorPatch(patchText)) {
                 boolean changed = applyLuckyPatcher(apkWork, patchTxt);
                 if (!changed) return failAndCleanup(work, "Lucky Patcher patch did not change the selected APK");
@@ -269,7 +278,7 @@ public final class PatchEngine {
         String repl = expand(r.get("REPLACE"), vars);
         boolean changed = false;
         for (File f : files) {
-            String text = Files.readString(f.toPath(), StandardCharsets.UTF_8);
+            String text = readUtf8(f.toPath(), StandardCharsets.UTF_8);
             String n;
             if (bool(r.get("REGEX"))) {
                 Matcher m = Pattern.compile(match, Pattern.MULTILINE | Pattern.DOTALL).matcher(text);
@@ -278,7 +287,7 @@ public final class PatchEngine {
                 n = text.replace(match, repl);
             }
             if (!n.equals(text)) {
-                Files.writeString(f.toPath(), n, StandardCharsets.UTF_8);
+                writeUtf8(f.toPath(), n, StandardCharsets.UTF_8);
                 changed = true;
             }
         }
@@ -290,7 +299,7 @@ public final class PatchEngine {
         String match = expand(r.get("MATCH"), vars);
         Pattern p = bool(r.get("REGEX")) ? Pattern.compile(match, Pattern.MULTILINE | Pattern.DOTALL) : Pattern.compile(Pattern.quote(match), Pattern.MULTILINE | Pattern.DOTALL);
         for (File f : files) {
-            Matcher m = p.matcher(Files.readString(f.toPath(), StandardCharsets.UTF_8));
+            Matcher m = p.matcher(readUtf8(f.toPath(), StandardCharsets.UTF_8));
             if (!m.find()) continue;
             for (String line : r.get("ASSIGN").split("\\r?\\n")) {
                 int eq = line.indexOf('=');
@@ -579,12 +588,12 @@ public final class PatchEngine {
 
     private static boolean matches(File f, String match, boolean regex) throws IOException {
         if (!f.isFile()) return false;
-        String t = Files.readString(f.toPath(), StandardCharsets.UTF_8);
+        String t = readUtf8(f.toPath(), StandardCharsets.UTF_8);
         return regex ? Pattern.compile(match, Pattern.MULTILINE | Pattern.DOTALL).matcher(t).find() : t.contains(match);
     }
 
     private static boolean applyLuckyPatcher(File apkRoot, File patchFile) throws IOException {
-        String text = Files.readString(patchFile.toPath(), StandardCharsets.UTF_8);
+        String text = readUtf8(patchFile.toPath(), StandardCharsets.UTF_8);
         Matcher sections = Pattern.compile("(?m)^\\s*\\[(BEGIN|PACKAGE|CLASSES|ODEX|LIB|END)\\]\\s*$").matcher(text);
         List<Section> parsed = new ArrayList<>();
         String current = null;
@@ -831,7 +840,7 @@ public final class PatchEngine {
         for (File f : fs) {
             if (f.isFile() && f.getName().toLowerCase(Locale.US).endsWith(".txt")) {
                 try {
-                    String s = Files.readString(f.toPath(), StandardCharsets.UTF_8);
+                    String s = readUtf8(f.toPath(), StandardCharsets.UTF_8);
                     if (s.contains("[CLASSES]") || s.contains("[LIB]") || s.contains("[ODEX]")) return f;
                 } catch (Exception ignored) {}
             }
