@@ -254,7 +254,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
 
         convertView.setBackgroundColor(selectedPositions.contains(position) ? Color.DKGRAY : Color.TRANSPARENT);
         int finalPosition = position;
-        new Thread(() -> {
+        {
             View.OnClickListener originalClickListener;
             if(isInZip && finalPosition == 0 && entry.getFullPath() == null) {
                 originalClickListener = v -> context.loadFolderInPane(entry.getZipFile().getParentFile(), pane1);
@@ -518,7 +518,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                                         } else fileOps.copyAsync(item);
                                         break;
                                     case FileMenuOrder.MOVE:
-                                        if (context.pane1Folder == context.pane2Folder) {
+                                        if (sameFolder(context.pane1Folder, context.pane2Folder)) {
                                             break;
                                         }
                                         fileOps.moveAsync(item);
@@ -567,20 +567,27 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                 }
                 return true;
             };
-            context.handler.post(() -> {
-                int currentPos = bindHolder.getBindingAdapterPosition();
-                if (currentPos < 0 || currentPos >= values.length) return;
-                if (values[currentPos] != boundItem) return;
-                convertView.setOnTouchListener(new SwipeTouchListener(
-                        context,
-                        originalClickListener,
-                        originalLongClickListener,
-                        finalPosition,
-                        MainFilesArrayAdapter.this,
-                        pane1 ? 1 : 2));
-            });
-        }).start();
+            int currentPos = bindHolder.getBindingAdapterPosition();
+            if (currentPos < 0 || currentPos >= values.length || values[currentPos] != boundItem) return;
+            convertView.setOnTouchListener(new SwipeTouchListener(
+                    context,
+                    originalClickListener,
+                    originalLongClickListener,
+                    finalPosition,
+                    MainFilesArrayAdapter.this,
+                    pane1 ? 1 : 2));
+        }
 
+    }
+
+    private static boolean sameFolder(File a, File b) {
+        if (a == b) return true;
+        if (a == null || b == null) return false;
+        try {
+            return a.getCanonicalFile().equals(b.getCanonicalFile());
+        } catch (Exception ignored) {
+            return a.getAbsoluteFile().equals(b.getAbsoluteFile());
+        }
     }
 
     public void openWithForFile(File file, String fileName) {

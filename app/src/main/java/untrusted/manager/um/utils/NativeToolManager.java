@@ -160,6 +160,12 @@ public class NativeToolManager {
     public static boolean loadJpegtranJni(Context context) {
         File lib = jpegtranJniLib(context);
         if (!lib.isFile()) return false;
+        // Android 17 (API 37) rejects System.load() for writable native libraries.
+        try {
+            lib.setReadable(true, false);
+            lib.setWritable(false, false);
+        } catch (Exception ignored) {
+        }
         return JpegtranJni.load(lib.getAbsolutePath());
     }
 
@@ -270,6 +276,14 @@ public class NativeToolManager {
                     dest.mkdirs();
                     unzip(tmp, dest);
                     chmodRecursive(dest);
+                    File jni = new File(dest, "lib/libjpegtran_jni.so");
+                    if (jni.isFile()) {
+                        try {
+                            jni.setReadable(true, false);
+                            jni.setWritable(false, false);
+                        } catch (Exception ignored) {
+                        }
+                    }
                     writeMarker(dest, version);
                     tmp.delete();
                 }

@@ -120,6 +120,7 @@ import com.lilincpp.github.libezftp.EZFtpServer;
 import com.lilincpp.github.libezftp.IEZFtpClient;
 import com.lilincpp.github.libezftp.IEZFtpServer;
 import com.lilincpp.github.libezftp.callback.OnEZFtpCallBack;
+import com.lilincpp.github.libezftp.callback.OnEZFtpDataTransferCallback;
 import com.lilincpp.github.libezftp.user.EZFtpUser;
 import com.lilincpp.github.libezftp.user.EZFtpUserPermission;
 import com.reandroid.apk.APKLogger;
@@ -321,6 +322,11 @@ public class MainActivity extends AppCompatActivity {
     private List<ZipEntryInfo> currentPane2ZipEntries;
     private String currentPane1Filter = "";
     private String currentPane2Filter = "";
+    private EditText filterBarView;
+    private boolean syncingFilter;
+    private final Runnable filterApplyRunnable = this::applyFilterToCurrentPane;
+    private int pane1LoadGeneration;
+    private int pane2LoadGeneration;
 
     private MiniPlayerDialog miniPlayerDialog;
     private MaterialAutoCompleteTextView profileSpinner;
@@ -540,6 +546,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_LOCAL_NETWORK) {
+            Runnable continuation = localNetworkContinuation;
+            localNetworkContinuation = null;
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED && continuation != null) {
+                continuation.run();
+            } else {
+                Extensions.showMessage(this, "Local network permission is required for FTP");
+            }
+            return;
+        }
         if (requestCode == 0) {
             if (doesNotHaveStoragePerm(this)) Extensions.showMessage(this, R.string.storage_perm_needed);
             else recreate();
@@ -1705,6 +1721,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private static final int REQ_LOCAL_NETWORK = 9100;
+    private Runnable localNetworkContinuation;
+
+    private void ensureLocalNetworkPermission(Runnable onGranted) {
+        if (Build.VERSION.SDK_INT < 37) {
+            if (onGranted != null) onGranted.run();
+            return;
+        }
+        final String permission = "android.permission.ACCESS_LOCAL_NETWORK";
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+            if (onGranted != null) onGranted.run();
+            return;
+        }
+        localNetworkContinuation = onGranted;
+        requestPermissions(new String[]{permission}, REQ_LOCAL_NETWORK);
+    }
+
     private void requestNotificationPermission(Runnable onResult) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             if (onResult != null) onResult.run();
@@ -2159,7 +2192,7 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
 
-        new Thread(() -> {
+        {
             TextView currentFolderView = findViewById(R.id.currentFolderPath);
             currentFolderView.setText(TextUtils.isEmpty(homeDir1Path) ? Environment.getExternalStorageDirectory().getPath() : homeDir1Path);
             currentFolderView.setOnLongClickListener(v -> {
@@ -2448,7 +2481,7 @@ public class MainActivity extends AppCompatActivity {
                     });
                 }
             });
-        }).start();
+        }
 
         String locate = getIntent() == null ? null : getIntent().getStringExtra("locatePath");
         handler.post(() -> {
@@ -2657,6 +2690,8 @@ public class MainActivity extends AppCompatActivity {
             loadZipFolderInPane(folder, "", pane1, addToHistory);
             return;
         }
+        final int requestId = pane1 ? ++pane1LoadGeneration : ++pane2LoadGeneration;
+        new Thread(() -> {
         boolean shizukuDir = ShizukuFile.isAndroidDataPath(folder);
         File[] files = null;
         String folderPath = folder.getAbsolutePath();
@@ -2671,7 +2706,7 @@ public class MainActivity extends AppCompatActivity {
             if (viaShizuku != null) files = viaShizuku;
         }
         if (files == null) {
-            if (shizukuDir) showShizukuGuideOnce(folder, pane1);
+            if (shizukuDir) handler.post(() -> showShizukuGuideOnce(folder, pane1));
             boolean elevated = AccessManager.fileOpsOn(this);
             if (!elevated) {
                 try {
@@ -2689,16 +2724,25 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             if (files == null) {
-                Extensions.showMessage(this, getString(R.string.open_folder_failed, folder.getName()));
+                handler.post(() -> Extensions.showMessage(this, getString(R.string.open_folder_failed, folder.getName())));
                 return;
             }
         }
+        Arrays.sort(files);
+        final File[] loadedFiles = files;
+        handler.post(() -> {
+            if (requestId != (pane1 ? pane1LoadGeneration : pane2LoadGeneration)) return;
+            applyLoadedFolderInPane(folder, pane1, addToHistory, loadedFiles);
+        });
+        }, "UM-FolderLoader").start();
+    }
+
+    private void applyLoadedFolderInPane(File folder, boolean pane1, boolean addToHistory, File[] files) {
         try {
             PreferenceManager.getDefaultSharedPreferences(this).edit()
                     .putString(pane1 ? "last_path_1" : "last_path_2", folder.getAbsolutePath()).apply();
         } catch (Exception ignored) {
         }
-        Arrays.sort(files);
         View buildButton = findViewById(R.id.build);
         boolean xml;
         boolean json = false;
@@ -2808,85 +2852,92 @@ public class MainActivity extends AppCompatActivity {
         // Fresh listing = no selection in this pane; sync the bottom bar if it's current.
         if ((pane1 ? lastPaneSelected == 1 : lastPaneSelected == 2)) setMultiSelectModeUI(false);
         updateNavigationButtons();
+
     }
 
     public void loadZipFolderInPane(File zipFile, String path, boolean pane1, boolean addToHistory) {
-        try {
-            List<ZipEntryInfo> entries = new ArrayList<>();
-            ZipEntryInfo parent = null;
-            HashSet<String> seenDirs = new HashSet<>() {
-            };
-            try (ZipFile zf = new ZipFile(zipFile)) {
-                String parentPath = TextUtils.isEmpty(path) ? "" : path;
-                if (!TextUtils.isEmpty(parentPath) && !parentPath.endsWith("/")) parentPath += "/";
-                if (TextUtils.isEmpty(path)) {
-                    entries.add(new ZipEntryInfo("..", null, true, 0L, 0L, zipFile));
-                } else {
-                    String parentDir = new File(path).getParent();
-                    if (parentDir == null) parentDir = "";
-                    String parentFull = parentDir.isEmpty() ? "" : parentDir.replaceAll("/+$","") + "/";
-                    parent = new ZipEntryInfo("..", parentFull, true, 0L, 0L, zipFile);
-                    entries.add(parent);
-                }
-
-                List<FileHeader> fhs = zf.getFileHeaders();
-                String prefix = parentPath; // already normalized with trailing slash if non-empty
-                for (FileHeader fh : fhs) {
-                    String entryPath = fh.getFileName().replace('\\','/');
-                    if (!entryPath.startsWith(prefix) || entryPath.equals(prefix)) continue;
-                    String rest = entryPath.substring(prefix.length()); // e.g., "subdir/file" or "file.txt" or "subdir/"
-                    // direct child if rest has no further '/'
-                    int nextSlash = rest.indexOf('/');
-                    if (nextSlash == -1) {
-                        // file directly inside current folder
-                        ZipEntryInfo info = new ZipEntryInfo(fh, zipFile, path);
-                        if (isNotHidden(info)) entries.add(info);
+        final int requestId = pane1 ? ++pane1LoadGeneration : ++pane2LoadGeneration;
+        new Thread(() -> {
+            try {
+                List<ZipEntryInfo> entries = new ArrayList<>();
+                ZipEntryInfo parent = null;
+                HashSet<String> seenDirs = new HashSet<>();
+                try (ZipFile zf = new ZipFile(zipFile)) {
+                    String parentPath = TextUtils.isEmpty(path) ? "" : path;
+                    if (!TextUtils.isEmpty(parentPath) && !parentPath.endsWith("/")) parentPath += "/";
+                    if (TextUtils.isEmpty(path)) {
+                        entries.add(new ZipEntryInfo("..", null, true, 0L, 0L, zipFile));
                     } else {
-                        // it's inside a subdirectory; we should add a single synthetic directory entry for that subdir
-                        String childDirName = rest.substring(0, nextSlash + 1); // include trailing slash
-                        String childFullPath = prefix + childDirName; // full path of the child dir
-                        // add only once: track seen dirs with a Set<String>
-                        if (seenDirs.add(childFullPath)) {
-                            FileHeader syntheticDir = new FileHeader();
-                            syntheticDir.setFileName(childFullPath);
-                            ZipEntryInfo info = new ZipEntryInfo(syntheticDir, zipFile, path); // or use new ctor
+                        String parentDir = new File(path).getParent();
+                        if (parentDir == null) parentDir = "";
+                        String parentFull = parentDir.isEmpty() ? "" : parentDir.replaceAll("/+$", "") + "/";
+                        parent = new ZipEntryInfo("..", parentFull, true, 0L, 0L, zipFile);
+                        entries.add(parent);
+                    }
+
+                    List<FileHeader> fhs = zf.getFileHeaders();
+                    String prefix = parentPath;
+                    for (FileHeader fh : fhs) {
+                        String entryPath = fh.getFileName().replace('\\','/');
+                        if (!entryPath.startsWith(prefix) || entryPath.equals(prefix)) continue;
+                        String rest = entryPath.substring(prefix.length());
+                        int nextSlash = rest.indexOf('/');
+                        if (nextSlash == -1) {
+                            ZipEntryInfo info = new ZipEntryInfo(fh, zipFile, path);
                             if (isNotHidden(info)) entries.add(info);
+                        } else {
+                            String childDirName = rest.substring(0, nextSlash + 1);
+                            String childFullPath = prefix + childDirName;
+                            if (seenDirs.add(childFullPath)) {
+                                FileHeader syntheticDir = new FileHeader();
+                                syntheticDir.setFileName(childFullPath);
+                                ZipEntryInfo info = new ZipEntryInfo(syntheticDir, zipFile, path);
+                                if (isNotHidden(info)) entries.add(info);
+                            }
                         }
                     }
                 }
+                sortZipEntries(entries, zipFile.getPath() + "!" + path);
+                final ZipEntryInfo finalParent = parent;
+                final List<ZipEntryInfo> finalEntries = entries;
+                handler.post(() -> {
+                    if (requestId != (pane1 ? pane1LoadGeneration : pane2LoadGeneration)) return;
+                    if (pane1) {
+                        currentPane1ZipEntries = finalEntries;
+                        pane1Folder = zipFile;
+                        if (addToHistory) pushNavigationHistory(true, new NavigationHistoryEntry(zipFile, true, path));
+                    } else {
+                        currentPane2ZipEntries = finalEntries;
+                        pane2Folder = zipFile;
+                        if (addToHistory) pushNavigationHistory(false, new NavigationHistoryEntry(zipFile, true, path));
+                    }
+                    setCurrentFolder(zipFile.getPath() + "!" + path, finalEntries);
+                    RecyclerView pane = findViewById(pane1 ? R.id.listViewPane1 : R.id.listViewPane2);
+                    boolean isCurrentPane = pane1 ? lastPaneSelected == 1 : lastPaneSelected == 2;
+                    pane.setAdapter(new MainFilesArrayAdapter(this, finalEntries.toArray(new ZipEntryInfo[0]), finalParent, pane1, true, path));
+                    if (isCurrentPane) setMultiSelectModeUI(false);
+                    updateNavigationButtons();
+                });
+            } catch (Exception e) {
+                handler.post(() -> {
+                    if (requestId == (pane1 ? pane1LoadGeneration : pane2LoadGeneration)) new ErrorUtil(this).showError(e);
+                });
             }
-            sortZipEntries(entries, zipFile.getPath() + "!" + path);
-            if (pane1) {
-                currentPane1ZipEntries = entries;
-                pane1Folder = zipFile;
-                if (addToHistory) {
-                    pushNavigationHistory(true, new NavigationHistoryEntry(zipFile, true, path));
-                }
-            } else {
-                currentPane2ZipEntries = entries;
-                pane2Folder = zipFile;
-                if (addToHistory) {
-                    pushNavigationHistory(false, new NavigationHistoryEntry(zipFile, true, path));
-                }
-            }
-
-            setCurrentFolder(zipFile.getPath() + "!" + path, entries);
-            RecyclerView pane = findViewById(pane1 ? R.id.listViewPane1 : R.id.listViewPane2);
-            ZipEntryInfo finalParent = parent;
-            boolean isCurrentPane = pane1 ? lastPaneSelected == 1 : lastPaneSelected == 2;
-            handler.post(() -> {
-                pane.setAdapter(new MainFilesArrayAdapter(this, entries.toArray(new ZipEntryInfo[0]), finalParent, pane1, true, path));
-                // Fresh listing = no selection in this pane; sync the bottom bar if it's current.
-                if (isCurrentPane) setMultiSelectModeUI(false);
-                updateNavigationButtons();
-            });
-        } catch (IOException e) {
-            new ErrorUtil(this).showError(e);
-        }
+        }, "UM-ZipLoader").start();
     }
 
     public void loadFolderInPane(File folder, boolean pane1) {
         loadFolderInPane(folder, pane1, true);
+    }
+
+    private static boolean sameFolder(File a, File b) {
+        if (a == b) return true;
+        if (a == null || b == null) return false;
+        try {
+            return a.getCanonicalFile().equals(b.getCanonicalFile());
+        } catch (IOException ignored) {
+            return a.getAbsoluteFile().equals(b.getAbsoluteFile());
+        }
     }
 
     private boolean canListViaRoot(File folder) {
@@ -3016,6 +3067,13 @@ public class MainActivity extends AppCompatActivity {
 
     public void setCurrentPane(int pane) {
         lastPaneSelected = pane;
+        if (filterBarView != null) {
+            String filter = pane == 1 ? currentPane1Filter : currentPane2Filter;
+            syncingFilter = true;
+            filterBarView.setText(filter);
+            filterBarView.setSelection(filterBarView.length());
+            syncingFilter = false;
+        }
         RecyclerView.Adapter a = getCurrentPane().getAdapter();
         boolean b = a instanceof MainFilesArrayAdapter;
         findViewById(R.id.syncPaneButton).setEnabled(b);
@@ -3045,6 +3103,7 @@ public class MainActivity extends AppCompatActivity {
             //CollectionsUtils.removeIf(files, (Predicate<Object>) o -> o instanceof ZipEntryInfo && ((ZipEntryInfo) o).isDirectory());
             int foldersCount = 0;
             for(Object item : files) {
+                if (item instanceof ZipEntryInfo && "..".equals(((ZipEntryInfo) item).getName())) continue;
                 if(item instanceof ZipEntryInfo && ((ZipEntryInfo) item).isDirectory()) foldersCount++;
                 else if (item instanceof File && ((File) item).isDirectory()) foldersCount++;
             }
@@ -3145,6 +3204,11 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (ftpStopReceiver != null) {
+            try { unregisterReceiver(ftpStopReceiver); } catch (Exception ignored) {}
+            ftpStopReceiver = null;
+        }
+
         try {
             File cache = getCacheDir();
             File[] kids = cache.listFiles();
@@ -4122,6 +4186,7 @@ public class MainActivity extends AppCompatActivity {
         TextInputLayout filterBox =
                 UiFields.box(this, "Filter...");
         EditText filterBar = UiFields.field(filterBox, 0);
+        filterBarView = filterBar;
         filterBox.setVisibility(View.GONE);
         filterBox.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         filterBar.setSingleLine(true);
@@ -4134,9 +4199,11 @@ public class MainActivity extends AppCompatActivity {
 
             @Override
             public void onTextChanged(CharSequence s, int start, int before, int count) {
-                if (lastPaneSelected == 1) currentPane1Filter = s.toString().toLowerCase();
-                else currentPane2Filter = s.toString().toLowerCase();
-                applyFilterToCurrentPane();
+                if (syncingFilter) return;
+                if (lastPaneSelected == 1) currentPane1Filter = s.toString().toLowerCase(Locale.ROOT);
+                else currentPane2Filter = s.toString().toLowerCase(Locale.ROOT);
+                handler.removeCallbacks(filterApplyRunnable);
+                handler.postDelayed(filterApplyRunnable, 120);
             }
 
             @Override
@@ -4160,7 +4227,7 @@ public class MainActivity extends AppCompatActivity {
                 return;
             List<ZipEntryInfo> filtered = new ArrayList<>();
             for (ZipEntryInfo e : entries) {
-                if (e.getName().toLowerCase().contains(filter) || e.getName().equals("..")) {
+                if (e.getName().toLowerCase(Locale.ROOT).contains(filter) || e.getName().equals("..")) {
                     filtered.add(e);
                 }
             }
@@ -4172,7 +4239,7 @@ public class MainActivity extends AppCompatActivity {
                 return;
             List<File> filtered = new ArrayList<>();
             for (File f : files) {
-                if (f.getName().toLowerCase().contains(filter) || f.getName().equals("..")) {
+                if (f.getName().toLowerCase(Locale.ROOT).contains(filter) || f.getName().equals("..")) {
                     filtered.add(f);
                 }
             }
@@ -4403,6 +4470,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public static IEZFtpServer ftpServer;
+    private BroadcastReceiver ftpStopReceiver;
 
     public interface ImagePickCallback {
         void onImagePicked(Uri uri);
@@ -4411,6 +4479,10 @@ public class MainActivity extends AppCompatActivity {
     public static ImagePickCallback overlayImageCallback;
 
     private void showFtpServerDialog() {
+        ensureLocalNetworkPermission(() -> showFtpServerDialogInternal());
+    }
+
+    private void showFtpServerDialogInternal() {
         View view = LayoutInflater.from(this).inflate(R.layout.dialog_ftp_server, null);
         FrameLayout container = view.findViewById(R.id.container);
         View header = LayoutInflater.from(this).inflate(R.layout.dialog_ftp_server_header, container, false);
@@ -4477,6 +4549,10 @@ public class MainActivity extends AppCompatActivity {
                     if(wasStarted) {
                         if(ftpServer != null) ftpServer.stop();
                         ftpServer = null;
+                        if (ftpStopReceiver != null) {
+                            try { unregisterReceiver(ftpStopReceiver); } catch (Exception ignored) {}
+                            ftpStopReceiver = null;
+                        }
                         stopService(serviceIntent);
                         Extensions.showMessage(MainActivity.this, rss.getString(R.string.ftp_server_stopped));
                     } else {
@@ -4513,7 +4589,7 @@ public class MainActivity extends AppCompatActivity {
                             e.printStackTrace();
                             Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_start_ftp_server, e.getMessage()));
                         }
-                        BroadcastReceiver ftpStopReceiver = new BroadcastReceiver() {
+                        ftpStopReceiver = new BroadcastReceiver() {
                             @Override
                             public void onReceive(Context context, Intent intent) {
                                 if (ad.isShowing()) {
@@ -4523,7 +4599,8 @@ public class MainActivity extends AppCompatActivity {
                                     passInput.setEnabled(true);
                                     header.setEnabled(true);
                                 }
-                                unregisterReceiver(this);
+                                try { unregisterReceiver(this); } catch (Exception ignored) {}
+                                if (ftpStopReceiver == this) ftpStopReceiver = null;
                             }
                         };
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -4534,6 +4611,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showFtpClientDialog() {
+        ensureLocalNetworkPermission(() -> showFtpClientDialogInternal());
+    }
+
+    private void showFtpClientDialogInternal() {
         View view = LayoutInflater.from(this).inflate(R.layout.dialog_ftp_client, null);
         EditText ipInput = view.findViewById(R.id.ipInput);
         EditText portInput = view.findViewById(R.id.portInput);
@@ -4656,7 +4737,32 @@ public class MainActivity extends AppCompatActivity {
         } else if (folder.isDirectory()) {
             fetchFtpDirAndLoad(folder.getFtpFile().getName(), pane1);
         } else {
-            Extensions.showMessage(this, "FTP File Download coming soon");
+            if (ftpClient == null || !ftpClient.isConnected()) {
+                Extensions.showMessage(this, "FTP client is not connected");
+                return;
+            }
+            EZFtpFile remote = folder.getFtpFile();
+            File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            if (!downloads.exists() && !downloads.mkdirs()) {
+                Extensions.showMessage(this, "Cannot access Downloads");
+                return;
+            }
+            File local = new File(downloads, remote.getName());
+            if (local.exists()) {
+                local = new File(downloads, System.currentTimeMillis() + "_" + remote.getName());
+            }
+            File finalLocal = local;
+            Extensions.showMessage(this, "Downloading " + remote.getName() + "...");
+            ftpClient.downloadFile(remote, finalLocal.getAbsolutePath(), new OnEZFtpDataTransferCallback() {
+                @Override public void onStateChanged(int state) {
+                    if (state == COMPLETED) runOnUiThread(() -> Extensions.showMessage(MainActivity.this, "Downloaded: " + finalLocal.getName()));
+                    else if (state == ERROR || state == ABORTED) runOnUiThread(() -> Extensions.showMessage(MainActivity.this, "FTP download failed"));
+                }
+                @Override public void onTransferred(long fileSize, int transferredSize) { }
+                @Override public void onErr(int code, String msg) {
+                    runOnUiThread(() -> Extensions.showMessage(MainActivity.this, "FTP download failed: " + msg));
+                }
+            });
         }
     }
 }

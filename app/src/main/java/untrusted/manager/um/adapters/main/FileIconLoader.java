@@ -62,12 +62,13 @@ public class FileIconLoader {
     }
 
     public void setupZipEntryView(ZipEntryInfo zipEntry, ImageView fileIconView, TextView fileDateView) {
+        fileIconView.setTag(null);
         if (zipEntry == null) return;
         if (zipEntry.isDirectory()) {
             fileIconView.setImageDrawable(cachedFolderIcon);
             fileDateView.setVisibility(View.INVISIBLE);
         } else {
-            setupNonFolderIconView(zipEntry.getFullPath(), fileIconView);
+            setupNonFolderIconView(zipEntry.getFullPath(), fileIconView, zipEntry.getFullPath());
             fileDateView.setVisibility(View.VISIBLE);
             fileDateView.setTextSize(UiPrefs.dateSize(UiPrefs.getScale(context)));
             fileDateView.setText(new StringBuilder(UiPrefs.formatDate(context, zipEntry.getLastModified())).append(' ').append(FileSize.getHumanReadableFileSize(zipEntry.getSize())));
@@ -75,20 +76,30 @@ public class FileIconLoader {
     }
 
     public void setupFileView(File file, ImageView fileIconView, TextView fileDateView) {
+        if (file == null) {
+            fileIconView.setTag(null);
+            fileDateView.setVisibility(View.INVISIBLE);
+            return;
+        }
         if (file.isFile()) {
+            // The tag is the RecyclerView binding identity. Every bind must replace it
+            // before an asynchronous icon task can publish a result.
+            fileIconView.setTag(file.getPath());
             fileDateView.setVisibility(View.VISIBLE);
             fileDateView.setTextSize(UiPrefs.dateSize(UiPrefs.getScale(context)));
-            setupNonFolderIconView(file.getPath(), fileIconView);
+            setupNonFolderIconView(file.getPath(), fileIconView, file.getPath() + "#" + file.lastModified() + "#" + file.length());
             fileDateView.setText(new StringBuilder(UiPrefs.formatDate(context, file.lastModified())).append(' ').append(FileSize.getHumanReadableFileSize(file.length())));
         } else {
+            fileIconView.setTag(null);
             fileIconView.setImageDrawable(cachedFolderIcon);
             fileDateView.setVisibility(View.INVISIBLE);
         }
     }
 
-    private void setupNonFolderIconView(String path, ImageView fileIconView) {
+    private void setupNonFolderIconView(String path, ImageView fileIconView, String identity) {
+        if (!isInZip) fileIconView.setTag(identity);
         if (!isInZip) {
-            Drawable cached = iconCache.get(path);
+            Drawable cached = iconCache.get(identity);
             if (cached != null) {
                 fileIconView.setImageDrawable(cached);
                 return;
@@ -101,13 +112,13 @@ public class FileIconLoader {
 
         if (".apk".equals(ext)) {
             fileIconView.setImageDrawable(cachedApkIcon);
-            if (!isInZip) loadApkIconAsync(path, fileIconView);
+            if (!isInZip) loadApkIconAsync(path, identity, fileIconView);
         } else if (FileUtils.matchExt(ext, FileUtils.IMAGE_EXTS)) {
             fileIconView.setImageDrawable(cachedImageIcon);
-            if (!isInZip) loadThumbnailAsync(path, fileIconView, false);
+            if (!isInZip) loadThumbnailAsync(path, identity, fileIconView, false);
         } else if (FileUtils.matchExt(ext, FileUtils.VIDEO_EXTS)) {
             fileIconView.setImageDrawable(cachedVideoIcon);
-            if (!isInZip) loadThumbnailAsync(path, fileIconView, true);
+            if (!isInZip) loadThumbnailAsync(path, identity, fileIconView, true);
         } else if (FileUtils.matchExt(ext, FileUtils.AUDIO_EXTS)) {
             fileIconView.setImageDrawable(cachedMusicIcon);
         } else if (FileUtils.matchExt(ext, FileUtils.ARCHIVE_EXTS)) {
@@ -125,10 +136,10 @@ public class FileIconLoader {
         }
     }
 
-    private void loadApkIconAsync(String path, ImageView fileIconView) {
-        fileIconView.setTag(path);
+    private void loadApkIconAsync(String path, String identity, ImageView fileIconView) {
+        fileIconView.setTag(identity);
         iconLoaderService.execute(() -> {
-            if (!path.equals(fileIconView.getTag())) return;
+            if (!identity.equals(fileIconView.getTag())) return;
             try {
                 PackageManager pm = context.getPackageManager();
                 PackageInfo packageInfo = pm.getPackageArchiveInfo(path, PackageManager.GET_ACTIVITIES);
@@ -141,9 +152,9 @@ public class FileIconLoader {
                         }
                         Drawable icon = appInfo.loadIcon(pm);
                         if (icon != null) {
-                            iconCache.put(path, icon);
+                            iconCache.put(identity, icon);
                             context.runOnUiThread(() -> {
-                                if (path.equals(fileIconView.getTag())) fileIconView.setImageDrawable(icon);
+                                if (identity.equals(fileIconView.getTag())) fileIconView.setImageDrawable(icon);
                             });
                         }
                     }
@@ -152,16 +163,16 @@ public class FileIconLoader {
         });
     }
 
-    private void loadThumbnailAsync(String path, ImageView fileIconView, boolean isVideo) {
-        fileIconView.setTag(path);
+    private void loadThumbnailAsync(String path, String identity, ImageView fileIconView, boolean isVideo) {
+        fileIconView.setTag(identity);
         iconLoaderService.execute(() -> {
-            if (!path.equals(fileIconView.getTag())) return;
+            if (!identity.equals(fileIconView.getTag())) return;
             Bitmap bitmap = isVideo ? loadVideoThumbnail(path) : loadImageThumbnail(path);
-            if (bitmap == null || !path.equals(fileIconView.getTag())) return;
+            if (bitmap == null || !identity.equals(fileIconView.getTag())) return;
             Drawable icon = new BitmapDrawable(context.getResources(), bitmap);
-            iconCache.put(path, icon);
+            iconCache.put(identity, icon);
             context.runOnUiThread(() -> {
-                if (path.equals(fileIconView.getTag())) fileIconView.setImageDrawable(icon);
+                if (identity.equals(fileIconView.getTag())) fileIconView.setImageDrawable(icon);
             });
         });
     }

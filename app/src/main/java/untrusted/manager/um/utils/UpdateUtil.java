@@ -81,7 +81,7 @@ public class UpdateUtil {
                         if (!toast && !TextUtils.isEmpty(context.lastVerChecked) && context.lastVerChecked.equals(latestVersion))
                             return;
                         String ending = ".apk";
-                        String filename = "MP-Manager." + latestVersion + ending;
+                        String filename = "Untrusted-Manager." + latestVersion + ending;
                         String link = dl.endsWith(ending) ? dl : dl + File.separator + filename;
                         Markwon markwon = Markwon.create(context);
 

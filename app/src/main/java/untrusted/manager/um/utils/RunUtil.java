@@ -42,9 +42,11 @@ public class RunUtil {
         executor.submit(() -> {
             try {
                 future.get();
-                handler.post(runnable);
+                if (handler != null && runnable != null) handler.post(runnable);
             } catch (Exception e) {
                 new ErrorUtil(context).showError(e);
+            } finally {
+                executor.shutdown();
             }
         });
     }
@@ -57,13 +59,15 @@ public class RunUtil {
             try {
                 Boolean success = future.get();
 
-                if (success && handler != null && !TextUtils.isEmpty(msg))
+                if (Boolean.TRUE.equals(success) && handler != null && !TextUtils.isEmpty(msg))
                     handler.post(() -> {
                         Extensions.showMessage(context, msg);
                         if(reloadFolder) context.reloadCurrentFolder();
                     });
             } catch (Exception e) {
                 new ErrorUtil(context).showError(e);
+            } finally {
+                executor.shutdown();
             }
         });
     }
@@ -74,9 +78,11 @@ public class RunUtil {
 
         executor.submit(() -> {
             try {
-                if (future.get() && handler != null) handler.post(doAfter);
+                if (Boolean.TRUE.equals(future.get()) && handler != null && doAfter != null) handler.post(doAfter);
             } catch (Exception e) {
                 new ErrorUtil(context).showError(e);
+            } finally {
+                executor.shutdown();
             }
         });
     }

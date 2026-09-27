@@ -8,6 +8,7 @@
 
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -76,13 +77,8 @@
         <activity
             android:theme="@style/Theme.Material3.DayNight.NoActionBar"
             android:name="untrusted.manager.um.tools.ToolsHubActivity"
-            android:exported="true"
-            android:label="Tools Kit">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:exported="false"
+            android:label="Tools Kit" />
         <activity
             android:theme="@style/Theme.Material3.DayNight.NoActionBar"
             android:name="untrusted.manager.um.tools.ToolRunnerActivity"
