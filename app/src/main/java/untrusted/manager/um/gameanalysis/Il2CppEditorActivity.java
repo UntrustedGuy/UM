@@ -16,7 +16,7 @@ import java.io.File;
 
 import untrusted.manager.um.ui.activities.HexEditorActivity;
 import untrusted.manager.um.ui.dialogs.FilePickerDialog;
-import untrusted.manager.um.ui.editor.TextEditorActivity;
+import untrusted.manager.um.ui.activities.TextEditorActivity;
 import untrusted.manager.um.utils.EdgeToEdgeUtil;
 
 /** Unified IL2CPP/DLL editor launcher using UM's internal file picker. */
