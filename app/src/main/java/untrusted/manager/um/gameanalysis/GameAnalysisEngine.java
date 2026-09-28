@@ -4,13 +4,13 @@ import android.content.Context;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
+import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
@@ -231,7 +231,11 @@ public final class GameAnalysisEngine {
             int version = readIntLE(raf);
             if (magic != METADATA_MAGIC || version < 16 || version > 31) return null;
             MetadataHeader h = new MetadataHeader(magic, version);
-            h.read(raf, file.length());
+            try {
+                h.read(raf, file.length());
+            } catch (EOFException malformed) {
+                return null;
+            }
             return h.isStructurallyValid(file.length()) ? h : null;
         }
     }
@@ -247,6 +251,7 @@ public final class GameAnalysisEngine {
 
             StringTable strings = readStringTable(raf, h.stringOffset, h.stringSize);
             writeStrings(outDir, strings);
+            writeStringLiteralJson(outDir, raf, h);
 
             List<ImageDef> images = readImages(raf, h);
             List<TypeDef> types = readTypes(raf, h);
@@ -425,20 +430,22 @@ public final class GameAnalysisEngine {
     }
 
     private static StringTable readStringTable(RandomAccessFile raf, long offset, long size) throws IOException {
-        if (size <= 0 || size > MAX_TABLE_READ_BYTES || offset < 0 || offset > raf.length() || size > raf.length() - offset) throw new IOException("String table is too large or outside the file");
+        if (size <= 0) return new StringTable();
+        if (size > MAX_TABLE_READ_BYTES || size > Integer.MAX_VALUE) throw new IOException("String table is too large for safe in-memory analysis");
+        if (offset < 0 || offset > raf.length() || size > raf.length() - offset) throw new IOException("String table is outside the metadata file");
         raf.seek(offset);
         byte[] data = new byte[(int) size];
         raf.readFully(data);
         StringTable result = new StringTable();
         int start = 0;
-        for (int pos = 0; pos <= data.length; pos++) {
-            if (pos < data.length && data[pos] != 0) continue;
-            if (pos > start) {
-                String value = new String(data, start, pos - start, StandardCharsets.UTF_8);
-                if (!value.isEmpty()) result.put(start, value);
-                if (result.size() >= MAX_STRINGS) break;
+        for (int pos = 0; pos <= data.length && result.size() < MAX_STRINGS; pos++) {
+            if (pos == data.length || data[pos] == 0) {
+                if (pos > start) {
+                    String value = new String(data, start, pos - start, StandardCharsets.UTF_8);
+                    result.put(start, value);
+                }
+                start = pos + 1;
             }
-            start = pos + 1;
         }
         return result;
     }
@@ -985,7 +992,8 @@ public final class GameAnalysisEngine {
                 }
             }            writeMethodMap(outDir,methods,strings,methodAddresses,r);
             writeFieldOffsets(outDir,raf,r,reg,types,fields,strings,il2cppVersion);
-            writeScriptJson(outDir,images,types,methods,fields,parameters,strings,methodAddresses,resolver);
+            writeScriptJson(outDir,methods,parameters,strings,methodAddresses,resolver,r);
+            writeStringLiteralJson(outDir,mr,h);
             writeIl2CppHeader(outDir,types,fields,methods,strings,methodAddresses,reg,r);
             writeNativeDump(outDir,images,types,methods,fields,parameters,strings,methodAddresses,resolver,r,reg,version);
         }
@@ -1001,34 +1009,53 @@ public final class GameAnalysisEngine {
     private static void writeFieldOffsets(File outDir,RandomAccessFile raf,ElfResult r,RegistrationData reg,List<TypeDef> types,List<FieldDef> fields,StringTable strings,double version)throws IOException{
         try(BufferedWriter w=new BufferedWriter(new FileWriter(new File(outDir,"field_offsets.json")))){w.write("{\n  \"types\": [\n");boolean firstType=true;for(int ti=0;ti<types.size()&&ti<reg.fieldOffsets.size();ti++){long ptr=reg.fieldOffsets.get(ti);if(ptr==0)continue;List<Integer> offs=new ArrayList<>();if(version>21){long fo=mapVaToFile(r.loadSegments,ptr);if(fo<0)continue;for(int j=0;j<types.get(ti).fieldCount;j++){try{offs.add(readIntAt(raf,fo+j*4,r.le));}catch(Exception e){break;}}}else{offs.add((int)ptr);}if(!firstType)w.write(",\n");firstType=false;w.write("    {\"typeIndex\": "+ti+", \"type\": \""+jsonEscape(stringAt(strings,types.get(ti).nameIndex,"Type_"+ti))+"\", \"offsets\": [");for(int j=0;j<offs.size();j++){if(j>0)w.write(", ");w.write("\"0x"+Integer.toHexString(offs.get(j))+"\"");}w.write("]}");}w.write("\n  ]\n}\n");}
     }
-    private static void writeScriptJson(File outDir,List<ImageDef> images,List<TypeDef> types,List<MethodDef> methods,List<FieldDef> fields,List<ParameterDef> parameters,StringTable strings,Map<Integer,Long> addresses,NativeTypeResolver resolver)throws IOException{
+    private static void writeScriptJson(File outDir,List<MethodDef> methods,List<ParameterDef> parameters,StringTable strings,Map<Integer,Long> addresses,NativeTypeResolver resolver,ElfResult r)throws IOException{
+        List<Map.Entry<Integer,Long>> entries=new ArrayList<>(addresses.entrySet());
+        entries.sort(Comparator.comparingLong(Map.Entry::getValue));
         try(BufferedWriter w=new BufferedWriter(new FileWriter(new File(outDir,"script.json")))){
             w.write("{\n  \"ScriptMethod\": [\n");
             boolean first=true;
-            for(int i=0;i<methods.size();i++){
-                Long a=addresses.get(i);
-                if(a==null)continue;
-                MethodDef m=methods.get(i);
-                if(!first)w.write(",\n");
-                first=false;
+            for(Map.Entry<Integer,Long> e:entries){
+                int i=e.getKey(); if(i<0||i>=methods.size())continue;
+                MethodDef m=methods.get(i); long rva=Math.max(0,e.getValue()-imageBase(r));
                 String name=stringAt(strings,m.nameIndex,"Method_"+i);
-                String signature=scriptMethodSignature(m,images,types,parameters,strings,resolver,i);
-                w.write("    {\"Address\": \"0x"+Long.toHexString(a)+"\", \"Name\": \""+jsonEscape(name)+"\", \"Signature\": \""+jsonEscape(signature)+"\", \"Index\": "+i+"}");
+                String signature=resolver.resolve(m.returnType)+" "+sanitizeCSharpIdentifier(name)+"("+parameterSignature(m,parameters,resolver,strings)+")";
+                if(!first)w.write(",\n"); first=false;
+                w.write("    {\"Address\": "+rva+", \"Name\": \""+jsonEscape(name)+"\", \"Signature\": \""+jsonEscape(signature)+"\", \"TypeSignature\": \""+jsonEscape(resolver.resolve(m.returnType))+"\", \"Index\": "+i+"}");
             }
-            w.write("\n  ],\n  \"ScriptString\": [],\n  \"ScriptMetadata\": []\n}\n");
+            w.write("\n  ],\n  \"Addresses\": [");
+            first=true;
+            for(Map.Entry<Integer,Long> e:entries){long rva=Math.max(0,e.getValue()-imageBase(r));if(!first)w.write(", ");first=false;w.write(Long.toString(rva));}
+            w.write("]\n}\n");
         }
     }
-    private static String scriptMethodSignature(MethodDef m,List<ImageDef> images,List<TypeDef> types,List<ParameterDef> parameters,StringTable strings,NativeTypeResolver resolver,int index){
-        String returnType=resolver.resolve(m.returnType);
-        String declaring="Type_"+m.declaringType;
-        if(m.declaringType>=0&&m.declaringType<types.size())declaring=sanitizeCSharpIdentifier(stringAt(strings,types.get(m.declaringType).nameIndex,declaring));
-        StringBuilder b=new StringBuilder(returnType).append(' ').append(declaring).append("$$").append(sanitizeCSharpIdentifier(stringAt(strings,m.nameIndex,"Method_"+index))).append(" (");
-        int start=Math.max(0,m.parameterStart), end=Math.min(parameters.size(),start+Math.max(0,m.parameterCount));
-        for(int i=start;i<end;i++){if(i>start)b.append(", ");ParameterDef p=parameters.get(i);b.append(resolver.resolve(p.typeIndex)).append(' ').append(sanitizeCSharpIdentifier(stringAt(strings,p.nameIndex,"arg"+(i-start))));}
-        if(end>start)b.append(", ");
-        b.append("const MethodInfo* method);");
-        return b.toString();
+
+    private static void writeStringLiteralJson(File outDir,RandomAccessFile raf,MetadataHeader h)throws IOException{
+        File out=new File(outDir,"stringliteral.json");
+        try(BufferedWriter w=new BufferedWriter(new FileWriter(out))){
+            w.write("{\n  \"strings\": [\n");
+            boolean first=true;
+            long count=h.stringLiteralSize/8;
+            if(count>MAX_STRINGS)count=MAX_STRINGS;
+            for(long i=0;i<count;i++){
+                long p=h.stringLiteralOffset+i*8L;
+                if(p<0||p+8>raf.length())break;
+                long len=readU32At(raf,p), dataIndex=readU32At(raf,p+4);
+                if(len<0||len>1024*1024L||h.stringLiteralDataOffset<0||dataIndex>h.stringLiteralDataSize||len>h.stringLiteralDataSize-dataIndex)continue;
+                String value;
+                try{
+                    byte[] b=readRange(raf,h.stringLiteralDataOffset+dataIndex,len);
+                    value=new String(b,StandardCharsets.UTF_8);
+                }catch(Exception ex){continue;}
+                if(!first)w.write(",\n"); first=false;
+                w.write("    {\"index\": "+i+", \"length\": "+len+", \"value\": \""+jsonEscape(value)+"\"}");
+            }
+            w.write("\n  ]\n}\n");
+        }
     }
+
+    private static long readU32At(RandomAccessFile raf,long off)throws IOException{raf.seek(off);return Integer.toUnsignedLong(readIntLE(raf));}
+
     private static void writeIl2CppHeader(File outDir,List<TypeDef> types,List<FieldDef> fields,List<MethodDef> methods,StringTable strings,Map<Integer,Long> addresses,RegistrationData reg,ElfResult r)throws IOException{
         try(BufferedWriter w=new BufferedWriter(new FileWriter(new File(outDir,"il2cpp.h")))){w.write("#pragma once\n#include <stdint.h>\n\n");w.write("typedef struct UM_Il2CppRegistration { uintptr_t codeRegistration; uintptr_t metadataRegistration; uint64_t methodPointerCount; uint64_t fieldOffsetCount; } UM_Il2CppRegistration;\n#define UM_CODE_REGISTRATION 0x"+Long.toHexString(reg.codeAddress)+"\n#define UM_METADATA_REGISTRATION 0x"+Long.toHexString(reg.metadataAddress)+"\n\n");for(int mi=0;mi<methods.size();mi++){Long a=addresses.get(mi);if(a!=null)w.write("#define UM_METHOD_"+mi+"_RVA 0x"+Long.toHexString(Math.max(0,a-imageBase(r)))+"\n");}w.write("\n");for(int i=0;i<Math.min(types.size(),100000);i++){TypeDef t=types.get(i);w.write("// TypeIndex "+i+" " + stringAt(strings,t.nameIndex,"Type_"+i)+"\n");w.write("typedef struct {\n    uintptr_t _klass;\n");int end=Math.min(fields.size(),t.fieldStart+t.fieldCount);for(int f=t.fieldStart;f<end;f++)w.write("    uintptr_t "+sanitizeCSharpIdentifier(stringAt(strings,fields.get(f).nameIndex,"field_"+f))+";\n");w.write("} UM_Type_"+i+";\n\n");}}
     }
@@ -1127,7 +1154,7 @@ public final class GameAnalysisEngine {
     private static void mkdir(File f)throws IOException{if(!f.isDirectory()&&!f.mkdirs()&&!f.isDirectory())throw new IOException("Cannot create "+f);}
     private static void writeText(File f,String s)throws IOException{try(FileWriter w=new FileWriter(f)){w.write(s);}}
     private static byte[] readAtMost(File f,int max)throws IOException{try(InputStream in=new FileInputStream(f)){ByteArrayOutputStream b=new ByteArrayOutputStream(Math.min(max,64*1024));byte[]buf=new byte[64*1024];int left=max,n;while(left>0&&(n=in.read(buf,0,Math.min(buf.length,left)))!=-1){b.write(buf,0,n);left-=n;}return b.toByteArray();}}
-    private static byte[] readRange(RandomAccessFile raf,long off,long size)throws IOException{if(off<0||size<0||size>MAX_TABLE_READ_BYTES)throw new IOException("Range too large");if(off>raf.length()||size>raf.length()-off)throw new IOException("Range outside file");raf.seek(off);byte[]b=new byte[(int)size];raf.readFully(b);return b;}
+    private static byte[] readRange(RandomAccessFile raf,long off,long size)throws IOException{if(off<0||size<0||size>MAX_TABLE_READ_BYTES||size>Integer.MAX_VALUE||off>raf.length()||size>raf.length()-off)throw new IOException("Range too large or outside file");raf.seek(off);byte[]b=new byte[(int)size];raf.readFully(b);return b;}
     private static String sanitizeCSharpIdentifier(String s){String x=sanitizeIdentifier(s);if(CSHARP_KEYWORDS.contains(x))return "@"+x;return x;}
     private static String sanitizeCSharpNamespace(String s){String[] p=s.split("\\.");StringBuilder b=new StringBuilder();for(String x:p){if(b.length()>0)b.append('.');b.append(sanitizeCSharpIdentifier(x));}return b.toString();}
     private static final Set<String> CSHARP_KEYWORDS=new HashSet<>(Arrays.asList("abstract","as","base","bool","break","byte","case","catch","char","checked","class","const","continue","decimal","default","delegate","do","double","else","enum","event","explicit","extern","false","finally","fixed","float","for","foreach","goto","if","implicit","in","int","interface","internal","is","lock","long","namespace","new","null","object","operator","out","override","params","private","protected","public","readonly","ref","return","sbyte","sealed","short","sizeof","stackalloc","static","string","struct","switch","this","throw","true","try","typeof","uint","ulong","unchecked","unsafe","ushort","using","virtual","void","volatile","while","record","init","required","file","global","scoped","nint","nuint"));
@@ -1246,7 +1273,7 @@ public final class GameAnalysisEngine {
         private static boolean validTable(long off,long size,long record,long len){return validRange(off,size,len)&&record>0&&(size==0||size%record==0);}
         private static long readU32(RandomAccessFile r)throws IOException{return Integer.toUnsignedLong(readIntLE(r));}
     }
-    private static int readIntLE(RandomAccessFile r)throws IOException{int a=r.read(),b=r.read(),c=r.read(),d=r.read();if((a|b|c|d)<0)throw new IOException("Unexpected EOF");return (a&255)|((b&255)<<8)|((c&255)<<16)|((d&255)<<24);}
+    private static int readIntLE(RandomAccessFile r)throws IOException{int a=r.read(),b=r.read(),c=r.read(),d=r.read();if((a|b|c|d)<0)throw new EOFException("Unexpected EOF");return (a&255)|((b&255)<<8)|((c&255)<<16)|((d&255)<<24);}
 
     static final class ImageDef{final long nameIndex;final int assemblyIndex,typeStart;final long typeCount,token,exportedTypeStart,exportedTypeCount,customAttributeStart,customAttributeCount;ImageDef(long n,int a,int ts,long tc,int ep,long t,int ets,long etc,int cas,long cac){nameIndex=n;assemblyIndex=a;typeStart=ts;typeCount=tc;token=t;exportedTypeStart=ets;exportedTypeCount=etc;customAttributeStart=cas;customAttributeCount=cac;}}
     static final class TypeDef{long nameIndex,namespaceIndex,token,flags,bitfield;int declaringTypeIndex,parentIndex,elementTypeIndex,genericContainerIndex,fieldStart,methodStart,eventStart,propertyStart,nestedTypesStart,interfacesStart,vtableStart,interfaceOffsetsStart,customAttributeIndex,byvalTypeIndex,byrefTypeIndex,rgctxStart,rgctxCount;int methodCount,propertyCount,fieldCount,eventCount,nestedTypeCount,vtableCount,interfacesCount,interfaceOffsetsCount;}

@@ -21,6 +21,9 @@ A separate home folder can be set for each pane.
 
 There are back and forward buttons, button to sync both panes to the same folder, new file/folder button, parent folder button.
 
+<!-- TODO: Add video
+![Dual pane navigation](./images/navigation.mp4)
+-->
 </details>
 
 <details><summary>Bookmarks and history</summary>
@@ -66,12 +69,17 @@ Extract, add files in ZIP, APK, auto sign option in APK
 
 Rename several files at once using templates with prefix, suffix, numbering and find/replace.
 
+<!-- TODO: Add screenshots/videos
+![Multi rename dialog](./images/multi-rename.jpg)
+![Compress dialog](./images/compress.jpg)
+-->
 </details>
 
 <details><summary>File properties and sharing</summary>
 
 View type, size and last modified date, and copy any value to the clipboard with a long press. Share files or open them with another app.
 
+<!-- TODO: Add screenshots/videos -->
 </details>
 
 ### Media
@@ -80,12 +88,19 @@ View type, size and last modified date, and copy any value to the clipboard with
 
 Play audio and video files without leaving the app. A mini player dialog with artwork, seek bar and playback controls can play in the background or expand into a full player.
 
+<!-- TODO: Add screenshots/videos
+![Mini player](./images/mini-player.jpg)
+![Full player](./images/full-player.mp4)
+-->
 </details>
 
 <details><summary>Image viewer</summary>
 
 Open images with swipe between pictures in directory. EXIF metadata is shown for supported files, images can be deleted or shared from the viewer.
 
+<!-- TODO: Add screenshots/videos
+![Image viewer](./images/image-viewer.jpg)
+-->
 </details>
 
 ### APK Tools
@@ -111,6 +126,9 @@ Automatic signing after modifying an APK can be toggled and configured.
 
 Biometrics can be used as alternative to entering password every time.
 
+<!-- TODO: Add screenshots/videos
+![Sign settings](./images/sign-settings.jpg)
+-->
 </details>
 
 <details><summary>Decompile, build and protect</summary>
@@ -189,6 +207,7 @@ Compare two text files, two ZIP/APK files, or two resources.arsc files. Select o
 
 Extract APKs in batch and pull out specific parts: the app icon, resources.arsc, classes.dex, AndroidManifest.xml, base.apk, splits and native libs, as well as the launch activity. Split APKs can be merged into a single APK before extracting, and anything can be shared directly.
 
+<!-- TODO: Add screenshots/videos -->
 </details>
 
 ### FTP
@@ -266,9 +285,9 @@ Choose between system, light, dark and black theme all with Material theme and D
 </p>
 </details>
 
-# Implementation Status
+# Todo / Status
 
-The originally listed implementation items are implemented or integrated into the current codebase:
+The original TODO items have been implemented or integrated into the current codebase:
 
 * APK Patcher: integrated APK Editor `patch.txt` rules (`ADD_FILES`, `REMOVE_FILES`, `MATCH_REPLACE`, `MATCH_ASSIGN`, `MATCH_GOTO`, `GOTO`, `MERGE`, `EXECUTE_DEX`, `DUMMY`) plus Lucky Patcher `CLASSES`/`ODEX`/`LIB` byte-pattern patches with wildcard and sequential R/W capture support. APK Editor `.zip` patches and standalone Lucky Patcher text patches are accepted.
 * Root and Shizuku file management: integrated through the existing AccessManager/RootManager/Shizuku backend.
@@ -281,7 +300,7 @@ The app also records asynchronous crash, lag, network and operational diagnostic
 Game analysis is integrated into the main Tools Kit and file context menu; it is not a separate application.
 
 * **Game Analyzer** accepts APK/XAPK/APKM/AAB/ZIP files and automatically locates `libil2cpp.so` and `global-metadata.dat`, including nested APKs.
-* **IL2CPP Dumper** parses supported standard IL2CPP metadata, resolves named `g_CodeRegistration` / `g_MetadataRegistration` structures when safely available, follows per-image code-generation modules, maps native method pointers, extracts field-offset tables, and emits a metadata-backed `dump.cs` and, when native registration is resolved, enriches it with native RVAs; it also emits `script.json`, `il2cpp.h`, registration/method maps, and browseable `DummyDll/*.dll` artifacts. It refuses to invent native addresses when registration data cannot be validated.
+* **IL2CPP Dumper** parses supported standard IL2CPP metadata, resolves named `g_CodeRegistration` / `g_MetadataRegistration` structures when safely available, follows per-image code-generation modules, maps native method pointers, extracts field-offset tables, and emits a metadata-backed `dump.cs` and, when native registration is resolved, enriches it with native RVAs; it also emits UM-compatible `script.json`/`stringliteral.json` artifacts, a metadata-backed `il2cpp.h`, registration/method maps, and browseable `DummyDll/*.dll` artifacts. It refuses to invent native addresses when registration data cannot be validated.
 * **Global Metadata** validates supported metadata versions and safely recovers standard metadata wrapped in a file envelope or simple XOR transformation when the recovered header is structurally valid. It never fabricates a dump when the representation cannot be validated.
 * **Game Encryption** reports standard metadata/ELF signatures, simple transformations, entropy and protected/non-standard representations. Arbitrary game-specific encryption is not treated as universally solvable.
 * **IL2CPP Editor** is integrated with UM's existing Text Editor and Hex Editor. Generated C#/JSON/header artifacts can be edited directly; native binaries can be edited through the existing byte editor, including SAF document write-back.

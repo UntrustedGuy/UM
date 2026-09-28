@@ -41,19 +41,11 @@ import untrusted.manager.um.utils.FastDexPatch;
  * invalidates an existing APK v2/v3/v4 signature; callers must sign before install.
  */
 public final class PatchEngine {
-    private static String readUtf8(java.nio.file.Path path) throws java.io.IOException {
-        return new String(java.nio.file.Files.readAllBytes(path), java.nio.charset.StandardCharsets.UTF_8);
-    }
-
-    private static void writeUtf8(java.nio.file.Path path, String content) throws java.io.IOException {
-        java.nio.file.Files.write(path, content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-    }
-
-
     public record Result(boolean success, String message, File output) {}
 
     private static final int MAX_PATCH_ARCHIVE_BYTES = 256 * 1024 * 1024;
     private static final int MAX_APK_BYTES = 1024 * 1024 * 1024;
+    private static final int MAX_ZIP_ENTRIES = 100_000;
     private PatchEngine() {}
 
     public static Result apply(File apk, File patchZip, File outputDir) {
@@ -82,19 +74,19 @@ public final class PatchEngine {
             File patchTxt = findPatchTxt(extractedPatch);
             File lucky = findLuckyPatchTxt(extractedPatch);
             if (patchTxt == null) {
-                if (lucky == null) return failAndCleanup(work, "Patch archive contains neither patch.txt nor a Lucky Patcher patch text");
+                if (lucky == null) return fail("Patch archive contains neither patch.txt nor a Lucky Patcher patch text");
                 boolean changed = applyLuckyPatcher(apkWork, lucky);
-                if (!changed) return failAndCleanup(work, "Lucky Patcher patch did not change the selected APK");
-                return finish(apk, effectiveOutputDir, apkWork, work, "Lucky Patcher patch applied");
+                if (!changed) return fail("Lucky Patcher patch did not change the selected APK");
+                return finish(apk, outputDir, apkWork, work, "Lucky Patcher patch applied");
             }
             // Lucky Patcher archives are also commonly named patch.txt. Prefer
             // their byte-pattern grammar when the file contains LP sections and
             // no APK Editor rule headers; otherwise retain normal patch.txt semantics.
-            String patchText = readUtf8(patchTxt.toPath(), StandardCharsets.UTF_8);
+            String patchText = readUtf8(patchTxt);
             if (looksLikeLuckyPatcher(patchText) && !looksLikeApkEditorPatch(patchText)) {
                 boolean changed = applyLuckyPatcher(apkWork, patchTxt);
-                if (!changed) return failAndCleanup(work, "Lucky Patcher patch did not change the selected APK");
-                return finish(apk, effectiveOutputDir, apkWork, work, "Lucky Patcher patch applied");
+                if (!changed) return fail("Lucky Patcher patch did not change the selected APK");
+                return finish(apk, outputDir, apkWork, work, "Lucky Patcher patch applied");
             }
 
             List<Rule> rules = parse(patchTxt);
@@ -108,7 +100,7 @@ public final class PatchEngine {
             if (!packageConstraint.isEmpty() && !"*".equals(packageConstraint)) {
                 String actualPackage = readPackageName(context, apk);
                 if (actualPackage == null || !packageConstraint.equals(actualPackage)) {
-                    return failAndCleanup(work, "Patch package mismatch: expected " + packageConstraint + ", APK is " + (actualPackage == null ? "unknown" : actualPackage));
+                    return fail("Patch package mismatch: expected " + packageConstraint + ", APK is " + (actualPackage == null ? "unknown" : actualPackage));
                 }
             }
             boolean changed = false;
@@ -126,8 +118,8 @@ public final class PatchEngine {
                 switch (r.type) {
                     case "DUMMY":
                         // DUMMY is a named terminal label in the APK Editor engine.
-                        return changed ? finish(apk, effectiveOutputDir, apkWork, work, "Patch applied")
-                                : failAndCleanup(work, "Patch reached DUMMY before making a change");
+                        return changed ? finish(apk, outputDir, apkWork, work, "Patch applied")
+                                : fail("Patch reached DUMMY before making a change");
                     case "GOTO": {
                         int j = indexOf(rules, r.get("GOTO"));
                         if (j < 0) throw new IOException("GOTO target not found: " + r.get("GOTO"));
@@ -196,8 +188,8 @@ public final class PatchEngine {
                 }
             }
             if (smaliPrepared && smaliDirty) rebuildChangedSmali(apkWork, work);
-            if (!changed) return failAndCleanup(work, "Patch made no changes");
-            return finish(apk, effectiveOutputDir, apkWork, work, "APK Editor patch applied");
+            if (!changed) return fail("Patch made no changes");
+            return finish(apk, outputDir, apkWork, work, "APK Editor patch applied");
         } catch (Throwable e) {
             delete(work);
             String message = e.getMessage();
@@ -216,8 +208,6 @@ public final class PatchEngine {
     }
 
     private static Result fail(String message) { return new Result(false, message, null); }
-
-    private static Result failAndCleanup(File work, String message) { delete(work); return fail(message); }
 
     private static void requireFile(File f, String label) throws IOException {
         if (f == null || !f.isFile() || !f.canRead()) throw new IOException("Cannot read " + label);
@@ -278,7 +268,7 @@ public final class PatchEngine {
         String repl = expand(r.get("REPLACE"), vars);
         boolean changed = false;
         for (File f : files) {
-            String text = readUtf8(f.toPath(), StandardCharsets.UTF_8);
+            String text = readUtf8(f);
             String n;
             if (bool(r.get("REGEX"))) {
                 Matcher m = Pattern.compile(match, Pattern.MULTILINE | Pattern.DOTALL).matcher(text);
@@ -287,7 +277,7 @@ public final class PatchEngine {
                 n = text.replace(match, repl);
             }
             if (!n.equals(text)) {
-                writeUtf8(f.toPath(), n, StandardCharsets.UTF_8);
+                writeUtf8(f, n);
                 changed = true;
             }
         }
@@ -299,7 +289,7 @@ public final class PatchEngine {
         String match = expand(r.get("MATCH"), vars);
         Pattern p = bool(r.get("REGEX")) ? Pattern.compile(match, Pattern.MULTILINE | Pattern.DOTALL) : Pattern.compile(Pattern.quote(match), Pattern.MULTILINE | Pattern.DOTALL);
         for (File f : files) {
-            Matcher m = p.matcher(readUtf8(f.toPath(), StandardCharsets.UTF_8));
+            Matcher m = p.matcher(readUtf8(f));
             if (!m.find()) continue;
             for (String line : r.get("ASSIGN").split("\\r?\\n")) {
                 int eq = line.indexOf('=');
@@ -588,12 +578,12 @@ public final class PatchEngine {
 
     private static boolean matches(File f, String match, boolean regex) throws IOException {
         if (!f.isFile()) return false;
-        String t = readUtf8(f.toPath(), StandardCharsets.UTF_8);
+        String t = readUtf8(f);
         return regex ? Pattern.compile(match, Pattern.MULTILINE | Pattern.DOTALL).matcher(t).find() : t.contains(match);
     }
 
     private static boolean applyLuckyPatcher(File apkRoot, File patchFile) throws IOException {
-        String text = readUtf8(patchFile.toPath(), StandardCharsets.UTF_8);
+        String text = readUtf8(patchFile);
         Matcher sections = Pattern.compile("(?m)^\\s*\\[(BEGIN|PACKAGE|CLASSES|ODEX|LIB|END)\\]\\s*$").matcher(text);
         List<Section> parsed = new ArrayList<>();
         String current = null;
@@ -840,7 +830,7 @@ public final class PatchEngine {
         for (File f : fs) {
             if (f.isFile() && f.getName().toLowerCase(Locale.US).endsWith(".txt")) {
                 try {
-                    String s = readUtf8(f.toPath(), StandardCharsets.UTF_8);
+                    String s = readUtf8(f);
                     if (s.contains("[CLASSES]") || s.contains("[LIB]") || s.contains("[ODEX]")) return f;
                 } catch (Exception ignored) {}
             }
@@ -893,8 +883,9 @@ public final class PatchEngine {
     private static void unzip(File zip, File out, long maxBytes) throws IOException {
         mkdirs(out); long total = 0;
         try (ZipInputStream in = new ZipInputStream(new BufferedInputStream(new FileInputStream(zip)))) {
-            ZipEntry e; byte[] buf = new byte[65536];
+            ZipEntry e; byte[] buf = new byte[65536]; int entries = 0;
             while ((e = in.getNextEntry()) != null) {
+                if (++entries > MAX_ZIP_ENTRIES) throw new IOException("Zip contains too many entries");
                 File f = target(out, e.getName());
                 if (e.isDirectory()) { mkdirs(f); continue; }
                 if (e.getCompressedSize() > maxBytes || e.getSize() > maxBytes) throw new IOException("Zip entry is too large: " + e.getName());
@@ -937,4 +928,12 @@ public final class PatchEngine {
         //noinspection ResultOfMethodCallIgnored
         f.delete();
     }
+    private static String readUtf8(File file) throws IOException {
+        return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+    }
+
+    private static void writeUtf8(File file, String text) throws IOException {
+        Files.write(file.toPath(), text.getBytes(StandardCharsets.UTF_8));
+    }
+
 }

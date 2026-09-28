@@ -40,8 +40,6 @@ public class GameAnalysisActivity extends AppCompatActivity {
     private File inputFile;
     private File companionFile;
     private TextView status;
-    private TextView inputPath;
-    private TextView companionPath;
     private Button runButton;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -77,7 +75,7 @@ public class GameAnalysisActivity extends AppCompatActivity {
         inputLabel.setText("Primary input");
         inputLabel.setTextSize(16);
         inputBox.addView(inputLabel);
-        inputPath = new TextView(this);
+        TextView inputPath = new TextView(this);
         inputPath.setText("Nothing selected");
         inputPath.setTextIsSelectable(true);
         inputBox.addView(inputPath, lp(0, 0, 0, 8));
@@ -95,7 +93,7 @@ public class GameAnalysisActivity extends AppCompatActivity {
         companionLabel.setText("Companion input (optional)");
         companionLabel.setTextSize(16);
         companionBox.addView(companionLabel);
-        companionPath = new TextView(this);
+        TextView companionPath = new TextView(this);
         companionPath.setText("Use when the APK/file does not contain the matching libil2cpp.so or global-metadata.dat");
         companionPath.setTextIsSelectable(true);
         companionBox.addView(companionPath, lp(0, 0, 0, 8));
@@ -116,7 +114,7 @@ public class GameAnalysisActivity extends AppCompatActivity {
             box.addView(label, lp(0,0,0,8));
             addAction(box, "APK Patcher", v -> startActivity(new Intent(this, PatcherActivity.class)));
             addAction(box, "APK Extractor", v -> startActivity(new Intent(this, APKExtractorActivity.class)));
-            addAction(box, "IL2CPP Editor", v -> startActivity(new Intent(this, Il2CppEditorActivity.class).putExtra("path", inputFile != null ? inputFile.getAbsolutePath() : "")));
+            addAction(box, "IL2CPP Editor", v -> { if (inputFile != null && inputFile.isFile()) startActivity(new Intent(this, Il2CppEditorActivity.class).putExtra("path", inputFile.getAbsolutePath())); else status.setText("Select a file first."); });
             addAction(box, "Frida Runtime Kit", v -> startActivity(new Intent(this, FridaToolkitActivity.class)));
             Button hex = new MaterialButton(this);
             hex.setText("Hex Editor — selected file");
@@ -201,7 +199,7 @@ public class GameAnalysisActivity extends AppCompatActivity {
         if (name == null || name.trim().isEmpty()) name = "selected.bin";
         File dir = new File(getCacheDir(), "game-analysis");
         if (!dir.isDirectory() && !dir.mkdirs() && !dir.isDirectory()) throw new IOException("Cannot create cache directory");
-        File out = new File(dir, safeName(name));
+        File out = new File(dir, System.nanoTime() + "_" + safeName(name));
         try (InputStream in = getContentResolver().openInputStream(uri); FileOutputStream fos = new FileOutputStream(out)) {
             if (in == null) throw new IOException("Unable to open selected document");
             byte[] b = new byte[64 * 1024]; int n;
