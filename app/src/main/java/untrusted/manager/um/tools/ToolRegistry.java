@@ -32,7 +32,9 @@ public class ToolRegistry {
             pkg = context.getResources().getIdentifier("hex_keyboard_24px", "drawable", context.getPackageName());
         } catch (Exception ignored) {
         }
-        tools.add(new ToolItem("patcher", "APK Patcher", "APK Editor patches and LPZIP packages", resId(context, "apk_document_24px", pkg), CAT_STORAGE));
+        tools.add(new ToolItem("patcher", "APK Patcher", "APK Editor patches, Lucky Patcher and LPZIP", resId(context, "apk_document_24px", pkg), CAT_STORAGE));
+        tools.add(new ToolItem("luckypatcher", "Lucky Patcher", "Apply CLASSES, ODEX and LIB byte-pattern patches", resId(context, "edit_24px", pkg), CAT_STORAGE));
+        tools.add(new ToolItem("rootmanager", "Root Manager", "Root, Shizuku and non-root access", resId(context, "lock_24px", pkg), CAT_STORAGE));
         tools.add(new ToolItem("gameanalyzer", "Game Analyzer", "Detect APK, IL2CPP, metadata and native game files", resId(context, "apk_document_24px", pkg), CAT_GAME));
         tools.add(new ToolItem("il2cpp", "IL2CPP Dumper", "Dump matching libil2cpp.so + global-metadata.dat", resId(context, "ic_inspect", pkg), CAT_GAME));
         tools.add(new ToolItem("metadata", "Global Metadata", "Validate and inspect global-metadata.dat", resId(context, "baseline_info_24", pkg), CAT_GAME));
@@ -40,6 +42,7 @@ public class ToolRegistry {
         tools.add(new ToolItem("gamemodding", "Game Modding Toolkit", "APK, DEX, native, IL2CPP editor and Frida tools", resId(context, "ic_inspect", pkg), CAT_GAME));
         tools.add(new ToolItem("il2cppeditor", "IL2CPP Editor", "Edit IL2CPP dumps and native binaries", resId(context, "edit_24px", pkg), CAT_GAME));
         tools.add(new ToolItem("frida", "Frida Runtime Kit", "Generate and run IL2CPP Frida scripts", resId(context, "terminal_24px", pkg), CAT_GAME));
+        tools.add(new ToolItem("dlleditor", "DLL Editor", "Edit managed and native DLL files", resId(context, "edit_24px", pkg), CAT_GAME));
         tools.add(new ToolItem("wifimanager", "Wi-Fi Manager", "DNS profiles passwords usage", resId(context, "wifi_24px", pkg), CAT_NETWORK));
         tools.add(new ToolItem("connectivity", "Connectivity Hub", "Network data Bluetooth NFC", resId(context, "wifi_24px", pkg), CAT_NETWORK));
         tools.add(new ToolItem("qrgen", "QR Generator", "Text URL Wi-Fi to QR", resId(context, "qr_24px", pkg), CAT_NETWORK));

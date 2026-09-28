@@ -9,6 +9,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.OutputStream;
 import java.io.FileWriter;
 import java.io.EOFException;
 import java.io.IOException;
@@ -60,62 +61,130 @@ public final class GameAnalysisEngine {
     public static Result analyze(Context context, File input, File companion) throws IOException {
         if (input == null || !input.isFile()) throw new IOException("Input file does not exist");
         File root = newDumpDirectory();
-        File work = new File(root, "input");
-        if (!work.mkdirs() && !work.isDirectory()) throw new IOException("Cannot create dump directory");
+        File work = new File(context.getCacheDir(), "game-analysis-" + System.nanoTime());
+        if (!work.mkdirs() && !work.isDirectory()) throw new IOException("Cannot create analysis workspace");
+        try {
+            AnalysisState state = new AnalysisState(root);
+            state.source = input;
+            state.companion = companion;
 
-        AnalysisState state = new AnalysisState(root);
-        state.source = input;
-        state.companion = companion;
+            List<Artifact> artifacts = new ArrayList<>();
+            artifacts.addAll(scanInput(input, work, state));
+            if (companion != null && companion.isFile()) artifacts.addAll(scanCompanion(companion, work, state));
 
-        List<Artifact> artifacts = new ArrayList<>();
-        artifacts.addAll(scanInput(input, work, state));
-        if (companion != null && companion.isFile()) artifacts.addAll(scanCompanion(companion, work, state));
-
-        // Prefer an explicitly supplied pair when it is valid, then any discovered pair.
-        List<File> metadataFiles = new ArrayList<>();
-        List<File> nativeFiles = new ArrayList<>();
-        for (Artifact a : artifacts) {
-            if (a.kind == Kind.METADATA) metadataFiles.add(a.file);
-            if (a.kind == Kind.IL2CPP) nativeFiles.add(a.file);
-        }
-
-        File bestMetadata = firstValidMetadata(metadataFiles);
-        if (bestMetadata != null) {
-            MetadataResult mr = parseMetadata(bestMetadata, new File(root, "metadata"));
-            state.metadataResult = mr;
-        } else if (!metadataFiles.isEmpty()) {
-            File recovered = recoverSimpleMetadataRepresentation(metadataFiles.get(0), new File(root, "metadata"));
-            if (recovered != null) {
-                MetadataResult mr = parseMetadata(recovered, new File(root, "metadata_recovered"));
-                state.metadataResult = new MetadataResult(mr.valid, false, mr.version, mr.header, mr.stats, recovered,
-                        "Recovered a standard metadata representation from an envelope/simple transform; original input was preserved");
-            } else {
-                MetadataResult mr = inspectProtectedMetadata(metadataFiles.get(0), new File(root, "metadata"));
-                state.metadataResult = mr;
+            List<File> metadataFiles = new ArrayList<>();
+            List<File> nativeFiles = new ArrayList<>();
+            for (Artifact a : artifacts) {
+                if (a.kind == Kind.METADATA) metadataFiles.add(a.file);
+                if (a.kind == Kind.IL2CPP) nativeFiles.add(a.file);
             }
-        }
 
-        if (!nativeFiles.isEmpty()) {
+            File bestMetadata = firstValidMetadata(metadataFiles);
+            if (bestMetadata != null) {
+                state.metadataResult = parseMetadata(bestMetadata, root);
+            } else if (!metadataFiles.isEmpty()) {
+                File recovered = recoverSimpleMetadataRepresentation(metadataFiles.get(0), new File(work, "metadata-recovery"));
+                if (recovered != null) {
+                    MetadataResult mr = parseMetadata(recovered, root);
+                    state.metadataResult = new MetadataResult(mr.valid, false, mr.version, mr.header, mr.stats, recovered,
+                            "Recovered a standard metadata representation from an envelope/simple transform; original input was preserved");
+                } else {
+                    state.metadataResult = inspectProtectedMetadata(metadataFiles.get(0), root);
+                }
+            }
+
+            if (!nativeFiles.isEmpty()) {
+                state.nativeResults = new ArrayList<>();
+                for (int ni = 0; ni < nativeFiles.size(); ni++) {
+                    File nativeFile = nativeFiles.get(ni);
+                    int methodCount = state.metadataResult != null && state.metadataResult.stats != null ? state.metadataResult.stats.methods : 0;
+                    int typeCount = state.metadataResult != null && state.metadataResult.stats != null ? state.metadataResult.stats.types : 0;
+                    int imageCount = state.metadataResult != null && state.metadataResult.stats != null ? state.metadataResult.stats.images : 0;
+                    int metadataVersion = state.metadataResult != null ? state.metadataResult.version : -1;
+                    File nativeWork = new File(work, "native_" + ni);
+                    ElfResult er = analyzeElf(nativeFile, nativeWork, methodCount, typeCount, imageCount, metadataVersion,
+                            state.metadataResult != null && state.metadataResult.header != null ? state.metadataResult.header.layoutVersion() : metadataVersion,
+                            state.metadataResult != null ? state.metadataResult.file : null);
+                    flattenNativeArtifacts(nativeWork, root, "native_" + ni + "_");
+                    state.nativeResults.add(er);
+                }
+            }
+
+            writePairReports(root, state, metadataFiles, nativeFiles);
+            writeEncryptionReport(root, state, artifacts);
+            String report = writeAnalysisReport(root, state, artifacts);
+            return new Result(report, root);
+        } finally {
+            deleteRecursive(work);
+        }
+    }
+
+    /** IL2CPP Dumper entry point: libil2cpp.so and global-metadata.dat are mandatory; APK is optional context. */
+    public static Result analyzeIl2CppPair(Context context, File lib, File metadata, File apkOptional) throws IOException {
+        if (lib == null || !lib.isFile()) throw new IOException("libil2cpp.so is required");
+        if (metadata == null || !metadata.isFile()) throw new IOException("global-metadata.dat is required");
+        File root = newDumpDirectory();
+        File work = new File(context.getCacheDir(), "game-analysis-pair-" + System.nanoTime());
+        if (!work.mkdirs() && !work.isDirectory()) throw new IOException("Cannot create analysis workspace");
+        try {
+            File libCopy = copyIfNeeded(lib, work, "libil2cpp.so");
+            File metaCopy = copyIfNeeded(metadata, work, "global-metadata.dat");
+            AnalysisState state = new AnalysisState(root); state.source = libCopy; state.companion = metaCopy;
+            List<File> metadataFiles = List.of(metaCopy), nativeFiles = List.of(libCopy);
+            state.metadataResult = parseMetadata(metaCopy, root);
+            int methodCount = state.metadataResult.stats != null ? state.metadataResult.stats.methods : 0;
+            int typeCount = state.metadataResult.stats != null ? state.metadataResult.stats.types : 0;
+            int imageCount = state.metadataResult.stats != null ? state.metadataResult.stats.images : 0;
+            int metadataVersion = state.metadataResult.version;
             state.nativeResults = new ArrayList<>();
-            for (File nativeFile : nativeFiles) {
-                int methodCount = state.metadataResult != null && state.metadataResult.stats != null ? state.metadataResult.stats.methods : 0;
-                int typeCount = state.metadataResult != null && state.metadataResult.stats != null ? state.metadataResult.stats.types : 0;
-                int imageCount = state.metadataResult != null && state.metadataResult.stats != null ? state.metadataResult.stats.images : 0;
-                int metadataVersion = state.metadataResult != null ? state.metadataResult.version : -1;
-                state.nativeResults.add(analyzeElf(nativeFile, new File(root, "native_" + safeName(nativeFile.getName())), methodCount, typeCount, imageCount, metadataVersion, state.metadataResult != null && state.metadataResult.header != null ? state.metadataResult.header.layoutVersion() : metadataVersion));
+            File nativeWork = new File(work, "native_libil2cpp");
+            ElfResult er = analyzeElf(libCopy, nativeWork, methodCount, typeCount, imageCount, metadataVersion,
+                    state.metadataResult.header != null ? state.metadataResult.header.layoutVersion() : metadataVersion, metaCopy);
+            flattenNativeArtifacts(nativeWork, root, "libil2cpp_");
+            state.nativeResults.add(er);
+            if (apkOptional != null && apkOptional.isFile()) {
+                writeText(new File(root, "apk_context.txt"), "Optional APK/game file: " + apkOptional.getAbsolutePath() + "\nSize: " + apkOptional.length() + " bytes\nSHA-256: " + sha256(apkOptional) + "\n");
+            }
+            writePairReports(root, state, metadataFiles, nativeFiles);
+            String report = writeAnalysisReport(root, state, List.of(
+                    new Artifact(libCopy, Kind.IL2CPP, "required:libil2cpp.so"),
+                    new Artifact(metaCopy, Kind.METADATA, "required:global-metadata.dat")));
+            return new Result(report, root);
+        } finally {
+            deleteRecursive(work);
+        }
+    }
+
+    private static void flattenNativeArtifacts(File dir, File root, String prefix) throws IOException {
+        if (dir == null || !dir.isDirectory()) return;
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File f : children) {
+            if (f.isDirectory()) continue;
+            File target = new File(root, prefix + f.getName());
+            if (!target.equals(f)) {
+                if (!f.renameTo(target)) {
+                    try (InputStream in = new FileInputStream(f); OutputStream out = new FileOutputStream(target)) {
+                        byte[] b = new byte[64 * 1024]; int n; while ((n = in.read(b)) != -1) out.write(b,0,n);
+                    }
+                    f.delete();
+                }
             }
         }
+    }
 
-        writePairReports(root, state, metadataFiles, nativeFiles);
-        writeEncryptionReport(root, state, artifacts);
-        String report = writeAnalysisReport(root, state, artifacts);
-        return new Result(report, root);
+    private static void deleteRecursive(File f) {
+        if (f == null || !f.exists()) return;
+        File[] children = f.listFiles();
+        if (children != null) for (File c : children) deleteRecursive(c);
+        //noinspection ResultOfMethodCallIgnored
+        f.delete();
     }
 
     private static List<Artifact> scanInput(File input, File work, AnalysisState state) throws IOException {
         String n = input.getName().toLowerCase(Locale.ENGLISH);
         if (isMetadataName(n) || looksLikeMetadataCandidate(input)) return List.of(new Artifact(copyIfNeeded(input, work, "global-metadata.dat"), Kind.METADATA, "direct"));
-        if (isIl2CppName(n) || looksLikeElf(input)) return List.of(new Artifact(copyIfNeeded(input, work, "libil2cpp.so"), Kind.IL2CPP, "direct"));
+        if (isIl2CppName(n) || looksLikeIl2CppNative(input)) return List.of(new Artifact(copyIfNeeded(input, work, "libil2cpp.so"), Kind.IL2CPP, "direct"));
         if (isArchiveName(n)) return scanArchive(input, work, state);
         return List.of(new Artifact(copyIfNeeded(input, work, safeName(input.getName())), Kind.OTHER, "direct"));
     }
@@ -123,7 +192,7 @@ public final class GameAnalysisEngine {
     private static List<Artifact> scanCompanion(File input, File work, AnalysisState state) throws IOException {
         String n = input.getName().toLowerCase(Locale.ENGLISH);
         if (isMetadataName(n) || looksLikeMetadataCandidate(input)) return List.of(new Artifact(copyIfNeeded(input, work, "companion_global-metadata.dat"), Kind.METADATA, "companion"));
-        if (isIl2CppName(n) || looksLikeElf(input)) return List.of(new Artifact(copyIfNeeded(input, work, "companion_libil2cpp.so"), Kind.IL2CPP, "companion"));
+        if (isIl2CppName(n) || looksLikeIl2CppNative(input)) return List.of(new Artifact(copyIfNeeded(input, work, "companion_libil2cpp.so"), Kind.IL2CPP, "companion"));
         if (isArchiveName(n)) return scanArchive(input, work, state);
         return List.of(new Artifact(copyIfNeeded(input, work, safeName(input.getName())), Kind.OTHER, "companion"));
     }
@@ -158,7 +227,7 @@ public final class GameAnalysisEngine {
                 String path = e.getName();
                 String lower = path.toLowerCase(Locale.ENGLISH);
                 boolean metadataEntry = isMetadataName(lower) || entryLooksLikeMetadata(zip, e);
-                boolean il2cppEntry = isIl2CppName(lower) || entryLooksLikeElf(zip, e);
+                boolean il2cppEntry = entryLooksLikeIl2CppNative(zip, e);
                 if (metadataEntry || il2cppEntry) {
                     String outName = (metadataEntry ? "metadata_" : "il2cpp_") + (++state.sequence) + "_" + safeName(new File(path).getName());
                     File out = safeChild(work, outName);
@@ -175,6 +244,53 @@ public final class GameAnalysisEngine {
             }
         }
         return result;
+    }
+
+    private static boolean looksLikeIl2CppNative(File file) {
+        if (file == null || !file.isFile()) return false;
+        String n = file.getName().toLowerCase(Locale.ENGLISH);
+        if (isIl2CppName(n)) return true;
+        if (!looksLikeElf(file)) return false;
+        try {
+            byte[] sample = readAtMost(file, (int)Math.min(file.length(), 1024L * 1024L));
+            int hits = 0;
+            if (containsAscii(sample, "il2cpp")) hits++;
+            if (containsAscii(sample, "g_CodeRegistration")) hits++;
+            if (containsAscii(sample, "g_MetadataRegistration")) hits++;
+            if (containsAscii(sample, "il2cpp_init")) hits++;
+            return hits >= 2;
+        } catch (Exception ignored) { return false; }
+    }
+
+    private static boolean entryLooksLikeIl2CppNative(ZipFile zip, ZipEntry e) {
+        String lower = e.getName().toLowerCase(Locale.ENGLISH);
+        if (isIl2CppName(lower)) return true;
+        if (!lower.endsWith(".so") && !lower.endsWith(".dll")) return false;
+        try (InputStream in = zip.getInputStream(e)) {
+            long size = e.getSize();
+            int want = (int)Math.min(size > 0 ? size : 1024L * 1024L, 1024L * 1024L);
+            byte[] sample = new byte[Math.max(4096, want)];
+            int pos = 0, n;
+            while (pos < sample.length && (n = in.read(sample, pos, sample.length - pos)) > 0) pos += n;
+            if (pos < 4) return false;
+            boolean elf = sample[0] == 0x7f && sample[1] == 'E' && sample[2] == 'L' && sample[3] == 'F';
+            int hits = 0;
+            if (containsAscii(sample, "il2cpp")) hits++;
+            if (containsAscii(sample, "g_CodeRegistration")) hits++;
+            if (containsAscii(sample, "g_MetadataRegistration")) hits++;
+            if (containsAscii(sample, "il2cpp_init")) hits++;
+            return elf && hits >= 2;
+        } catch (Exception ignored) { return false; }
+    }
+
+    private static boolean containsAscii(byte[] data, String needle) {
+        if (data == null || needle == null || needle.isEmpty()) return false;
+        byte[] n = needle.getBytes(StandardCharsets.US_ASCII);
+        outer: for (int i = 0; i + n.length <= data.length; i++) {
+            for (int j = 0; j < n.length; j++) if (data[i + j] != n[j]) continue outer;
+            return true;
+        }
+        return false;
     }
 
     private static boolean entryLooksLikeMetadata(ZipFile zip, ZipEntry e) {
@@ -627,7 +743,7 @@ public final class GameAnalysisEngine {
         }
     }
 
-    private static ElfResult analyzeElf(File file, File outDir, int methodCount, int typeCount, int imageCount, int metadataVersion, int metadataLayoutVersion) throws IOException {
+    private static ElfResult analyzeElf(File file, File outDir, int methodCount, int typeCount, int imageCount, int metadataVersion, int metadataLayoutVersion, File metadataFile) throws IOException {
         mkdir(outDir);
         byte[] head=readAtMost(file,64);
         if(head.length<4 || head[0]!=0x7f || head[1]!='E' || head[2]!='L' || head[3]!='F'){
@@ -643,7 +759,7 @@ public final class GameAnalysisEngine {
             writeBinaryStrings(file,new File(outDir,"binary_strings.txt"));
             writeElfSections(raf,r,outDir);
             writeElfSymbols(raf,r,outDir);
-            writeIl2CppRegistration(raf, r, outDir, methodCount, typeCount, imageCount, metadataVersion, metadataLayoutVersion);
+            writeIl2CppRegistration(raf, r, outDir, methodCount, typeCount, imageCount, metadataVersion, metadataLayoutVersion, metadataFile);
             return r;
         }
     }
@@ -750,7 +866,7 @@ public final class GameAnalysisEngine {
      */
     private static void writeIl2CppRegistration(RandomAccessFile raf, ElfResult r, File outDir,
                                                  int methodCount, int typeCount, int imageCount,
-                                                 int metadataVersion, int metadataLayoutVersion) throws IOException {
+                                                 int metadataVersion, int metadataLayoutVersion, File metadataFile) throws IOException {
         File report = new File(outDir, "il2cpp_registration.txt");
         List<SymbolHint> symbols = findRegistrationSymbols(raf, r);
         long codeReg = 0, metadataReg = 0;
@@ -785,25 +901,9 @@ public final class GameAnalysisEngine {
             w.write("Method pointer entries: " + reg.methods.size()); w.newLine();
             w.write("Field offset entries: " + reg.fieldOffsets.size()); w.newLine();
         }
-        if (reg != null && metadataVersion >= 16) {
+        if (reg != null && metadataVersion >= 16 && metadataFile != null && metadataFile.isFile()) {
             // Rebuild the useful source-level artifacts using the verified native registration data.
-            File metadataDir = new File(outDir.getParentFile(), "metadata");
-            File metadataFile = new File(metadataDir, "global-metadata.dat");
-            // The metadata parser may have used a different extracted name, so locate the first DAT.
-            if (!metadataFile.isFile()) {
-                File[] candidates = metadataDir.listFiles((d, n) -> n.toLowerCase(Locale.ENGLISH).endsWith(".dat"));
-                if (candidates != null && candidates.length > 0) metadataFile = candidates[0];
-            }
-            if (!metadataFile.isFile()) {
-                File inputDir = new File(outDir.getParentFile(), "input");
-                File[] candidates = inputDir.listFiles((d, n) -> n.toLowerCase(Locale.ENGLISH).endsWith(".dat"));
-                if (candidates != null && candidates.length > 0) {
-                    for (File candidate : candidates) {
-                        try { if (readMetadataHeader(candidate) != null) { metadataFile = candidate; break; } } catch (Exception ignored) {}
-                    }
-                }
-            }
-            if (metadataFile.isFile()) writeNativeBackedArtifacts(raf, r, outDir, reg, metadataFile, metadataVersion, metadataLayoutVersion);
+            writeNativeBackedArtifacts(raf, r, outDir, reg, metadataFile, metadataVersion, metadataLayoutVersion);
         }
     }
 
@@ -1143,6 +1243,9 @@ public final class GameAnalysisEngine {
             for(Artifact a:artifacts)w.write(a.kind+"\t"+a.source+"\t"+a.file.getAbsolutePath()+"\tSHA256="+sha256(a.file)+"\n");
             if(state.metadataResult!=null){w.write("\nMetadata: "+state.metadataResult.message+"\n");if(state.metadataResult.header!=null)w.write("Metadata version: "+state.metadataResult.version+"\n");}
             if(state.nativeResults!=null){w.write("\nNative libraries:\n");for(ElfResult r:state.nativeResults)w.write(r.toText()+"\n");}
+            File dummyDir = new File(root, "DummyDll");
+            File[] dummyAssemblies = dummyDir.listFiles((d,n) -> n.toLowerCase(Locale.ENGLISH).endsWith(".dll"));
+            w.write("\nDummyDll assemblies emitted: " + (dummyAssemblies == null ? 0 : dummyAssemblies.length) + "\n");
             w.write("\nProtection/encryption note: arbitrary game-specific encryption cannot be universally decrypted from an offline file alone. If the game only exposes the plaintext metadata after runtime initialization, a runtime-memory dump can be supplied to UM for static analysis.\n");
         }return report.getAbsolutePath();
     }
@@ -1164,7 +1267,7 @@ public final class GameAnalysisEngine {
     private static long safeCount(long n){return n<0?0:Math.min(n,MAX_TYPES);}
     private static String safeName(String s){return s.replaceAll("[^A-Za-z0-9._-]","_");}
     private static boolean isMetadataName(String s){return s.endsWith("global-metadata.dat")||s.equals("metadata.dat");}
-    private static boolean isIl2CppName(String s){return s.endsWith("libil2cpp.so")||s.endsWith("gameassembly.dll")||s.endsWith("globalgamemanagers");}
+    private static boolean isIl2CppName(String s){return s.endsWith("libil2cpp.so")||s.endsWith("gameassembly.dll");}
     private static boolean isArchiveName(String s){return s.endsWith(".apk")||s.endsWith(".xapk")||s.endsWith(".apkm")||s.endsWith(".apks")||s.endsWith(".zip")||s.endsWith(".aab");}
     private static int u32(byte[]b,int o){return (b[o]&255)|((b[o+1]&255)<<8)|((b[o+2]&255)<<16)|((b[o+3]&255)<<24);}
     private static long u32l(byte[]b,int o,boolean le){long x=u32leOrBe(b,o,le);return x&0xffffffffL;}

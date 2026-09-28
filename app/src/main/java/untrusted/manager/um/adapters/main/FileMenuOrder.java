@@ -41,12 +41,13 @@ public final class FileMenuOrder {
     public static final String METADATA = "metadata";
     public static final String GAME_ENCRYPTION = "game_encryption";
     public static final String GAME_MODDING = "game_modding";
+    public static final String DLL_EDITOR = "dll_editor";
 
     public static final String[] DEFAULT_ORDER = {
             COPY, MOVE, RENAME, DELETE, COMPRESS, PROPERTIES, SHARE, OPEN_WITH,
             BOOKMARK, CMD, CHECK, EXTRACT, BATCH_SIGN, BATCH_OPT, BATCH_INSTALL,
             CMP_ZIP, CMP_ARSC, CMP_TEXT, CMP_HASH, CMP_APK,
-            BATCH_CROP, BATCH_EXIF, BATCH_STRIP_META, GAME_ANALYZER, IL2CPP, METADATA, GAME_ENCRYPTION, GAME_MODDING
+            BATCH_CROP, BATCH_EXIF, BATCH_STRIP_META, GAME_ANALYZER, IL2CPP, METADATA, GAME_ENCRYPTION, GAME_MODDING, DLL_EDITOR
     };
 
     private FileMenuOrder() {
@@ -143,6 +144,7 @@ public final class FileMenuOrder {
             case METADATA -> "Global Metadata";
             case GAME_ENCRYPTION -> "Game Encryption";
             case GAME_MODDING -> "Game Modding Toolkit";
+            case DLL_EDITOR -> "DLL Editor";
             default -> id;
         };
     }
@@ -171,6 +173,7 @@ public final class FileMenuOrder {
             case METADATA -> R.drawable.baseline_info_24;
             case GAME_ENCRYPTION -> R.drawable.lock_24px;
             case GAME_MODDING -> R.drawable.ic_inspect;
+            case DLL_EDITOR -> R.drawable.edit_24px;
             default -> 0;
         };
     }

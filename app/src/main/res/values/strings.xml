@@ -202,6 +202,7 @@
     <string name="archive_viewer">Archive viewer</string>
     <string name="image_viewer">Image viewer</string>
     <string name="hex_editor">Hex editor</string>
+    <string name="dll_editor">DLL Editor</string>
     <string name="media_player">Media player</string>
     <string name="apk_info">APK info</string>
     <string name="not_supported_archive">Not a zip-based archive, built-in archive viewer only supports ZIP/APK/JAR</string>

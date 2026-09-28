@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     android:installLocation="preferExternal"
-    package="untrusted.manager.um">
+   >
     <uses-sdk tools:overrideLibrary="io.github.rosemoe.sora.langs.java, androidx.window, androidx.window.core, rikka.shizuku.provider, rikka.shizuku.api, rikka.shizuku.shared, rikka.shizuku.aidl" />
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -291,6 +291,7 @@
                    android:resource="@xml/accessibility_service" />
            </service>
            <activity android:name="untrusted.manager.um.patcher.PatcherActivity" android:exported="false" android:label="APK Patcher" />
+           <activity android:name="untrusted.manager.um.tools.RootManagerActivity" android:exported="false" android:label="Root Manager" />
            <activity android:name="untrusted.manager.um.gameanalysis.GameAnalysisActivity" android:exported="false" android:label="Game Analysis" />
            <activity android:name="untrusted.manager.um.gameanalysis.Il2CppEditorActivity" android:exported="false" android:label="IL2CPP Editor" />
            <activity android:name="untrusted.manager.um.gameanalysis.FridaToolkitActivity" android:exported="false" android:label="Frida Runtime Kit" />

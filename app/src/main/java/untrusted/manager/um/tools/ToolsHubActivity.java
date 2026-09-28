@@ -41,6 +41,7 @@ import java.util.Map;
 import untrusted.manager.um.ui.UiFields;
 import untrusted.manager.um.patcher.PatcherActivity;
 import untrusted.manager.um.gameanalysis.GameAnalysisActivity;
+import untrusted.manager.um.gameanalysis.Il2CppEditorActivity;
 
 public class ToolsHubActivity extends AppCompatActivity {
     private RecyclerView grid;
@@ -131,9 +132,15 @@ public class ToolsHubActivity extends AppCompatActivity {
     }
     private void openTool(ToolRegistry.ToolItem item) {
         if ("patcher".equals(item.id())) {
-            startActivity(new Intent(this, PatcherActivity.class));
+            startActivity(new Intent(this, PatcherActivity.class).putExtra("mode", "apk"));
+        } else if ("luckypatcher".equals(item.id())) {
+            startActivity(new Intent(this, PatcherActivity.class).putExtra("mode", "lucky"));
+        } else if ("rootmanager".equals(item.id())) {
+            startActivity(new Intent(this, RootManagerActivity.class));
+        } else if ("dlleditor".equals(item.id())) {
+            startActivity(new Intent(this, Il2CppEditorActivity.class).putExtra("mode", "dll"));
         } else if ("il2cppeditor".equals(item.id())) {
-            startActivity(new Intent(this, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class));
+            startActivity(new Intent(this, Il2CppEditorActivity.class));
         } else if ("frida".equals(item.id())) {
             startActivity(new Intent(this, untrusted.manager.um.gameanalysis.FridaToolkitActivity.class));
         } else if ("il2cpp".equals(item.id()) || "metadata".equals(item.id()) || "gameanalyzer".equals(item.id())
@@ -197,13 +204,15 @@ public class ToolsHubActivity extends AppCompatActivity {
             box.addView(icon, iconParams);
             TextView title = new TextView(parent.getContext());
             title.setGravity(Gravity.CENTER);
-            title.setMaxLines(1);
+            title.setMaxLines(2);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
             title.setTextSize(13);
             title.setTextColor(MaterialColors.getColor(parent.getContext(), com.google.android.material.R.attr.colorOnSurface, Color.BLACK));
             box.addView(title);
             TextView subtitle = new TextView(parent.getContext());
             subtitle.setGravity(Gravity.CENTER);
-            subtitle.setMaxLines(1);
+            subtitle.setMaxLines(2);
+            subtitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
             subtitle.setTextSize(10);
             subtitle.setAlpha(0.7f);
             subtitle.setTextColor(MaterialColors.getColor(parent.getContext(), com.google.android.material.R.attr.colorOnSurfaceVariant, Color.GRAY));

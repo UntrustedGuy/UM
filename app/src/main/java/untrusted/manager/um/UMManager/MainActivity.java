@@ -4000,7 +4000,17 @@ public class MainActivity extends AppCompatActivity {
             workingModeTv.setText(labelShizuku, false);
         } else workingModeTv.setText(labelNonRoot, false);
 
-        rootStatusSwitch.setChecked(false);
+        // Do not probe `su` on the UI thread. Root probing waits on a process and can take several seconds.
+        rootStatusSwitch.setChecked(rootManager.getWorkingMode() == RootManager.WorkingMode.ROOT);
+        new Thread(() -> {
+            boolean available = false;
+            try { rootManager.refreshRootCache(); available = rootManager.isRootAvailable(); } catch (Throwable ignored) {}
+            boolean finalAvailable = available;
+            handler.post(() -> {
+                if (rootManager.getWorkingMode() == RootManager.WorkingMode.ROOT) rootStatusSwitch.setChecked(finalAvailable);
+                rebootMenuBtn.setVisibility(rootManager.getWorkingMode() == RootManager.WorkingMode.ROOT && finalAvailable && rootStatusSwitch.isChecked() ? View.VISIBLE : View.GONE);
+            });
+        }).start();
         Runnable refreshShizukuRow = () -> {
             boolean running = ShizukuManager.isRunning();
             boolean granted = ShizukuManager.hasPermission();
@@ -4046,7 +4056,7 @@ public class MainActivity extends AppCompatActivity {
                             rootStatusSwitch.setChecked(true);
                         } else {
                             Extensions.showMessage(this, R.string.root_denied_msg);
-                            rootStatusSwitch.setChecked(false);
+                            rootStatusSwitch.setChecked(rootManager.getWorkingMode() == RootManager.WorkingMode.ROOT && rootManager.isRootAvailable());
                             workingModeTv.setText(rootManager.getWorkingMode() == RootManager.WorkingMode.SHIZUKU
                                     ? labelShizuku : labelNonRoot, false);
                         }

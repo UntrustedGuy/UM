@@ -341,11 +341,14 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                         visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.METADATA, FileMenuOrder.labelFor(context, FileMenuOrder.METADATA, direction)));
                         visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.IL2CPP, FileMenuOrder.labelFor(context, FileMenuOrder.IL2CPP, direction)));
                         visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_ENCRYPTION, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_ENCRYPTION, direction)));
-                    } else if (lowerGameName.endsWith("libil2cpp.so")) {
+                    } else if (lowerGameName.equals("libil2cpp.so") || lowerGameName.endsWith("/libil2cpp.so")) {
                         visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.IL2CPP, FileMenuOrder.labelFor(context, FileMenuOrder.IL2CPP, direction)));
                         visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_ENCRYPTION, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_ENCRYPTION, direction)));
                         visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_MODDING, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_MODDING, direction)));
-                    } else if (lowerGameName.endsWith(".so") || lowerGameName.endsWith(".dll") || lowerGameName.endsWith(".dylib")) {
+                    } else if (lowerGameName.endsWith(".dll")) {
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.DLL_EDITOR, FileMenuOrder.labelFor(context, FileMenuOrder.DLL_EDITOR, direction)));
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_MODDING, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_MODDING, direction)));
+                    } else if (lowerGameName.endsWith(".so") || lowerGameName.endsWith(".dylib")) {
                         visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.GAME_MODDING, FileMenuOrder.labelFor(context, FileMenuOrder.GAME_MODDING, direction)));
                     }
                 }
@@ -433,6 +436,11 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                                 return;
                             case FileMenuOrder.GAME_MODDING:
                                 openGameAnalysis("modding", file);
+                                return;
+                            case FileMenuOrder.DLL_EDITOR:
+                                context.startActivity(new Intent(context, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class)
+                                        .putExtra("mode", "dll")
+                                        .putExtra("path", file.getAbsolutePath()));
                                 return;
                             case FileMenuOrder.CMP_TEXT:
                                 context.startActivity(new Intent(context, CompareTextActivity.class)
@@ -1006,6 +1014,13 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
             actionNames.add(context.getString(R.string.xml_functions));
             actionIcons.add(R.drawable.code_24px);
             actionHandlers.add(() -> showXmlFunctions(file, fileName));
+        }
+        if (lower.endsWith(".dll")) {
+            actionNames.add(context.getString(R.string.dll_editor));
+            actionIcons.add(R.drawable.edit_24px);
+            actionHandlers.add(() -> context.startActivity(new Intent(context, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class)
+                    .putExtra("mode", "dll")
+                    .putExtra("path", file.getAbsolutePath())));
         }
         String keyExt = FilenameUtils.getExtension(fileName).toLowerCase(Locale.ROOT);
         if (keyExt.equals("jks") || keyExt.equals("keystore") || keyExt.equals("p12")

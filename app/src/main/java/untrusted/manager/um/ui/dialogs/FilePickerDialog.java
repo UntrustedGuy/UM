@@ -70,6 +70,8 @@ public class FilePickerDialog {
         public File offset;
         public String[] extensions;
         public String preferenceKey;
+        /** Start at root/offset instead of the last remembered directory. */
+        public boolean forceStartDirectory = false;
     }
 
     private final Context context;
@@ -167,6 +169,10 @@ public class FilePickerDialog {
     }
 
     private File resolveStartDir() {
+        if (props.forceStartDirectory) {
+            if (props.offset != null && props.offset.isDirectory()) return props.offset;
+            if (props.root != null && props.root.isDirectory()) return props.root;
+        }
         String saved = settings.getString(prefLastPath(), null);
         if (saved != null) {
             File savedDir = new File(saved);
