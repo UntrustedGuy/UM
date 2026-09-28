@@ -39,6 +39,7 @@ public class GameAnalysisActivity extends AppCompatActivity {
     private String mode;
     private File inputFile;
     private File companionFile;
+    private TextView companionPath;
     private TextView status;
     private Button runButton;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -93,7 +94,7 @@ public class GameAnalysisActivity extends AppCompatActivity {
         companionLabel.setText("Companion input (optional)");
         companionLabel.setTextSize(16);
         companionBox.addView(companionLabel);
-        TextView companionPath = new TextView(this);
+        companionPath = new TextView(this);
         companionPath.setText("Use when the APK/file does not contain the matching libil2cpp.so or global-metadata.dat");
         companionPath.setTextIsSelectable(true);
         companionBox.addView(companionPath, lp(0, 0, 0, 8));

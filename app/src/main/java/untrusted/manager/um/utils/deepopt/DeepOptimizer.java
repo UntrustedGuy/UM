@@ -1,5 +1,6 @@
 package untrusted.manager.um.utils.deepopt;
 
+import untrusted.manager.um.utils.ApkZipAlignUtil;
 import android.content.Context;
 import android.content.SharedPreferences;
 
