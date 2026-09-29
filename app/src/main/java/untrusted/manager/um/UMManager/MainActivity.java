@@ -1,6 +1,8 @@
 package untrusted.manager.um.UMManager;
 
 import untrusted.manager.um.R;
+import untrusted.manager.um.tools.ToolsHubActivity;
+import untrusted.manager.um.ui.fragment.UnifiedEditorFragment;
 
 import static untrusted.manager.um.utils.FileUtils.doesNotHaveStoragePerm;
 
@@ -45,6 +47,7 @@ import android.text.format.Formatter;
 import android.util.TypedValue;
 import android.view.DragEvent;
 import android.view.GestureDetector;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;

@@ -347,6 +347,7 @@ public class MergeUtil {
                             context.reloadCurrentFolder();
                         });
                     }
+                    return true;
                 }
             } finally {
                 try {

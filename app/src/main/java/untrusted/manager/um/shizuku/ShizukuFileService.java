@@ -6,6 +6,7 @@ import android.os.ParcelFileDescriptor;
 import androidx.annotation.Keep;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;

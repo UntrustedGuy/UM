@@ -9,7 +9,6 @@ import net.schmizz.sshj.sftp.RemoteFile;
 import net.schmizz.sshj.sftp.RemoteResourceInfo;
 import net.schmizz.sshj.sftp.SFTPClient;
 import net.schmizz.sshj.sftp.FileAttributes;
-import net.schmizz.sshj.common.io.PathComponents;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
