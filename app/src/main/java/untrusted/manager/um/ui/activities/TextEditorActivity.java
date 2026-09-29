@@ -379,6 +379,7 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
         axml = t.axml;
         resEntries = t.resEntries;
 
+        if (f != null) f.setDocumentName(t.title);
         if (f != null && f.getEditor() != null && t.loaded) {
             boolean wasModified = t.modified; // setText fires a change event; preserve real state
             f.setText(t.content == null ? "" : t.content);
@@ -692,18 +693,33 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
             saveTabTextRoot(tab, text, onDone);
             return;
         }
-        backupForSave(tab.file, null);
-        try (OutputStream os = (tab.file == null
-                ? getContentResolver().openOutputStream(tab.fileUri, "wt")
-                : FileUtils.getOutputStream(tab.file))) {
-            os.write(tab.axml ? new aXMLEncoder().encodeString(text, this, tab.resEntries) : text.getBytes(StandardCharsets.UTF_8));
-            tab.content = text;
-            tab.modified = false;
-            if (onDone != null) onDone.run();
-        } catch (Exception e) {
-            tab.modified = true;
-            new ErrorUtil(this).showError(e);
-        }
+        new Thread(() -> {
+            try {
+                backupForSave(tab.file, null);
+                byte[] data = tab.axml
+                        ? new aXMLEncoder().encodeString(text, this, tab.resEntries)
+                        : text.getBytes(StandardCharsets.UTF_8);
+                try (OutputStream os = (tab.file == null
+                        ? getContentResolver().openOutputStream(tab.fileUri, "wt")
+                        : FileUtils.getOutputStream(tab.file))) {
+                    if (os == null) throw new java.io.IOException("Unable to open output stream");
+                    os.write(data);
+                    os.flush();
+                }
+                runOnUiThread(() -> {
+                    tab.content = text;
+                    tab.modified = false;
+                    updateTabsList();
+                    persistSession();
+                    if (onDone != null) onDone.run();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    tab.modified = true;
+                    new ErrorUtil(this).showError(e);
+                });
+            }
+        }).start();
     }
 
     private void saveTabTextRoot(EditorTab tab, String text) {
@@ -711,27 +727,31 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
     }
 
     private void saveTabTextRoot(EditorTab tab, String text, Runnable onDone) {
-        backupForSave(tab.file, tab.rootOriginalPath);
-        try (OutputStream os = FileUtils.getOutputStream(tab.file)) {
-            os.write(tab.axml ? new aXMLEncoder().encodeString(text, this, tab.resEntries) : text.getBytes(StandardCharsets.UTF_8));
-        } catch (Exception e) {
-            tab.modified = true;
-            new ErrorUtil(this).showError(e);
+        if (text.isEmpty() && originalKnownNonEmpty(tab)) {
+            String target = tab.rootOriginalPath;
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle(getString(R.string.editor_overwrite_empty))
+                    .setMessage(getString(R.string.editor_overwrite_empty_msg, target))
+                    .setPositiveButton(getString(R.string.editor_overwrite), (d, w) -> saveTabTextRootConfirmed(tab, text, onDone))
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show();
             return;
         }
-        tab.content = text;
+        saveTabTextRootConfirmed(tab, text, onDone);
+    }
+
+    private void saveTabTextRootConfirmed(EditorTab tab, String text, Runnable onDone) {
         Extensions.showMessage(this, getString(R.string.editor_writing_root));
         new Thread(() -> {
             try {
-                if (text.isEmpty() && originalKnownNonEmpty(tab)) {
-                    String target = tab.rootOriginalPath;
-                    runOnUiThread(() -> new MaterialAlertDialogBuilder(this)
-                            .setTitle(getString(R.string.editor_overwrite_empty))
-                            .setMessage(getString(R.string.editor_overwrite_empty_msg, target))
-                            .setPositiveButton(getString(R.string.editor_overwrite), (d, w) -> new Thread(() -> doRootWriteBack(tab, text, onDone)).start())
-                            .setNegativeButton(android.R.string.cancel, null)
-                            .show());
-                    return;
+                backupForSave(tab.file, tab.rootOriginalPath);
+                byte[] data = tab.axml
+                        ? new aXMLEncoder().encodeString(text, this, tab.resEntries)
+                        : text.getBytes(StandardCharsets.UTF_8);
+                try (OutputStream os = FileUtils.getOutputStream(tab.file)) {
+                    if (os == null) throw new java.io.IOException("Unable to open staged output stream");
+                    os.write(data);
+                    os.flush();
                 }
                 doRootWriteBack(tab, text, onDone);
             } catch (Exception e) {
@@ -760,6 +780,7 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
         try {
             RootStaging.writeBack(this, tab.file, tab.rootOriginalPath);
             runOnUiThread(() -> {
+                tab.content = text;
                 tab.modified = false;
                 updateTabsList();
                 persistSession();
@@ -867,15 +888,19 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
     protected void onDestroy() {
         UnifiedEditorFragment f = getFragment();
         if (f != null && f.getEditor() != null) {
-            f.getEditor().release();
             EditorTab t = getCurrentTab();
-            if (!manualFinish && t != null && t.modified) {
-                boolean isFromFile = currentFile != null;
-                if (isFromFile) try (OutputStream os = FileUtils.getOutputStream(
-                        new File(getCacheDir(), currentFile.getPath().replace(File.separator, ".")))) {
-                    os.write(f.getEditor().getText().toString().getBytes(StandardCharsets.UTF_8));
-                } catch (Exception ignored) { }
+            if (!manualFinish && t != null && t.modified && t.file != null) {
+                final String recoveryText = f.getEditor().getText().toString();
+                final File source = t.file;
+                final File recovery = new File(getCacheDir(), source.getPath().replace(File.separator, "."));
+                new Thread(() -> {
+                    try (OutputStream os = FileUtils.getOutputStream(recovery)) {
+                        os.write(recoveryText.getBytes(StandardCharsets.UTF_8));
+                        os.flush();
+                    } catch (Exception ignored) { }
+                }, "editor-recovery-write").start();
             }
+            f.getEditor().release();
         }
         super.onDestroy();
     }

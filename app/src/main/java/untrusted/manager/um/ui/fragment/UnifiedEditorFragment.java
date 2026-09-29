@@ -164,6 +164,7 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
     private static Language cachedSmaliLanguage;
     private static TextMateColorScheme cachedColorScheme;
     private static String[] cachedInstructions;
+    private static final java.util.Map<String, TextMateLanguage> cachedTextLanguages = new java.util.HashMap<>();
 
     public interface EditorCallback {
         void onContentModified(String className);
@@ -578,10 +579,80 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
             if (linearHeader != null) linearHeader.setVisibility(View.GONE);
             editor.setEditable(false);
         } else {
-            //if (symbolInputContainer != null) symbolInputContainer.setVisibility(View.GONE);
+            // Plain text files are upgraded to a real syntax language when their
+            // filename identifies a supported source/config format. Unknown files
+            // remain plain text rather than receiving misleading highlighting.
+            TextMateLanguage language = createLanguageForDocument(requireContext().getApplicationContext(), getDocumentName());
+            if (language != null) editor.setEditorLanguage(language);
+            else editor.setEditorLanguage(new EmptyLanguage());
             if (linearHeader != null) linearHeader.setVisibility(View.GONE);
+            editor.setEditable(true);
         }
         applyPreferences();
+    }
+
+    private String getDocumentName() {
+        String name = !TextUtils.isEmpty(title) ? title : className;
+        if (name == null) return "";
+        int q = name.indexOf('?');
+        return q >= 0 ? name.substring(0, q) : name;
+    }
+
+    private static String languageKeyFor(String name) {
+        if (name == null) return null;
+        String n = name.toLowerCase(java.util.Locale.ROOT);
+        if (n.endsWith(".xml") || n.endsWith(".axml") || n.endsWith(".plist")) return "xml";
+        if (n.endsWith(".html") || n.endsWith(".htm") || n.endsWith(".xhtml")) return "html";
+        if (n.endsWith(".json") || n.endsWith(".jsonc")) return "json";
+        if (n.endsWith(".yaml") || n.endsWith(".yml")) return "yaml";
+        if (n.endsWith(".css") || n.endsWith(".scss")) return "css";
+        if (n.endsWith(".js") || n.endsWith(".mjs") || n.endsWith(".cjs")) return "javascript";
+        if (n.endsWith(".ts") || n.endsWith(".tsx")) return "javascript";
+        if (n.endsWith(".md") || n.endsWith(".markdown")) return "markdown";
+        if (n.endsWith(".py")) return "python";
+        return null;
+    }
+
+    private static synchronized TextMateLanguage createLanguageForDocument(Context context, String name) {
+        String key = languageKeyFor(name);
+        if (key == null) return null;
+        TextMateLanguage cached = cachedTextLanguages.get(key);
+        if (cached != null) return cached;
+        try {
+            initTMStatic(context);
+            ThemeRegistry registry = ThemeRegistry.getInstance();
+            boolean dark = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+            int appTheme = PreferenceManager.getDefaultSharedPreferences(context).getInt("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light);
+            String themeName = appTheme == R.style.Theme_MyApp_Light ? "light.json" : "dark.json";
+            IThemeSource themeSource = IThemeSource.fromInputStream(context.getAssets().open("themes/" + themeName), themeName, null);
+            try {
+                registry.loadTheme(themeSource);
+                registry.setTheme(themeName);
+            } catch (Exception ignored) { }
+            String grammarPath = "grammars/" + key + ".tmLanguage.json";
+            String configPath = "grammars/config/" + key + ".language-configuration.json";
+            TextMateLanguage language = TextMateLanguage.create(
+                    IGrammarSource.fromInputStream(context.getAssets().open(grammarPath), key + ".tmLanguage.json", null),
+                    new InputStreamReader(context.getAssets().open(configPath)), themeSource);
+            cachedTextLanguages.put(key, language);
+            return language;
+        } catch (Exception e) {
+            Log.w("UnifiedEditor", "Syntax language unavailable for " + key, e);
+            return null;
+        }
+    }
+
+    public void setDocumentName(String documentName) {
+        if (documentName == null) documentName = "";
+        title = documentName;
+        className = documentName;
+        if (editor != null && !isSmali && type != TYPE_JAVA) {
+            TextMateLanguage language = createLanguageForDocument(requireContext().getApplicationContext(), documentName);
+            if (language != null) editor.setEditorLanguage(language);
+            else editor.setEditorLanguage(new EmptyLanguage());
+            applyPreferences();
+        }
+        if (textviewLeft != null) textviewLeft.setText(!TextUtils.isEmpty(title) ? title : getString(R.string.ellipsis));
     }
 
     public void applyPreferences() {
@@ -1424,6 +1495,7 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
         cachedSmaliLanguage = null;
         cachedColorScheme = null;
         cachedInstructions = null;
+        cachedTextLanguages.clear();
     }
 
     public static synchronized void ensureLanguageInitialized(Context context) {

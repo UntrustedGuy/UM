@@ -111,8 +111,29 @@ public class ShizukuFile extends File {
         return new ShizukuFile(join(parent, name), type == 'd' || type == 'l' && name.indexOf('.') < 0, size);
     }
 
-    private static String join(String parent, String name) {
-        return parent.endsWith("/") ? parent + name : parent + "/" + name;
+    private static String safePath(File file) {
+        if (file == null) return null;
+        try {
+            String canonical = file.getCanonicalPath();
+            return isAndroidDataPath(canonical) ? canonical : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static boolean sameOrDescendant(File candidate, File root) {
+        try {
+            String c = candidate.getCanonicalPath();
+            String r = root.getCanonicalPath();
+            return c.equals(r) || c.startsWith(r.endsWith(File.separator) ? r : r + File.separator);
+        } catch (IOException e) {
+            return true;
+        }
+    }
+
+    private static String quotePath(File file) {
+        String p = safePath(file);
+        return p == null ? null : RootManager.escapeShellArg(p);
     }
 
     // ======== File overrides backed by shell ========
@@ -173,24 +194,31 @@ public class ShizukuFile extends File {
 
     @Override
     public boolean mkdir() {
-        return ShizukuShell.exec("mkdir " + RootManager.escapeShellArg(getAbsolutePath())).success;
+        String p = quotePath(this);
+        if (p == null || getAbsolutePath().equals(ANDROID_DATA)) return false;
+        return ShizukuShell.exec("mkdir -- " + p).success;
     }
 
     @Override
     public boolean mkdirs() {
-        return ShizukuShell.exec("mkdir -p " + RootManager.escapeShellArg(getAbsolutePath())).success;
+        String p = quotePath(this);
+        if (p == null || getAbsolutePath().equals(ANDROID_DATA)) return false;
+        return ShizukuShell.exec("mkdir -p -- " + p).success;
     }
 
     @Override
     public boolean delete() {
-        if (RootManager.isPathBlocked(getAbsolutePath())) return false;
-        return ShizukuShell.exec("rm -rf " + RootManager.escapeShellArg(getAbsolutePath())).success;
+        String p = quotePath(this);
+        if (p == null || RootManager.isPathBlocked(getAbsolutePath()) || getAbsolutePath().equals(ANDROID_DATA)) return false;
+        return ShizukuShell.exec("rm -rf -- " + p).success;
     }
 
     @Override
     public boolean renameTo(File dest) {
-        if (RootManager.isPathBlocked(getAbsolutePath())) return false;
-        return ShizukuShell.exec("mv " + RootManager.escapeShellArg(getAbsolutePath()) + " " + RootManager.escapeShellArg(dest.getAbsolutePath())).success;
+        String src = quotePath(this);
+        String dst = quotePath(dest);
+        if (src == null || dst == null || RootManager.isPathBlocked(src) || sameOrDescendant(dest, this)) return false;
+        return ShizukuShell.exec("mv -- " + src + " " + dst).success;
     }
 
     /**
@@ -200,10 +228,18 @@ public class ShizukuFile extends File {
     public File materializeTo(Context context) throws IOException {
         File cacheDir = new File(context.getCacheDir(), "shizuku");
         File out = new File(cacheDir, getName());
-        if (out.exists()) out.delete();
-        cacheDir.mkdirs();
-        ShizukuShell.Result r = ShizukuShell.exec("cat " + RootManager.escapeShellArg(getAbsolutePath()) + " > " + RootManager.escapeShellArg(out.getAbsolutePath()));
-        if (!r.success) throw new IOException("Shizuku copy failed: " + r.stderr);
+        if (out.exists() && !out.delete()) throw new IOException("Cannot replace cached file");
+        if (!cacheDir.isDirectory() && !cacheDir.mkdirs() && !cacheDir.isDirectory()) {
+            throw new IOException("Cannot create Shizuku cache");
+        }
+        String src = quotePath(this);
+        if (src == null) throw new IOException("Refusing unsafe Shizuku path");
+        ShizukuShell.Result r = ShizukuShell.exec("cat -- " + src + " > " + RootManager.escapeShellArg(out.getAbsolutePath()));
+        if (!r.success || !out.isFile()) {
+            //noinspection ResultOfMethodCallIgnored
+            out.delete();
+            throw new IOException("Shizuku copy failed: " + r.stderr);
+        }
         return out;
     }
 

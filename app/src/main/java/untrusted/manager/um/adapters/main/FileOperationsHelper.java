@@ -45,6 +45,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -76,6 +77,8 @@ import untrusted.manager.um.utils.FileUtils;
 import untrusted.manager.um.utils.ProgressManager;
 import untrusted.manager.um.utils.AccessManager;
 import untrusted.manager.um.utils.RootStaging;
+import untrusted.manager.um.utils.RootManager;
+import untrusted.manager.um.utils.ShizukuManager;
 import untrusted.manager.um.utils.SignWrapper;
 import io.github.codehasan.colorpicker.extensions.Extensions;
 import modder.hub.dexeditor.activity.DexEditorActivity;
@@ -103,6 +106,10 @@ public class FileOperationsHelper {
     }
 
     private void showActiveProgress(String text) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            context.handler.post(() -> showActiveProgress(text));
+            return;
+        }
         dismissActiveProgress();
         ProgressManager pm = new ProgressManager(context, true);
         pm.setText(text);
@@ -112,7 +119,30 @@ public class FileOperationsHelper {
 
     private void dismissActiveProgress() {
         ProgressManager pm = activeProgress;
-        if (pm != null) pm.dismiss();
+        if (pm == null) return;
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            dismissProgress(pm);
+            activeProgress = null;
+        } else {
+            context.handler.post(() -> {
+                ProgressManager current = activeProgress;
+                if (current != null) current.dismiss();
+                activeProgress = null;
+            });
+        }
+    }
+
+    private void showErrorOnUi(Throwable error) {
+        context.handler.post(() -> new ErrorUtil(context).showError(error));
+    }
+
+    private void dismissProgress(ProgressManager pm) {
+        if (pm == null) return;
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            pm.dismiss();
+        } else {
+            context.handler.post(pm::dismiss);
+        }
     }
 
     private void runWithProgress(String text, IoOperation op) {
@@ -121,9 +151,8 @@ public class FileOperationsHelper {
             try {
                 op.run();
             } catch (Exception e) {
-                new ErrorUtil(context).showError(e);
+                showErrorOnUi(e);
             } finally {
-                //activeProgress = null;
                 dismissActiveProgress();
             }
         }).start();
@@ -189,8 +218,24 @@ public class FileOperationsHelper {
         if (destIsZip) {
             if (!copyToZip(items, destinationFolder, otherPaneAdapter.currentZipPath)) return false;
             for (Object item : items) {
-                if (item instanceof File) ((File) item).delete();
-                else if (item instanceof ZipEntryInfo) deleteZipEntry((ZipEntryInfo) item);
+                if (item instanceof File f) {
+                    boolean removed = false;
+                    if (AccessManager.fileOpsOn(context)) {
+                        try {
+                            AccessManager.delete(context, f.getAbsolutePath(), true);
+                            removed = !AccessManager.exists(context, f.getAbsolutePath());
+                        } catch (Exception ignored) {
+                            removed = false;
+                        }
+                    }
+                    if (!removed) {
+                        deleteRecursive(f);
+                        removed = !f.exists();
+                    }
+                    if (!removed) throw new IOException("Move copied " + f.getName() + " into the archive but source deletion failed; source was kept");
+                } else if (item instanceof ZipEntryInfo) {
+                    deleteZipEntry((ZipEntryInfo) item);
+                }
             }
             return true;
         }
@@ -200,12 +245,18 @@ public class FileOperationsHelper {
         for (Object item : items) {
             if (item instanceof File f) {
                 File dest = getUnusedDest(destinationFolder, f.getName(), useElevated);
+                validateLocalTransfer(f, dest);
                 if (useElevated) {
                     try {
                         if (f.isDirectory()) AccessManager.copyDir(context, f.getAbsolutePath(), dest.getAbsolutePath(), true);
                         else AccessManager.copyFile(context, f.getAbsolutePath(), dest.getAbsolutePath(), true);
+                        verifyElevatedCopy(f, dest);
                         AccessManager.preserveTime(context, f.getAbsolutePath(), dest.getAbsolutePath());
-                        AccessManager.delete(context, f.getAbsolutePath(), true);
+                        try {
+                            AccessManager.delete(context, f.getAbsolutePath(), true);
+                        } catch (Exception deleteError) {
+                            throw new IOException("Move copied " + f.getName() + " but source deletion failed; source was kept", deleteError);
+                        }
                         continue;
                     } catch (Exception e) {
                         if (AccessManager.needsElevated(context, f.getAbsolutePath())
@@ -253,20 +304,84 @@ public class FileOperationsHelper {
         return true;
     }
 
-    private static long copySize(File f) {
+    private void verifyElevatedCopy(File source, File destination) throws IOException {
+        boolean exists = destination.exists() || AccessManager.exists(context, destination.getAbsolutePath());
+        if (!exists) throw new IOException("Elevated copy did not create destination: " + destination);
+        if (source.isDirectory()) {
+            boolean dir = destination.isDirectory();
+            if (!dir) {
+                AccessManager.Backend backend = AccessManager.active(context);
+                if (backend == AccessManager.Backend.ROOT) {
+                    dir = RootManager.getInstance(context).isDirectory(destination.getAbsolutePath());
+                } else if (backend == AccessManager.Backend.SHIZUKU) {
+                    dir = ShizukuManager.isDirectory(context, destination.getAbsolutePath());
+                }
+            }
+            if (!dir) throw new IOException("Elevated copy produced a non-directory destination: " + destination);
+            long sourceSize = copySize(source);
+            long destinationSize = AccessManager.getSize(context, destination.getAbsolutePath());
+            if (destinationSize >= 0 && destinationSize != sourceSize) {
+                throw new IOException("Elevated directory copy size mismatch for " + source.getName()
+                        + ": source=" + sourceSize + ", destination=" + destinationSize);
+            }
+            return;
+        }
+        long sourceSize = source.length();
+        long destinationSize = destination.length();
+        if (destinationSize != sourceSize) {
+            long elevatedSize = AccessManager.getSize(context, destination.getAbsolutePath());
+            if (elevatedSize != sourceSize) {
+                throw new IOException("Elevated copy size mismatch for " + source.getName()
+                        + ": source=" + sourceSize + ", destination=" + elevatedSize);
+            }
+        }
+    }
+
+    private static long copySize(File f) throws IOException {
+        if (f == null || Files.isSymbolicLink(f.toPath())) throw new IOException("Refusing to traverse symbolic link: " + f);
         if (f.isFile()) return f.length();
+        if (!f.isDirectory()) return 0;
         long total = 0;
         File[] kids = f.listFiles();
-        if (kids != null) for (File k : kids) total += copySize(k);
+        if (kids == null) throw new IOException("Cannot read directory: " + f);
+        for (File k : kids) total = Math.addExact(total, copySize(k));
         return total;
     }
 
     private static void deleteRecursive(File f) throws IOException {
+        if (f == null) throw new IOException("Cannot delete null file");
+        if (Files.isSymbolicLink(f.toPath())) {
+            if (f.exists() && !f.delete()) throw new IOException("Cannot delete symbolic link " + f.getName());
+            return;
+        }
         if (f.isDirectory()) {
             File[] kids = f.listFiles();
-            if (kids != null) for (File k : kids) deleteRecursive(k);
+            if (kids == null) throw new IOException("Cannot read directory " + f);
+            for (File k : kids) deleteRecursive(k);
         }
         if (f.exists() && !f.delete()) throw new IOException("Cannot delete " + f.getName());
+    }
+
+    private static void validateLocalTransfer(File source, File destination) throws IOException {
+        if (source == null || destination == null) throw new IOException("Source and destination are required");
+        if (Files.isSymbolicLink(source.toPath())) throw new IOException("Refusing to copy symbolic link: " + source);
+        if (Files.isSymbolicLink(destination.toPath())) throw new IOException("Refusing to overwrite symbolic link: " + destination);
+        if (!source.isDirectory()) return;
+        String sourceReal = source.getCanonicalPath();
+        String destinationPath = destination.getCanonicalPath();
+        if (destinationPath.equals(sourceReal) || destinationPath.startsWith(sourceReal + File.separator)) {
+            throw new IOException("Destination cannot be inside source: " + destination);
+        }
+        validateNoSymlinks(source);
+    }
+
+    private static void validateNoSymlinks(File directory) throws IOException {
+        File[] kids = directory.listFiles();
+        if (kids == null) throw new IOException("Cannot read directory: " + directory);
+        for (File child : kids) {
+            if (Files.isSymbolicLink(child.toPath())) throw new IOException("Refusing to traverse symbolic link: " + child);
+            if (child.isDirectory()) validateNoSymlinks(child);
+        }
     }
 
     private File getUnusedDest(File destDir, String name, boolean useElevated) {
@@ -324,10 +439,12 @@ public class FileOperationsHelper {
             if (item instanceof File f) {
                 File dest = isSameDirectory(f, destinationFolder) ? promptForDuplicateName(f, destinationFolder) : getUnusedDest(destinationFolder, f.getName(), useElevated);
                 if (dest == null || dest.equals(f)) continue;
+                validateLocalTransfer(f, dest);
                 if (useElevated) {
                     try {
                         if (f.isDirectory()) AccessManager.copyDir(context, f.getAbsolutePath(), dest.getAbsolutePath(), true);
                         else AccessManager.copyFile(context, f.getAbsolutePath(), dest.getAbsolutePath(), true);
+                        verifyElevatedCopy(f, dest);
                         AccessManager.preserveTime(context, f.getAbsolutePath(), dest.getAbsolutePath());
                         continue;
                     } catch (Exception e) {
@@ -436,6 +553,8 @@ public class FileOperationsHelper {
     }
 
     public boolean copyToZip(List items, File zipFile, String currentPath) throws IOException {
+        if (items == null || items.isEmpty()) return false;
+        if (zipFile == null || !zipFile.isFile()) throw new IOException("ZIP file does not exist: " + zipFile);
         final boolean isApk = zipFile.getName().endsWith(".apk");
         final SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(context);
         final CountDownLatch latch = new CountDownLatch(1);
@@ -480,7 +599,11 @@ public class FileOperationsHelper {
                     .setPositiveButton(add, (d, w) -> {
                         String level = compressLevelInput.getText().toString();
                         if (level.isEmpty()) level = settings.getString("compressLevel", CompressionLevel.NO_COMPRESSION.name());
-                        compressionLevel[0] = CompressionLevel.valueOf(level);
+                        try {
+                            compressionLevel[0] = CompressionLevel.valueOf(level);
+                        } catch (IllegalArgumentException e) {
+                            compressionLevel[0] = CompressionLevel.NO_COMPRESSION;
+                        }
                         proceed[0] = true;
                         latch.countDown();
                     })
@@ -509,7 +632,7 @@ public class FileOperationsHelper {
                             dismissActiveProgress();
                         } catch (Exception e) {
                             dismissActiveProgress();
-                            new ErrorUtil(context).showError(e);
+                            showErrorOnUi(e);
                         }
                     }).start();
                 }));
@@ -529,6 +652,7 @@ public class FileOperationsHelper {
         File bak = new File(zipFile.getParent(), zipFile.getName() + ".bak");
         FileUtils.copyFile(zipFile, bak);
         File tempFileDir = null;
+        boolean committed = false;
         try (ZipFile sourceZip = new ZipFile(zipFile)) {
             Map<String, Long> existingEntries = new LinkedHashMap<>();
             for (FileHeader fh : sourceZip.getFileHeaders()) existingEntries.put(fh.getFileName(), fh.getLastModifiedTime());
@@ -582,8 +706,21 @@ public class FileOperationsHelper {
                     sourceZip.addFile(f, params);
                 }
             }
+            committed = true;
+        } catch (Exception e) {
+            try {
+                FileUtils.copyFile(bak, zipFile);
+            } catch (Exception restoreError) {
+                e.addSuppressed(restoreError);
+            }
+            if (e instanceof IOException) throw (IOException) e;
+            throw new IOException("Failed to update archive; original archive was restored when possible", e);
         } finally {
             if (tempFileDir != null) Util.deleteDir(tempFileDir);
+            if (committed) {
+                //noinspection ResultOfMethodCallIgnored
+                bak.delete();
+            }
         }
     }
 
@@ -656,7 +793,8 @@ public class FileOperationsHelper {
     }
 
     private void openZipFile(File zipFile, String path) {
-        context.loadZipFolderInPane(zipFile, path != null ? path : "", !adapter.pane1, false);
+        context.handler.post(() -> context.loadZipFolderInPane(
+                zipFile, path != null ? path : "", !adapter.pane1, false));
     }
 
     public void deleteZipEntry(ZipEntryInfo... entryToDelete) throws IOException {
@@ -677,7 +815,8 @@ public class FileOperationsHelper {
             }
             zf.removeFiles(toDelete);
         }
-        context.loadZipFolderInPane(f, adapter.currentZipPath, adapter.pane1, false);
+        context.handler.post(() -> context.loadZipFolderInPane(
+                f, adapter.currentZipPath, adapter.pane1, false));
     }
 
     public void extractArchive(File archive) {
@@ -687,9 +826,15 @@ public class FileOperationsHelper {
         if (baseName.endsWith(".tar.gz")) folderName = baseName.substring(0, baseName.length() - ".tar.gz".length());
         else if (baseName.endsWith(".tar.bz2")) folderName = baseName.substring(0, baseName.length() - ".tar.bz2".length());
         else if (baseName.endsWith(".tar.xz")) folderName = baseName.substring(0, baseName.length() - ".tar.xz".length());
-        else folderName = baseName.substring(0, baseName.lastIndexOf('.'));
+        else {
+            int dot = baseName.lastIndexOf('.');
+            folderName = dot > 0 ? baseName.substring(0, dot) : baseName;
+        }
         File destDir = FileUtils.getUnusedFile(new File(parent, folderName));
-        destDir.mkdirs();
+        if (!destDir.isDirectory() && !destDir.mkdirs() && !destDir.isDirectory()) {
+            showErrorOnUi(new IOException("Cannot create extraction directory: " + destDir));
+            return;
+        }
         ProgressManager pm = new ProgressManager(context, true);
         pm.setText(context.rss.getString(R.string.extracting_to_folder, destDir.getName()));
         pm.show();
@@ -713,11 +858,13 @@ public class FileOperationsHelper {
                         staged.delete();
                     }
                 }
-                pm.dismiss();
-                context.handler.post(() -> context.loadFolderInPane(parent, adapter.pane1));
+                context.handler.post(() -> {
+                    dismissProgress(pm);
+                    context.loadFolderInPane(parent, adapter.pane1);
+                });
             } catch (Exception e) {
-                pm.dismiss();
-                new ErrorUtil(context).showError(e);
+                context.handler.post(pm::dismiss);
+                showErrorOnUi(e);
             }
         }).start();
     }
@@ -903,7 +1050,7 @@ public class FileOperationsHelper {
         try {
             dexFiles = listAllDexNames(zipFile);
         } catch (Exception e) {
-            new ErrorUtil(context).showError(e);
+            showErrorOnUi(e);
             return;
         }
         if (dexFiles.isEmpty()) {
@@ -964,7 +1111,7 @@ public class FileOperationsHelper {
                     }
                 }
                 context.handler.post(() -> {
-                    pm.dismiss();
+                    dismissProgress(pm);
                     if (waitSession.error != null) {
                         new ErrorUtil(context).showError(new Exception(waitSession.error));
                         return;
@@ -1022,7 +1169,7 @@ public class FileOperationsHelper {
                 }
                 DexBackedDexFile dex = DexFileFactory.loadDexFile(dexFile, null);
                 DexFileFactory.writeDexFile(dexFile.getAbsolutePath(), dex);
-                pm.dismiss();
+                dismissProgress(pm);
                 if (zipFile != null) {
                     context.handler.post(() -> context.handleModifiedFileResult(Uri.fromFile(dexFile)));
                 } else {
@@ -1032,8 +1179,8 @@ public class FileOperationsHelper {
                     });
                 }
             } catch (Exception e) {
-                pm.dismiss();
-                new ErrorUtil(context).showError(e);
+                dismissProgress(pm);
+                showErrorOnUi(e);
             }
         }).start();
     }
@@ -1079,7 +1226,7 @@ public class FileOperationsHelper {
                         + "\nClasses: " + classes
                         + "\nMethods: " + methods
                         + "\nFields: " + fields;
-                pm.dismiss();
+                dismissProgress(pm);
                 String title = dexFile.getName();
                 context.handler.post(() -> dialogUtil.styleAlertDialog(dialogUtil.getDialogBuilder()
                         .setTitle(title)
@@ -1087,8 +1234,8 @@ public class FileOperationsHelper {
                         .setPositiveButton(android.R.string.ok, null)
                         .create()));
             } catch (Exception e) {
-                pm.dismiss();
-                new ErrorUtil(context).showError(e);
+                dismissProgress(pm);
+                showErrorOnUi(e);
             }
         }).start();
     }
@@ -1115,14 +1262,14 @@ public class FileOperationsHelper {
                 options.apiLevel = api;
                 DexBackedDexFile dex = new DexBackedDexFile(Opcodes.forApi(api), bytes);
                 Baksmali.disassembleDexFile(dex, outDir, Math.max(1, Runtime.getRuntime().availableProcessors()), options);
-                pm.dismiss();
+                dismissProgress(pm);
                 context.handler.post(() -> {
                     Extensions.showMessage(context, context.rss.getString(R.string.smali_saved_to, outDir.getName()));
                     context.loadFolderInPane(outDir.getParentFile(), adapter.pane1);
                 });
             } catch (Exception e) {
-                pm.dismiss();
-                new ErrorUtil(context).showError(e);
+                dismissProgress(pm);
+                showErrorOnUi(e);
             }
         }).start();
     }
@@ -1152,18 +1299,22 @@ public class FileOperationsHelper {
                     FileUtils.copyFile(rssStream, tmpRss);
                     FileUtils.copyFile(is2, tempFile);
 
-                    context.startActivityForResult(new Intent(context, TextEditorActivity.class)
+                    Intent editorIntent = new Intent(context, TextEditorActivity.class)
                         .putExtra("rssPath", tmpRss.getPath())
                         //.putExtra(Intent.EXTRA_TEXT, new aXMLDecoder(is2, resEntries).decodeAsString())
                         //.putExtra("resEntries", (Serializable) resEntries)
                         .putExtra("zf", zipFile.getPath())
                         .putExtra("zipEntryPath", fullPath)
                         .putExtra("axml", true)
-                        .putExtra("path", tempFile.getPath()), 757);
-                } else context.startActivityForResult(new Intent(context, TextEditorActivity.class)
+                        .putExtra("path", tempFile.getPath());
+                    context.handler.post(() -> context.startActivityForResult(editorIntent, 757));
+                } else {
+                    Intent editorIntent = new Intent(context, TextEditorActivity.class)
                         .putExtra("zf", zipFile.getPath())
                         .putExtra("zipEntryPath", fullPath)
-                        .putExtra("path", tempFile.getPath()), 757);
+                        .putExtra("path", tempFile.getPath());
+                    context.handler.post(() -> context.startActivityForResult(editorIntent, 757));
+                }
             } else if (name.equals("resources.arsc")) {
                 FileUtils.copyFile(is, tempFile);
                 context.handler.post(() -> showArscOpenWith(tempFile, zipFile, fullPath));
@@ -1172,7 +1323,7 @@ public class FileOperationsHelper {
                 context.handler.post(() -> adapter.openWithForFile(tempFile, name));
             }
         } catch (Exception e) {
-            new ErrorUtil(context).showError(e);
+            showErrorOnUi(e);
         }
         }).start();
     }
@@ -1218,15 +1369,15 @@ public class FileOperationsHelper {
             try {
                 File tmpOut = File.createTempFile("dexstr", ".dex", context.getCacheDir());
                 int count = DexStringUtil.replaceStrings(dexFile, tmpOut, find, replacement, matchCase);
-                pm.dismiss();
+                dismissProgress(pm);
                 context.handler.post(() -> dialogUtil.styleAlertDialog(dialogUtil.getDialogBuilder()
                         .setMessage(context.rss.getString(R.string.fo_replacements_apply, count))
                         .setPositiveButton(context.rss.getString(R.string.apply), (d2, w2) -> applyDexStringReplace(dexFile, zipFileOrNull, tmpOut))
                         .setNegativeButton(android.R.string.cancel, (d2, w2) -> tmpOut.delete())
                         .create()));
             } catch (Exception e) {
-                pm.dismiss();
-                new ErrorUtil(context).showError(e);
+                dismissProgress(pm);
+                showErrorOnUi(e);
             }
         }).start();
     }
@@ -1239,22 +1390,22 @@ public class FileOperationsHelper {
                 if (zipFileOrNull != null) {
                     FileUtils.copyFile(tmpOut, dexFile);
                     tmpOut.delete();
-                    pm.dismiss();
+                    dismissProgress(pm);
                     context.handler.post(() -> context.handleModifiedFileResult(Uri.fromFile(dexFile)));
                 } else {
                     File bak = new File(dexFile.getParent(), dexFile.getName() + ".bak");
                     FileUtils.copyFile(dexFile, bak);
                     FileUtils.copyFile(tmpOut, dexFile);
                     tmpOut.delete();
-                    pm.dismiss();
+                    dismissProgress(pm);
                     context.handler.post(() -> {
                         Extensions.showMessage(context, context.rss.getString(R.string.fo_replaced, dexFile.getName()));
                         context.loadFolderInPane(dexFile.getParentFile(), adapter.pane1);
                     });
                 }
             } catch (Exception e) {
-                pm.dismiss();
-                new ErrorUtil(context).showError(e);
+                dismissProgress(pm);
+                showErrorOnUi(e);
             }
         }).start();
     }
@@ -1281,7 +1432,7 @@ public class FileOperationsHelper {
                             names = names.subList(0, 20);
                         }
                         if (names.size() < 2) {
-                            pm.dismiss();
+                            dismissProgress(pm);
                             context.handler.post(() -> Extensions.showMessage(context, context.rss.getString(R.string.fo_need_dex)));
                             return;
                         }
@@ -1298,7 +1449,7 @@ public class FileOperationsHelper {
                     outDir.mkdirs();
                     File merged = new File(outDir, "classes_merged.dex");
                     DexMergeUtil.mergeDexFiles(inputs, merged, api);
-                    pm.dismiss();
+                    dismissProgress(pm);
                     context.handler.post(() -> context.handleModifiedFileResult(Uri.fromFile(merged)));
                 } else {
                     File dir = dexFile.getParentFile();
@@ -1311,22 +1462,22 @@ public class FileOperationsHelper {
                         }
                     }
                     if (inputs.size() < 2) {
-                        pm.dismiss();
+                        dismissProgress(pm);
                         context.handler.post(() -> Extensions.showMessage(context, "Need at least 2 dex files to merge"));
                         return;
                     }
                     int api = detectDexApi(inputs.get(0));
                     File merged = FileUtils.getUnusedFile(new File(dir, "classes_merged.dex"));
                     DexMergeUtil.mergeDexFiles(inputs, merged, api);
-                    pm.dismiss();
+                    dismissProgress(pm);
                     context.handler.post(() -> {
                         Extensions.showMessage(context, context.rss.getString(R.string.fo_merged_n, inputs.size()));
                         context.loadFolderInPane(dir, adapter.pane1);
                     });
                 }
             } catch (Exception e) {
-                pm.dismiss();
-                new ErrorUtil(context).showError(e);
+                dismissProgress(pm);
+                showErrorOnUi(e);
             }
         }).start();
     }

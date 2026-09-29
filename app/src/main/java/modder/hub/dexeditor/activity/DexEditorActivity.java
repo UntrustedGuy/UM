@@ -1050,6 +1050,35 @@ public class DexEditorActivity extends AppCompatActivity {
         addTab(className, SmaliHelper.extractSimpleName(className), content, 0);
     }
 
+    /** Compare the currently edited content with the original content captured when the tab opened. */
+    public void compareModifiedNode(TreeNode node) {
+        if (node == null || node.getFullName() == null) return;
+        String className = node.getFullName();
+        for (EditorTab tab : tabs) {
+            if (tab.type == 0 && className.equals(tab.className)) {
+                UnifiedEditorFragment fragment = getFragmentAtIndex(tabs.indexOf(tab));
+                String current = tab.content;
+                if (fragment != null && fragment.getEditor() != null) {
+                    current = fragment.getEditor().getText().toString();
+                }
+                if (current == null) current = "";
+                String original = tab.originalContent == null ? "" : tab.originalContent;
+                if (original.equals(current)) {
+                    Extensions.showMessage(this, "No differences found");
+                    return;
+                }
+                Intent intent = new Intent(this, untrusted.manager.um.ui.activities.CompareTextActivity.class);
+                intent.putExtra("title1", "Original");
+                intent.putExtra("title2", "Modified");
+                intent.putExtra("text1", original);
+                intent.putExtra("text2", current);
+                startActivity(intent);
+                return;
+            }
+        }
+        Extensions.showMessage(this, "Open the modified class before comparing it");
+    }
+
     // method reposnsible for opening the editor tab according to the search reasult , line number and class name
     public void openClassAtLine(String className, int lineNumber, String query) {
         openClassAtLine(className, lineNumber, -1, query);
@@ -2002,7 +2031,7 @@ public class DexEditorActivity extends AppCompatActivity {
 
                             @Override
                             public void onCompare(TreeNode node) {
-                                // TODO: Implement compare the difference
+                                activity.compareModifiedNode(node);
                             }
                         }, false, true));
                     }

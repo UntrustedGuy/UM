@@ -243,13 +243,24 @@ public class RootManager {
     }
 
     public static boolean isPathBlocked(String path) {
-        if (path == null) return true;
-        String normalized = path.endsWith("/") && path.length() > 1 ? path.substring(0, path.length() - 1) : path;
-        if (BLOCKED_DELETE_PATHS.contains(normalized)) return true;
-        for (String blocked : BLOCKED_DELETE_PATHS) {
-            if (normalized.equals(blocked)) return true;
+        if (path == null || path.trim().isEmpty()) return true;
+        String normalized = path.trim();
+        try {
+            // Canonicalization closes lexical traversal such as /data/../system.
+            normalized = new File(normalized).getCanonicalPath();
+        } catch (IOException ignored) {
+            normalized = normalized.replace("//", "/");
+            while (normalized.contains("/../")) {
+                int pivot = normalized.indexOf("/../");
+                int prev = normalized.lastIndexOf('/', pivot - 1);
+                if (prev < 0) break;
+                normalized = normalized.substring(0, prev) + normalized.substring(pivot + 3);
+            }
         }
-        return false;
+        if (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return BLOCKED_DELETE_PATHS.contains(normalized);
     }
 
     public static boolean isPathInKeyDirectory(String path) {
@@ -304,32 +315,46 @@ public class RootManager {
         synchronized (lock) {
             try {
                 Process process = Runtime.getRuntime().exec(new String[]{suBinary(), "-c", command});
-                BufferedReader stdout = new BufferedReader(new InputStreamReader(process.getInputStream()));
-                BufferedReader stderr = new BufferedReader(new InputStreamReader(process.getErrorStream()));
+                StringBuilder output = new StringBuilder();
+                StringBuilder error = new StringBuilder();
+                Thread stdoutThread = drainProcessStream(process.getInputStream(), output);
+                Thread stderrThread = drainProcessStream(process.getErrorStream(), error);
 
                 boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
                 if (!finished) {
                     process.destroyForcibly();
-                    return new ShellResult(-1, "", "Command timed out");
+                    stdoutThread.join(1000);
+                    stderrThread.join(1000);
+                    return new ShellResult(-1, output.toString(), "Command timed out" +
+                            (error.length() == 0 ? "" : ": " + error));
                 }
 
-                StringBuilder output = new StringBuilder();
-                StringBuilder error = new StringBuilder();
-                String line;
-                while ((line = stdout.readLine()) != null) {
-                    if (output.length() > 0) output.append("\n");
-                    output.append(line);
-                }
-                while ((line = stderr.readLine()) != null) {
-                    if (error.length() > 0) error.append("\n");
-                    error.append(line);
-                }
-
+                stdoutThread.join(1000);
+                stderrThread.join(1000);
                 return new ShellResult(process.exitValue(), output.toString(), error.toString());
             } catch (Exception e) {
                 return new ShellResult(-1, "", e.getMessage());
             }
         }
+    }
+
+    private static Thread drainProcessStream(InputStream input, StringBuilder target) {
+        Thread t = new Thread(() -> {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(input))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    synchronized (target) {
+                        if (target.length() > 0) target.append("\n");
+                        // Bound shell diagnostics so a noisy command cannot consume unbounded RAM.
+                        if (target.length() < 1024 * 1024) target.append(line);
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }, "UM-root-shell-drain");
+        t.setDaemon(true);
+        t.start();
+        return t;
     }
 
     public static String quoteForSh(String s) {
@@ -562,6 +587,7 @@ public class RootManager {
     }
 
     public void mkdir(String path) throws IOException {
+        if (isPathBlocked(path)) throw new IOException("Blocked: refusing to create critical path: " + path);
         ShellResult result = executeFs("mkdir -p " + escapeShellArg(path), 30);
         if (!result.isSuccess()) throw new IOException("mkdir failed: " + result.error);
         invalidateListCache();
@@ -592,18 +618,23 @@ public class RootManager {
     }
 
     public void rename(String oldPath, String newPath) throws IOException {
+        if (isPathBlocked(oldPath) || isPathBlocked(newPath)) {
+            throw new IOException("Blocked: refusing to rename critical path");
+        }
         ShellResult result = executeFs("mv " + escapeShellArg(oldPath) + " " + escapeShellArg(newPath), 30);
         if (!result.isSuccess()) throw new IOException("rename failed: " + result.error);
         invalidateListCache();
     }
 
     public void copyFile(String src, String dest) throws IOException {
+        if (isPathBlocked(dest)) throw new IOException("Blocked: refusing to overwrite critical path");
         ShellResult result = executeFs("cp -f " + escapeShellArg(src) + " " + escapeShellArg(dest), 60);
         if (!result.isSuccess()) throw new IOException("copy failed: " + result.error);
         invalidateListCache();
     }
 
     public void copyDir(String src, String dest) throws IOException {
+        if (isPathBlocked(dest)) throw new IOException("Blocked: refusing to overwrite critical path");
         ShellResult result = executeFs("cp -rf " + escapeShellArg(src) + " " + escapeShellArg(dest), 120);
         if (!result.isSuccess()) throw new IOException("copy failed: " + result.error);
         invalidateListCache();
@@ -1321,6 +1352,8 @@ public class RootManager {
         try {
             process = Runtime.getRuntime().exec(suCommandForFs("cat " + escapeShellArg(srcPath)));
             InputStream stdout = process.getInputStream();
+            StringBuilder stderr = new StringBuilder();
+            Thread stderrThread = drainProcessStream(process.getErrorStream(), stderr);
             byte[] buf = new byte[65536];
             long total = 0;
             int n;
@@ -1338,15 +1371,9 @@ public class RootManager {
                 process.destroyForcibly();
                 throw new IOException("Read timed out: " + srcPath);
             }
+            stderrThread.join(1000);
             if (process.exitValue() != 0) {
-                BufferedReader stderr = new BufferedReader(new InputStreamReader(process.getErrorStream()));
-                StringBuilder err = new StringBuilder();
-                String line;
-                while ((line = stderr.readLine()) != null) {
-                    if (err.length() > 0) err.append("\n");
-                    err.append(line);
-                }
-                throw new IOException("Root read failed: " + err);
+                throw new IOException("Root read failed: " + stderr);
             }
             return total;
         } catch (IOException e) {
@@ -1383,20 +1410,18 @@ public class RootManager {
             String cmd = "cat " + escapeShellArg(localSrc.getAbsolutePath())
                     + " > " + escapeShellArg(dstPath);
             process = Runtime.getRuntime().exec(suCommandForFs(cmd));
+            StringBuilder stderr = new StringBuilder();
+            Thread stderrThread = drainProcessStream(process.getErrorStream(), stderr);
             boolean finished = process.waitFor(60, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                throw new IOException("Write timed out: " + dstPath);
+                stderrThread.join(1000);
+                throw new IOException("Write timed out: " + dstPath +
+                        (stderr.length() == 0 ? "" : ": " + stderr));
             }
+            stderrThread.join(1000);
             if (process.exitValue() != 0) {
-                BufferedReader stderr = new BufferedReader(new InputStreamReader(process.getErrorStream()));
-                StringBuilder err = new StringBuilder();
-                String line;
-                while ((line = stderr.readLine()) != null) {
-                    if (err.length() > 0) err.append("\n");
-                    err.append(line);
-                }
-                throw new IOException("Root write failed: " + err);
+                throw new IOException("Root write failed: " + stderr);
             }
             invalidateListCache();
         } catch (IOException e) {

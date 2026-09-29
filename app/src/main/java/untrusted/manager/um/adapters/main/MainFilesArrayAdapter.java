@@ -975,7 +975,9 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                 () -> {
                     String lowerName = fileName.toLowerCase(Locale.ROOT);
                     boolean zipBased = lowerName.endsWith(".zip") || lowerName.endsWith(".apk")
-                            || lowerName.endsWith(".jar") || lowerName.endsWith(".apks") || lowerName.endsWith(".xapk");
+                            || lowerName.endsWith(".jar") || lowerName.endsWith(".apks")
+                            || lowerName.endsWith(".xapk") || lowerName.endsWith(".apkm")
+                            || lowerName.endsWith(".aspk") || lowerName.endsWith(".aab");
                     if (!file.isFile() || !zipBased) {
                         Extensions.showMessage(context, R.string.not_supported_archive);
                         return;
@@ -993,13 +995,27 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                 () -> withReadableCopy(file, readable -> context.playMediaFile(readable.getAbsolutePath())),
                 () -> {
                     String lowerExt = fileName.toLowerCase(Locale.ROOT);
-                    if (!lowerExt.endsWith(".apk") && !lowerExt.endsWith(".apks") && !lowerExt.endsWith(".xapk")) {
+                    if (!lowerExt.endsWith(".apk")) {
                         Extensions.showMessage(context, R.string.not_an_apk);
                         return;
                     }
                     withReadableCopy(file, readable -> apkTools.showApkInfoDialog(readable, fileName));
                 }));
         String lower = fileName.toLowerCase(Locale.ROOT);
+        if (isGameToolFile(lower)) {
+            actionNames.add("Game Tools");
+            actionIcons.add(R.drawable.ic_inspect);
+            actionHandlers.add(() -> showGameToolsDialog(file, fileName, lower));
+        }
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+            actionNames.add("HTML Preview");
+            actionIcons.add(R.drawable.code_24px);
+            actionHandlers.add(() -> withReadableCopy(file, readable -> context.startActivity(
+                    new Intent(context, untrusted.manager.um.ui.activities.HtmlPreviewActivity.class)
+                            .putExtra(untrusted.manager.um.ui.activities.HtmlPreviewActivity.EXTRA_PATH, readable.getAbsolutePath())
+                            .putExtra(untrusted.manager.um.ui.activities.HtmlPreviewActivity.EXTRA_CLEANUP,
+                                    !readable.getAbsolutePath().equals(file.getAbsolutePath())))));
+        }
         if (lower.endsWith(".ttf") || lower.endsWith(".otf") || lower.endsWith(".woff") || lower.endsWith(".woff2")) {
             actionNames.add(context.getString(R.string.font_preview));
             actionIcons.add(R.drawable.uppercase_24px);
@@ -1107,6 +1123,114 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
             } catch (Exception e) {
                 new ErrorUtil(context).showError(e);
             }
+        });
+        dialogUtil.styleAlertDialog(dialog);
+    }
+
+    private boolean isGameToolFile(String lowerName) {
+        return isGameArchiveName(lowerName)
+                || lowerName.equals("global-metadata.dat")
+                || lowerName.endsWith("/global-metadata.dat")
+                || lowerName.equals("libil2cpp.so")
+                || lowerName.endsWith("/libil2cpp.so")
+                || lowerName.endsWith(".dll")
+                || lowerName.endsWith(".so")
+                || lowerName.endsWith(".dylib");
+    }
+
+    private void showGameToolsDialog(File file, String fileName, String lowerName) {
+        if (file == null || !file.isFile()) {
+            Extensions.showMessage(context, R.string.cannot_open_item);
+            return;
+        }
+        List<String> names = new ArrayList<>();
+        List<Integer> icons = new ArrayList<>();
+        List<Runnable> handlers = new ArrayList<>();
+        if (isGameArchiveName(lowerName)) {
+            names.add("Game Analyzer");
+            icons.add(R.drawable.ic_inspect);
+            handlers.add(() -> openGameAnalysis("analyzer", file));
+            names.add("Game Encryption");
+            icons.add(R.drawable.lock_24px);
+            handlers.add(() -> openGameAnalysis("encryption", file));
+            names.add("Game Modding Toolkit");
+            icons.add(R.drawable.ic_inspect);
+            handlers.add(() -> openGameAnalysis("modding", file));
+        } else if (lowerName.equals("global-metadata.dat") || lowerName.endsWith("/global-metadata.dat")) {
+            names.add("Global Metadata");
+            icons.add(R.drawable.baseline_info_24);
+            handlers.add(() -> openGameAnalysis("metadata", file));
+            names.add("IL2CPP Dumper");
+            icons.add(R.drawable.ic_inspect);
+            handlers.add(() -> openGameAnalysis("il2cpp", file));
+            names.add("Game Encryption");
+            icons.add(R.drawable.lock_24px);
+            handlers.add(() -> openGameAnalysis("encryption", file));
+            names.add("IL2CPP Editor");
+            icons.add(R.drawable.edit_24px);
+            handlers.add(() -> context.startActivity(new Intent(context, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class)
+                    .putExtra("mode", "il2cpp").putExtra("path", file.getAbsolutePath())));
+        } else if (lowerName.equals("libil2cpp.so") || lowerName.endsWith("/libil2cpp.so")) {
+            names.add("IL2CPP Dumper");
+            icons.add(R.drawable.ic_inspect);
+            handlers.add(() -> openGameAnalysis("il2cpp", file));
+            names.add("Game Encryption");
+            icons.add(R.drawable.lock_24px);
+            handlers.add(() -> openGameAnalysis("encryption", file));
+            names.add("Game Modding Toolkit");
+            icons.add(R.drawable.ic_inspect);
+            handlers.add(() -> openGameAnalysis("modding", file));
+            names.add("IL2CPP Editor");
+            icons.add(R.drawable.edit_24px);
+            handlers.add(() -> context.startActivity(new Intent(context, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class)
+                    .putExtra("mode", "il2cpp").putExtra("path", file.getAbsolutePath())));
+        } else if (lowerName.endsWith(".dll")) {
+            names.add("DLL Editor");
+            icons.add(R.drawable.edit_24px);
+            handlers.add(() -> context.startActivity(new Intent(context, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class)
+                    .putExtra("mode", "dll").putExtra("path", file.getAbsolutePath())));
+            names.add("Game Modding Toolkit");
+            icons.add(R.drawable.ic_inspect);
+            handlers.add(() -> openGameAnalysis("modding", file));
+        } else {
+            names.add("Game Modding Toolkit");
+            icons.add(R.drawable.ic_inspect);
+            handlers.add(() -> openGameAnalysis("modding", file));
+        }
+
+        GridView grid = new GridView(context);
+        grid.setNumColumns(3);
+        grid.setPadding(16, 16, 16, 16);
+        grid.setVerticalSpacing(24);
+        grid.setAdapter(new ArrayAdapter<String>(context, 0, names) {
+            @NonNull @Override public View getView(int position, View convertView, ViewGroup parent) {
+                LinearLayout item = new LinearLayout(context);
+                item.setOrientation(LinearLayout.VERTICAL);
+                item.setGravity(Gravity.CENTER);
+                ImageView icon = new ImageView(context);
+                icon.setImageResource(icons.get(position));
+                int size = (int)(40 * context.getResources().getDisplayMetrics().density + 0.5f);
+                icon.setLayoutParams(new ViewGroup.LayoutParams(size, size));
+                TypedValue tv = new TypedValue();
+                context.getTheme().resolveAttribute(com.google.android.material.R.attr.colorOnSurface, tv, true);
+                ColorUtil.changeImageColor(icon.getDrawable(), tv.data);
+                TextView label = new TextView(context);
+                label.setText(names.get(position));
+                label.setTextSize(12);
+                label.setGravity(Gravity.CENTER);
+                item.addView(icon);
+                item.addView(label);
+                return item;
+            }
+        });
+        AlertDialog dialog = dialogUtil.getDialogBuilder()
+                .setTitle("Game Tools: " + fileName)
+                .setView(grid)
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        grid.setOnItemClickListener((parent, view, position, id) -> {
+            dialog.dismiss();
+            try { handlers.get(position).run(); } catch (Exception e) { new ErrorUtil(context).showError(e); }
         });
         dialogUtil.styleAlertDialog(dialog);
     }
@@ -1382,7 +1506,13 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
 
     private void handleFileClick(File file, String fileName) {
         String ext = '.' + FilenameUtils.getExtension(fileName).toLowerCase();
-        if (fileName.endsWith(".txt") || fileName.endsWith(".json")
+        if (fileName.endsWith(".html") || fileName.endsWith(".htm") || fileName.endsWith(".xhtml")) {
+            withReadableCopy(file, readable -> context.startActivity(
+                    new Intent(context, untrusted.manager.um.ui.activities.HtmlPreviewActivity.class)
+                            .putExtra(untrusted.manager.um.ui.activities.HtmlPreviewActivity.EXTRA_PATH, readable.getAbsolutePath())
+                            .putExtra(untrusted.manager.um.ui.activities.HtmlPreviewActivity.EXTRA_CLEANUP,
+                                    !readable.getAbsolutePath().equals(file.getAbsolutePath()))));
+        } else if (fileName.endsWith(".txt") || fileName.endsWith(".json")
             || fileName.endsWith(".java") || fileName.endsWith(".smali") || fileName.endsWith(".pro")
             || fileName.endsWith(".gradle") || fileName.endsWith(".properties")) {
             openTextEditorRootAware(file);
@@ -1432,9 +1562,9 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                     restoreBakRootAware(file, new File(origPath), fileName);
                 })
                 .setNegativeButton(android.R.string.cancel, null).show();
-            } else if (fileName.endsWith(".zip")) {
+            } else if (normalizedFileName(fileName).endsWith(".zip")) {
                 withReadableCopy(file, readable -> context.loadZipFolderInPane(readable, "", pane1, true));
-            } else if (fileName.endsWith(".arsc")) {
+            } else if (normalizedFileName(fileName).endsWith(".arsc")) {
                 withReadableCopy(file, readable -> showArscOpenWith(readable, null, "resources.arsc"));
             } else if (ArchiveUtil.isSupportedArchive(fileName)) {
                 dialogUtil.styleAlertDialog(
@@ -1443,7 +1573,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                             if (which == 0) withReadableCopy(file, fileOps::extractArchive);
                             else showOpenWithDialog(file, fileName);
                         }).create());
-            } else if (fileName.endsWith(".apks") || fileName.endsWith(".xapk") || fileName.endsWith(".aspk") || fileName.endsWith(".apkm")) {
+            } else if (isSplitPackageName(fileName)) {
                 withReadableCopy(file, readable -> showSplitApkMenu(readable, fileName));
             } else if (fileName.endsWith(".dex")) {
                 fileOps.showDexOptionsDialog(file, null, null, fileName);
@@ -1568,8 +1698,24 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                         .putExtra("path", readable.getAbsolutePath())));
     }
 
+    private static String normalizedFileName(String name) {
+        return name == null ? "" : name.toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean isAndroidPackageName(String name) {
+        String lower = normalizedFileName(name);
+        return lower.endsWith(".apk") || lower.endsWith(".xapk") || lower.endsWith(".apkm")
+                || lower.endsWith(".apks") || lower.endsWith(".aspk") || lower.endsWith(".aab");
+    }
+
+    private static boolean isSplitPackageName(String name) {
+        String lower = normalizedFileName(name);
+        return lower.endsWith(".apks") || lower.endsWith(".xapk")
+                || lower.endsWith(".aspk") || lower.endsWith(".apkm");
+    }
+
     private boolean isGameArchiveName(String name) {
-        return name.endsWith(".apk") || name.endsWith(".xapk") || name.endsWith(".apkm") || name.endsWith(".apks") || name.endsWith(".aab");
+        return isAndroidPackageName(name);
     }
 
     private void openGameAnalysis(String mode, File file) {
@@ -1643,7 +1789,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                                             //noinspection ResultOfMethodCallIgnored
                                             tmpDir.mkdirs();
                                             for (FileHeader fh : zf.getFileHeaders()) {
-                                                if (fh.getFileName().endsWith(".apk")) {
+                                                if (fh.getFileName().toLowerCase(Locale.ROOT).endsWith(".apk")) {
                                                     File tmpApk = new File(tmpDir, new File(fh.getFileName()).getName());
                                                     try (InputStream is = zf.getInputStream(fh);
                                                          FileOutputStream fos = new FileOutputStream(tmpApk)) {
@@ -1808,7 +1954,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(context);
         boolean[] sign = new boolean[1];
         File zipFile = isInZip ? entry.getZipFile() : null;
-        if(isInZip && zipFile.getName().endsWith(".apk")) {
+        if(isInZip && zipFile.getName().toLowerCase(Locale.ROOT).endsWith(".apk")) {
             LinearLayout ll = (LinearLayout) LayoutInflater.from(context).inflate(R.layout.item_modified_dialog, null);
             ll.<TextView>findViewById(R.id.modifiedText).setText(context.rss.getString(R.string.confirm_delete_f, filesToDisplay));
             CheckBox autosign = ll.findViewById(R.id.autosign);

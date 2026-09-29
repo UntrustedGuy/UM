@@ -36,7 +36,7 @@ public class ShizukuFileService extends IFileService.Stub {
     private static final Pattern ALLOWED =
             Pattern.compile("^/storage/emulated/\\d+/Android/(data|obb|media)(/.*)?$");
 
-    private String error = "";
+    private volatile String error = "";
 
     public ShizukuFileService() {
     }
@@ -95,6 +95,19 @@ public class ShizukuFileService extends IFileService.Stub {
         return n != null && ALLOWED.matcher(n).matches();
     }
 
+    /**
+     * Resolve the actual filesystem target before authorization.  Lexically normalizing
+     * a path is not sufficient because callers can pass ".." or traverse a symlink.
+     * Canonicalizing the existing parent also protects newly-created destinations.
+     */
+    private File canonicalTarget(String path) throws IOException {
+        if (path == null || !path.startsWith("/")) throw new IOException("Invalid path");
+        File f = new File(path);
+        String canonical = f.getCanonicalPath();
+        if (!allowed(canonical)) throw new IOException("Path not accessible");
+        return new File(canonical);
+    }
+
     private boolean topLevel(String path) {
         String n = canon(path);
         return n != null && (n.equals("/storage/emulated/0/Android/data")
@@ -103,11 +116,12 @@ public class ShizukuFileService extends IFileService.Stub {
     }
 
     private File checked(String path) {
-        if (!allowed(path)) {
-            fail("Path not accessible");
+        try {
+            return canonicalTarget(path);
+        } catch (IOException e) {
+            fail(e.getMessage() == null ? "Path not accessible" : e.getMessage());
             return null;
         }
-        return new File(path);
     }
 
     @Override
@@ -158,9 +172,10 @@ public class ShizukuFileService extends IFileService.Stub {
         for (File k : kids) {
             String name = k.getName();
             if (name.equals(".") || name.equals("..")) continue;
-            boolean isDir = k.isDirectory();
+            boolean symlink = isSymlink(k);
+            boolean isDir = !symlink && k.isDirectory();
             out.add(name + "\037" + (isDir ? "1" : "0") + "\037"
-                    + (isDir ? 0 : Math.max(0, k.length())) + "\037"
+                    + (isDir ? 0 : Math.max(0, symlink ? 0 : k.length())) + "\037"
                     + k.lastModified() + "\037");
         }
         return out;
@@ -174,6 +189,7 @@ public class ShizukuFileService extends IFileService.Stub {
     }
 
     private long du(File f) {
+        if (isSymlink(f)) return 0;
         if (f.isFile()) return f.length();
         long total = 0;
         File[] kids = f.listFiles();
@@ -221,7 +237,7 @@ public class ShizukuFileService extends IFileService.Stub {
     public long writeFile(String path, ParcelFileDescriptor data, long maxBytes) {
         File dst = checked(path);
         if (dst == null) return -1;
-        if (topLevel(path)) {
+        if (topLevel(dst.getAbsolutePath())) {
             fail("Refusing protected path");
             return -1;
         }
@@ -229,51 +245,104 @@ public class ShizukuFileService extends IFileService.Stub {
             fail("No data");
             return -1;
         }
+        File parent = dst.getParentFile();
+        if (parent == null || !parent.isDirectory()) {
+            fail("Destination directory missing");
+            return -1;
+        }
+        File tmp = new File(parent, ".um-write-" + System.nanoTime() + ".tmp");
         try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(data);
-             OutputStream out = new FileOutputStream(dst)) {
+             OutputStream out = new FileOutputStream(tmp)) {
             byte[] buf = new byte[65536];
             long total = 0;
             int n;
             while ((n = in.read(buf)) != -1) {
                 total += n;
-                if (total > maxBytes) {
+                if (total > maxBytes || total > MAX_BYTES) {
                     fail("File too large");
-                    try {
-                        dst.delete();
-                    } catch (Exception ignored) {
-                    }
                     return -1;
                 }
                 out.write(buf, 0, n);
             }
             out.flush();
+            if (!tmp.renameTo(dst)) {
+                fail("Cannot replace destination");
+                return -1;
+            }
             return total;
         } catch (Exception e) {
             fail(e.getMessage());
             return -1;
+        } finally {
+            if (tmp.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
+            }
         }
     }
 
     private boolean copyRec(File src, File dst) {
+        if (isSymlink(src)) {
+            fail("Symlinks are not supported for privileged copy");
+            return false;
+        }
         if (src.isDirectory()) {
-            if (!dst.isDirectory() && !dst.mkdirs()) return false;
+            if (dst.exists() && !dst.isDirectory()) {
+                fail("Destination is not a directory");
+                return false;
+            }
+            boolean created = !dst.exists();
+            if (created && !dst.mkdirs() && !dst.isDirectory()) {
+                fail("Cannot create destination directory");
+                return false;
+            }
             File[] kids = src.listFiles();
-            if (kids != null) for (File k : kids) {
-                if (!copyRec(k, new File(dst, k.getName()))) return false;
+            if (kids == null) {
+                if (created) delRec(dst);
+                fail("Cannot read source directory");
+                return false;
+            }
+            for (File k : kids) {
+                if (!copyRec(k, new File(dst, k.getName()))) {
+                    if (created) delRec(dst);
+                    return false;
+                }
             }
             dst.setLastModified(src.lastModified());
             return true;
         }
         File parent = dst.getParentFile();
-        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) return false;
+        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
+            fail("Cannot create destination directory");
+            return false;
+        }
+        File tmp = new File(parent, ".um-copy-" + System.nanoTime() + ".tmp");
         try (InputStream in = new FileInputStream(src);
-             OutputStream out = new FileOutputStream(dst)) {
+             OutputStream out = new FileOutputStream(tmp)) {
             byte[] buf = new byte[65536];
             int n;
             while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            out.flush();
+            if (dst.exists() && dst.isDirectory()) {
+                fail("Destination is a directory");
+                return false;
+            }
+            if (dst.exists() && !dst.delete()) {
+                fail("Cannot replace destination");
+                return false;
+            }
+            if (!tmp.renameTo(dst)) {
+                fail("Cannot finalize copy");
+                return false;
+            }
         } catch (Exception e) {
             fail(e.getMessage());
             return false;
+        } finally {
+            if (tmp.exists()) {
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
+            }
         }
         dst.setLastModified(src.lastModified());
         return true;
@@ -287,8 +356,12 @@ public class ShizukuFileService extends IFileService.Stub {
             fail("Invalid copy source");
             return false;
         }
-        if (topLevel(src) || topLevel(dst)) {
+        if (topLevel(s.getAbsolutePath()) || topLevel(d.getAbsolutePath())) {
             fail("Refusing protected path");
+            return false;
+        }
+        if (sameOrDescendant(d, s)) {
+            fail("Destination is inside source");
             return false;
         }
         return copyRec(s, d);
@@ -302,17 +375,32 @@ public class ShizukuFileService extends IFileService.Stub {
             fail("Invalid copy source");
             return false;
         }
-        if (topLevel(src) || topLevel(dst)) {
+        if (topLevel(s.getAbsolutePath()) || topLevel(d.getAbsolutePath())) {
             fail("Refusing protected path");
             return false;
         }
-        return copyRec(s, new File(d, s.getName()));
+        File target = new File(d, s.getName());
+        try {
+            target = canonicalTarget(target.getAbsolutePath());
+        } catch (IOException e) {
+            fail(e.getMessage());
+            return false;
+        }
+        if (sameOrDescendant(target, s)) {
+            fail("Destination is inside source");
+            return false;
+        }
+        return copyRec(s, target);
     }
 
     @Override
     public boolean mkdir(String path) {
         File d = checked(path);
         if (d == null) return false;
+        if (topLevel(d.getAbsolutePath())) {
+            fail("Refusing protected path");
+            return false;
+        }
         return d.isDirectory() || d.mkdirs();
     }
 
@@ -320,17 +408,41 @@ public class ShizukuFileService extends IFileService.Stub {
     public boolean deletePath(String path) {
         File f = checked(path);
         if (f == null) return false;
-        if (topLevel(path)) {
+        if (topLevel(f.getAbsolutePath())) {
             fail("Refusing protected path");
             return false;
         }
         return delRec(f);
     }
 
+    private static boolean isSymlink(File file) {
+        try {
+            return !file.getAbsolutePath().equals(file.getCanonicalPath());
+        } catch (IOException e) {
+            return true;
+        }
+    }
+
+    private static boolean sameOrDescendant(File candidate, File root) {
+        try {
+            String c = candidate.getCanonicalPath();
+            String r = root.getCanonicalPath();
+            return c.equals(r) || c.startsWith(r.endsWith(File.separator) ? r : r + File.separator);
+        } catch (IOException e) {
+            return true;
+        }
+    }
+
     private boolean delRec(File f) {
+        // Never follow a nested symlink during recursive deletion. Delete the link itself.
+        if (isSymlink(f)) return !f.exists() || f.delete();
         if (f.isDirectory()) {
             File[] kids = f.listFiles();
-            if (kids != null) for (File k : kids) delRec(k);
+            if (kids != null) {
+                for (File k : kids) {
+                    if (!delRec(k)) return false;
+                }
+            }
         }
         return !f.exists() || f.delete();
     }
@@ -340,8 +452,12 @@ public class ShizukuFileService extends IFileService.Stub {
         File s = checked(from);
         File d = checked(to);
         if (s == null || d == null) return false;
-        if (topLevel(from) || topLevel(to)) {
+        if (topLevel(s.getAbsolutePath()) || topLevel(d.getAbsolutePath())) {
             fail("Refusing protected path");
+            return false;
+        }
+        if (s.isDirectory() && sameOrDescendant(d, s)) {
+            fail("Destination is inside source");
             return false;
         }
         return s.renameTo(d);

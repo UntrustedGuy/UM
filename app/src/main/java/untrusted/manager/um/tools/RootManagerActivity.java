@@ -25,15 +25,26 @@ import untrusted.manager.um.utils.RootManager;
 
 /** UI for the existing RootManager and Shizuku backends. */
 public class RootManagerActivity extends AppCompatActivity {
+    private static final int SHIZUKU_REQUEST_CODE = 1001;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private RootManager rootManager;
     private RadioButton rootMode, shizukuMode, nonRootMode;
     private TextView status, output;
     private EditText command;
+    private final Shizuku.OnRequestPermissionResultListener shizukuPermissionListener = (requestCode, grantResult) -> {
+        if (requestCode != SHIZUKU_REQUEST_CODE) return;
+        runOnUiThread(() -> {
+            output.setText(grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    ? "Shizuku permission granted."
+                    : "Shizuku permission denied.");
+            refreshStatus();
+        });
+    };
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         rootManager = RootManager.getInstance(this);
+        try { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener); } catch (Throwable ignored) {}
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         MaterialToolbar bar = new MaterialToolbar(this);
@@ -113,7 +124,7 @@ public class RootManagerActivity extends AppCompatActivity {
     private void requestShizuku() {
         try {
             if (!ShizukuShell.isAvailable()) { output.setText("Shizuku service is not running."); return; }
-            if (!ShizukuShell.isGranted()) { Shizuku.requestPermission(0); output.setText("Shizuku permission request sent."); }
+            if (!ShizukuShell.isGranted()) { Shizuku.requestPermission(SHIZUKU_REQUEST_CODE); output.setText("Shizuku permission request sent."); }
             else output.setText("Shizuku permission is already granted.");
         } catch (Throwable t) { output.setText("Shizuku request failed: " + message(t)); }
     }
@@ -145,5 +156,9 @@ public class RootManagerActivity extends AppCompatActivity {
     private Button button(String text, View.OnClickListener l) { MaterialButton b=new MaterialButton(this); b.setText(text); b.setOnClickListener(l); return b; }
     private LinearLayout.LayoutParams lp(int l,int t,int r,int b) { LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2); p.setMargins(dp(l),dp(t),dp(r),dp(b)); return p; }
     private int dp(int v) { return (int)(v*getResources().getDisplayMetrics().density+.5f); }
-    @Override protected void onDestroy() { executor.shutdownNow(); super.onDestroy(); }
+    @Override protected void onDestroy() {
+        try { Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener); } catch (Throwable ignored) {}
+        executor.shutdownNow();
+        super.onDestroy();
+    }
 }

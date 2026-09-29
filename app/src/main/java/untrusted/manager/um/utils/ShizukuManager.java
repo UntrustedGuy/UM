@@ -131,9 +131,10 @@ public final class ShizukuManager {
     public static boolean isAllowed(String path) {
         String n = normalize(path);
         if (n == null) return false;
-        if (n.equals("/sdcard") || n.startsWith("/sdcard/")) {
-            n = "/storage/emulated/0" + n.substring("/sdcard".length());
-            if (n.isEmpty()) n = "/";
+        try {
+            n = new File(n).getCanonicalPath();
+        } catch (IOException e) {
+            return false;
         }
         return ALLOWED.matcher(n).matches();
     }
@@ -141,8 +142,10 @@ public final class ShizukuManager {
     public static boolean isTopLevel(String path) {
         String n = normalize(path);
         if (n == null) return true;
-        if (n.equals("/sdcard") || n.startsWith("/sdcard/")) {
-            n = "/storage/emulated/0" + n.substring("/sdcard".length());
+        try {
+            n = new File(n).getCanonicalPath();
+        } catch (IOException e) {
+            return true;
         }
         return n.equals("/storage/emulated/0/Android/data")
                 || n.equals("/storage/emulated/0/Android/obb")

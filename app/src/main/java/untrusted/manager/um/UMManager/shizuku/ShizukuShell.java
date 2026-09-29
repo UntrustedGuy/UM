@@ -64,8 +64,17 @@ public final class ShizukuShell {
 
     /** Callbacks invoked when the binder arrives; e.g. retrying a folder load that failed earlier. */
     public static void onBinderReceived(Runnable callback) {
+        if (callback == null) return;
         synchronized (BINDER_CALLBACKS) {
             BINDER_CALLBACKS.add(callback);
+        }
+    }
+
+    /** Remove a pending binder callback, typically from an Activity/Fragment teardown. */
+    public static void removeBinderCallback(Runnable callback) {
+        if (callback == null) return;
+        synchronized (BINDER_CALLBACKS) {
+            BINDER_CALLBACKS.remove(callback);
         }
     }
 
@@ -73,6 +82,7 @@ public final class ShizukuShell {
         Runnable[] callbacks;
         synchronized (BINDER_CALLBACKS) {
             callbacks = BINDER_CALLBACKS.toArray(new Runnable[0]);
+            BINDER_CALLBACKS.clear();
         }
         for (Runnable r : callbacks) {
             try {
@@ -181,7 +191,11 @@ public final class ShizukuShell {
             try (BufferedReader r = new BufferedReader(new InputStreamReader(is))) {
                 String line;
                 while ((line = r.readLine()) != null) {
-                    sb.append(line).append('\n');
+                    synchronized (sb) {
+                        if (sb.length() < 1024 * 1024) {
+                            sb.append(line).append('\n');
+                        }
+                    }
                 }
             } catch (IOException ignored) {
             }

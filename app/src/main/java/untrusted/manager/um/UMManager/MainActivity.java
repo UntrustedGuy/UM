@@ -243,6 +243,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean systemTheme;
     public int theme;
     private boolean checkForUpdates;
+    private boolean downloadReceiverRegistered;
     public String lastVerChecked;
     public long downloadId;
     private final BroadcastReceiver onDownloadComplete = new BroadcastReceiver() {
@@ -499,9 +500,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void playMediaFile(String filePath) {
-        boolean isVideo = filePath.endsWith(".mp4") || filePath.endsWith(".mkv") || filePath.endsWith(".avi")
-                || filePath.endsWith(".mov") || filePath.endsWith(".webm") || filePath.endsWith(".3gp")
-                || filePath.endsWith(".ts") || filePath.endsWith(".flv") || filePath.endsWith(".wmv");
+        String mediaPath = filePath == null ? "" : filePath.toLowerCase(java.util.Locale.ROOT);
+        boolean isVideo = mediaPath.endsWith(".mp4") || mediaPath.endsWith(".mkv") || mediaPath.endsWith(".avi")
+                || mediaPath.endsWith(".mov") || mediaPath.endsWith(".webm") || mediaPath.endsWith(".3gp")
+                || mediaPath.endsWith(".ts") || mediaPath.endsWith(".flv") || mediaPath.endsWith(".wmv")
+                || mediaPath.endsWith(".m3u8");
         boolean useActivity = isVideo || PreferenceManager.getDefaultSharedPreferences(this).getBoolean("player_open_activity", false);
         if (useActivity) MediaPlayerActivity.openAndPlay(this, filePath);
         else {
@@ -514,10 +517,17 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        unregisterReceiver(onDownloadComplete);
+        if (downloadReceiverRegistered) {
+            try {
+                unregisterReceiver(onDownloadComplete);
+            } catch (IllegalArgumentException ignored) {
+            } finally {
+                downloadReceiverRegistered = false;
+            }
+        }
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
         settings.edit()
-                .putString("bookmarks", bookmarks.toString())
+                .putString("bookmarks", bookmarks == null ? "[]" : bookmarks.toString())
                 .putBoolean("systemTheme", systemTheme)
                 .putBoolean("checkForUpdates", checkForUpdates)
                 .putInt("theme", theme)
@@ -631,7 +641,7 @@ public class MainActivity extends AppCompatActivity {
                             : path.substring(path.lastIndexOf("/") + 1);
                     LinearLayout ll = (LinearLayout) LayoutInflater.from(this).inflate(R.layout.item_modified_dialog, null);
                     String zipFileName = zipFile.getName();
-                    boolean isApk = zipFileName.endsWith(".apk");
+                    boolean isApk = zipFileName.toLowerCase(java.util.Locale.ROOT).endsWith(".apk");
                     ll.<TextView>findViewById(R.id.modifiedText).setText(rss.getString(R.string.file_modified_x, modifiedFileName, (isApk ? "APK" : "ZIP")));
                     CheckBox autosign = ll.findViewById(R.id.autosign);
                     boolean[] sign = new boolean[1];
@@ -1657,6 +1667,9 @@ public class MainActivity extends AppCompatActivity {
                 break;
             case "ftp_client":
                 showFtpClientDialog();
+                break;
+            case "network_storage":
+                startActivity(new Intent(this, untrusted.manager.um.network.NetworkStorageActivity.class));
                 break;
             case "wifi":
                 startActivity(new Intent(this, WifiManagerActivity.class));
@@ -3137,11 +3150,15 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         try {
-            if (Build.VERSION.SDK_INT > 32) {
-                registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                        Context.RECEIVER_NOT_EXPORTED);
-            } else
-                registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+            if (!downloadReceiverRegistered) {
+                if (Build.VERSION.SDK_INT > 32) {
+                    registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+                            Context.RECEIVER_NOT_EXPORTED);
+                } else {
+                    registerReceiver(onDownloadComplete, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
+                }
+                downloadReceiverRegistered = true;
+            }
             checkPendingUpdateDownload();
             String locate = getIntent() == null ? null : getIntent().getStringExtra("locatePath");
             if (locate != null && !locate.isEmpty()) {
@@ -3205,6 +3222,10 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (downloadReceiverRegistered) {
+            try { unregisterReceiver(onDownloadComplete); } catch (IllegalArgumentException ignored) {}
+            downloadReceiverRegistered = false;
+        }
         if (ftpStopReceiver != null) {
             try { unregisterReceiver(ftpStopReceiver); } catch (Exception ignored) {}
             ftpStopReceiver = null;
@@ -3614,6 +3635,9 @@ public class MainActivity extends AppCompatActivity {
         ScrollView settingsDialog = (ScrollView) LayoutInflater.from(MainActivity.this).inflate(R.layout.dialog_settings, null);
 
         MaterialButtonToggleGroup themeButtons = settingsDialog.findViewById(R.id.themeToggleGroup);
+        TextView themeVariantLabel = settingsDialog.findViewById(R.id.themeVariantLabel);
+        themeVariantLabel.setText(getThemeDisplayName(theme));
+        final AlertDialog[] settingsAlertHolder = new AlertDialog[1];
         themeButtons.check(
                 systemTheme ? R.id.systemThemeButton
                         : theme == R.style.Theme_MyApp_Light ? R.id.lightThemeButton
@@ -3659,11 +3683,23 @@ public class MainActivity extends AppCompatActivity {
                                     : R.style.Theme_MyApp_Light;
                 }
 
-                settings.edit().putInt("theme", theme).apply();
-                setTheme(theme);
+                // TextMate languages retain their theme source. Drop the cached
+                // language instances before activity recreation so editors opened
+                // after a theme switch use the newly selected theme.
+                UnifiedEditorFragment.clearCache();
+                if (settingsAlertHolder[0] != null) {
+                    settingsAlertHolder[0].dismiss();
+                }
+                settings.edit()
+                        .putBoolean("systemTheme", systemTheme)
+                        .putInt("theme", theme)
+                        .apply();
                 recreate();
             }
         });
+
+        settingsDialog.findViewById(R.id.moreThemesButton).setOnClickListener(v ->
+                showAdditionalThemePicker(settingsAlertHolder, themeVariantLabel));
 
         CompoundButton logSwitch = settingsDialog.findViewById(R.id.logToggle);
         logSwitch.setChecked(logEnabled);
@@ -3719,6 +3755,7 @@ public class MainActivity extends AppCompatActivity {
         checkUpdateNow.setOnClickListener(v1 -> UpdateUtil.checkForUpdates(true, this));
         settingsDialog.findViewById(R.id.about).setOnClickListener(v -> uiHelper.showAboutDialog());
         AlertDialog settingsAlert = new MaterialAlertDialogBuilder(this).setTitle(getString(R.string.settings)).setView(settingsDialog).create();
+        settingsAlertHolder[0] = settingsAlert;
         settingsAlert.setOnDismissListener(d -> {
             saveSuCommand(settingsDialog);
             saveDateFormat(settingsDialog);
@@ -3726,6 +3763,122 @@ public class MainActivity extends AppCompatActivity {
             refreshFileLists();
         });
         settingsAlert.show();
+    }
+
+    private String getThemeDisplayName(int themeId) {
+        if (themeId == R.style.Theme_MyApp_Light) return getString(R.string.light_theme);
+        if (themeId == R.style.Theme_MyApp_Dark) return getString(R.string.dark_theme);
+        if (themeId == R.style.Theme_MyApp_Black) return getString(R.string.black_theme);
+        if (themeId == R.style.Theme_MyApp_Aurora) return getString(R.string.theme_dynamic_aurora);
+        if (themeId == R.style.Theme_MyApp_TokyoNight) return getString(R.string.theme_tokyo_night);
+        if (themeId == R.style.Theme_MyApp_TokyoNightDay) return getString(R.string.theme_tokyo_night_day);
+        if (themeId == R.style.Theme_MyApp_Dracula) return getString(R.string.theme_dracula);
+        if (themeId == R.style.Theme_MyApp_Nord) return getString(R.string.theme_nord);
+        if (themeId == R.style.Theme_MyApp_Catppuccin) return getString(R.string.theme_catppuccin);
+        if (themeId == R.style.Theme_MyApp_Gruvbox) return getString(R.string.theme_gruvbox);
+        if (themeId == R.style.Theme_MyApp_Monochrome) return getString(R.string.theme_monochrome);
+        if (themeId == R.style.Theme_MyApp_BloodLilith) return getString(R.string.theme_blood_lilith);
+        if (themeId == R.style.Theme_MyApp_YinYang) return getString(R.string.theme_yinyang);
+        if (themeId == R.style.Theme_MyApp_AuroraOcean) return getString(R.string.theme_aurora_ocean);
+        if (themeId == R.style.Theme_MyApp_AuroraSunset) return getString(R.string.theme_aurora_sunset);
+        if (themeId == R.style.Theme_MyApp_AuroraEmerald) return getString(R.string.theme_aurora_emerald);
+        if (themeId == R.style.Theme_MyApp_Cyberpunk) return getString(R.string.theme_cyberpunk);
+        return getString(R.string.dark_theme);
+    }
+
+    private void showAdditionalThemePicker(AlertDialog[] settingsAlertHolder, TextView themeVariantLabel) {
+        final int[] themeIds = {
+                R.style.Theme_MyApp_Aurora,
+                R.style.Theme_MyApp_TokyoNight,
+                R.style.Theme_MyApp_TokyoNightDay,
+                R.style.Theme_MyApp_Dracula,
+                R.style.Theme_MyApp_Nord,
+                R.style.Theme_MyApp_Catppuccin,
+                R.style.Theme_MyApp_Gruvbox,
+                R.style.Theme_MyApp_Monochrome,
+                R.style.Theme_MyApp_BloodLilith,
+                R.style.Theme_MyApp_YinYang,
+                R.style.Theme_MyApp_AuroraOcean,
+                R.style.Theme_MyApp_AuroraSunset,
+                R.style.Theme_MyApp_AuroraEmerald,
+                R.style.Theme_MyApp_Cyberpunk
+        };
+        final String[] names = {
+                getString(R.string.theme_dynamic_aurora), getString(R.string.theme_tokyo_night),
+                getString(R.string.theme_tokyo_night_day), getString(R.string.theme_dracula),
+                getString(R.string.theme_nord), getString(R.string.theme_catppuccin),
+                getString(R.string.theme_gruvbox), getString(R.string.theme_monochrome),
+                getString(R.string.theme_blood_lilith), getString(R.string.theme_yinyang),
+                getString(R.string.theme_aurora_ocean), getString(R.string.theme_aurora_sunset),
+                getString(R.string.theme_aurora_emerald), getString(R.string.theme_cyberpunk)
+        };
+        final int[] accents = {
+                0xFF7AA2F7, 0xFF7AA2F7, 0xFF34548F, 0xFFBD93F9,
+                0xFF88C0D0, 0xFFCBA6F7, 0xFFD79921, 0xFFE6E6E6,
+                0xFFFF365E, 0xFFF2F2F2, 0xFF59D7FF, 0xFFFF8A65,
+                0xFF63E6BE, 0xFFFFEA00
+        };
+        final int[] surfaces = {
+                0xFF20242F, 0xFF161A24, 0xFFE6E7ED, 0xFF282A36,
+                0xFF2E3440, 0xFF1E1E2E, 0xFF282828, 0xFF181818,
+                0xFF170A10, 0xFF121212, 0xFF0A1B27, 0xFF24131D,
+                0xFF0D2118, 0xFF120C1D
+        };
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        int pad = dpToPx(8);
+        list.setPadding(pad, pad, pad, pad);
+        int selected = -1;
+        for (int i = 0; i < themeIds.length; i++) {
+            if (theme == themeIds[i]) selected = i;
+            final int index = i;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dpToPx(12), dpToPx(10), dpToPx(12), dpToPx(10));
+            row.setClickable(true);
+            row.setFocusable(true);
+
+            View swatch = new View(this);
+            GradientDrawable gradient = new GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    new int[]{surfaces[i], accents[i], surfaces[i]});
+            gradient.setCornerRadius(dpToPx(14));
+            swatch.setBackground(gradient);
+            LinearLayout.LayoutParams swatchLp = new LinearLayout.LayoutParams(dpToPx(54), dpToPx(42));
+            swatchLp.setMarginEnd(dpToPx(14));
+            row.addView(swatch, swatchLp);
+
+            TextView label = new TextView(this);
+            label.setText(names[i]);
+            label.setTextSize(16);
+            label.setTextColor(MaterialColors.getColor(label, com.google.android.material.R.attr.colorOnSurface));
+            label.setGravity(Gravity.CENTER_VERTICAL);
+            row.addView(label, new LinearLayout.LayoutParams(0, dpToPx(48), 1f));
+
+            ImageView check = new ImageView(this);
+            check.setImageResource(android.R.drawable.checkbox_on_background);
+            check.setVisibility(selected == i ? View.VISIBLE : View.INVISIBLE);
+            row.addView(check, new LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)));
+
+            row.setOnClickListener(v -> {
+                theme = themeIds[index];
+                systemTheme = false;
+                UnifiedEditorFragment.clearCache();
+                PreferenceManager.getDefaultSharedPreferences(this).edit()
+                        .putBoolean("systemTheme", false).putInt("theme", theme).apply();
+                themeVariantLabel.setText(names[index]);
+                if (settingsAlertHolder[0] != null) settingsAlertHolder[0].dismiss();
+                recreate();
+            });
+            list.addView(row);
+        }
+        AlertDialog picker = new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.choose_theme)
+                .setView(list)
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        picker.show();
     }
 
     private void setupLanguageSettings(ScrollView root) {

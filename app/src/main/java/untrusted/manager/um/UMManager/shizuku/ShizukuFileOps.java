@@ -46,20 +46,58 @@ public final class ShizukuFileOps {
      * Works in both directions (into and out of Android/data).
      */
     public static File shellCopy(File src, File destFolder, String name) {
-        if (!ShizukuShell.isGranted()) return null;
+        if (!ShizukuShell.isGranted() || src == null || destFolder == null || name == null || name.isEmpty()) return null;
         File dest = new File(destFolder, name);
         if (dest.equals(src)) return dest;
-        String cmd = "cp -r " + RootManager.escapeShellArg(src.getAbsolutePath()) + " " + RootManager.escapeShellArg(dest.getAbsolutePath());
-        return ShizukuShell.exec(cmd).success ? new ShizukuFile(dest.getAbsolutePath(), src.isDirectory(), src.length()) : null;
+        String srcPath = canonicalPath(src);
+        String dstPath = canonicalPathForCreate(dest);
+        if (srcPath == null || dstPath == null || RootManager.isPathBlocked(srcPath) || RootManager.isPathBlocked(dstPath)) return null;
+        if (src.isDirectory() && sameOrDescendant(dstPath, srcPath)) return null;
+        String cmd = "cp -r -- " + RootManager.escapeShellArg(srcPath) + " " + RootManager.escapeShellArg(dstPath);
+        ShizukuShell.Result r = ShizukuShell.exec(cmd);
+        if (!r.success || !existsViaShell(dstPath)) return null;
+        return new ShizukuFile(dstPath, src.isDirectory(), src.length());
     }
 
     /** Move src into destFolder via shell (mv). Returns true on success. */
     public static boolean shellMove(File src, File destFolder, String name) {
-        if (!ShizukuShell.isGranted()) return false;
+        if (!ShizukuShell.isGranted() || src == null || destFolder == null || name == null || name.isEmpty()) return false;
         File dest = new File(destFolder, name);
         if (dest.equals(src)) return true;
-        if (RootManager.isPathBlocked(src.getAbsolutePath())) return false;
-        String cmd = "mv " + RootManager.escapeShellArg(src.getAbsolutePath()) + " " + RootManager.escapeShellArg(dest.getAbsolutePath());
-        return ShizukuShell.exec(cmd).success;
+        String srcPath = canonicalPath(src);
+        String dstPath = canonicalPathForCreate(dest);
+        if (srcPath == null || dstPath == null || RootManager.isPathBlocked(srcPath) || RootManager.isPathBlocked(dstPath)) return false;
+        if (src.isDirectory() && sameOrDescendant(dstPath, srcPath)) return false;
+        String cmd = "mv -- " + RootManager.escapeShellArg(srcPath) + " " + RootManager.escapeShellArg(dstPath);
+        return ShizukuShell.exec(cmd).success && existsViaShell(dstPath);
+    }
+
+    private static String canonicalPath(File file) {
+        try {
+            String p = file.getCanonicalPath();
+            return ShizukuFile.isAndroidDataPath(p) || p.startsWith("/storage/emulated/0/") ? p : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static String canonicalPathForCreate(File file) {
+        try {
+            File parent = file.getParentFile();
+            if (parent == null) return null;
+            String parentPath = parent.getCanonicalPath();
+            if (!(parentPath.equals("/storage/emulated/0") || parentPath.startsWith("/storage/emulated/0/"))) return null;
+            return new File(parentPath, file.getName()).getCanonicalPath();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static boolean sameOrDescendant(String candidate, String root) {
+        return candidate.equals(root) || candidate.startsWith(root.endsWith("/") ? root : root + "/");
+    }
+
+    private static boolean existsViaShell(String path) {
+        return ShizukuShell.exec("[ -e " + RootManager.escapeShellArg(path) + " ]").success;
     }
 }

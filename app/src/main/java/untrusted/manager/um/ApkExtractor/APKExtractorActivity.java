@@ -1153,7 +1153,13 @@ public class APKExtractorActivity extends AppCompatActivity {
                     try {
                         bundle.setAPKLogger(logger);
                         finalOutput = FileUtils.getUnusedFile(output);
-                        MergeUtil.mergeBundle(bundle).renameTo(finalOutput);
+                        File merged = MergeUtil.mergeBundle(bundle);
+                        if (!merged.isFile()) {
+                            throw new IOException("Merged APK was not created: " + merged);
+                        }
+                        if (!merged.renameTo(finalOutput)) {
+                            throw new IOException("Could not move merged APK to " + finalOutput);
+                        }
                     } finally {
                         logger.close();
                     }
@@ -1167,7 +1173,7 @@ public class APKExtractorActivity extends AppCompatActivity {
                         if (apkFiles == null) throw new IOException("Cannot list " + apkDirectory);
                         for (File f : apkFiles) {
                             String name = f.getName();
-                            if (f.isFile() && name.endsWith(".apk")) {
+                            if (f.isFile() && name.toLowerCase(java.util.Locale.ROOT).endsWith(".apk")) {
                                 pm.setText(rss.getString(R.string.adding_to, name, fileNameString));
                                 zf.addFile(f, zp);
                             }

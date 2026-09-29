@@ -76,8 +76,28 @@ public class DeepOptimizer {
                                 SharedPreferences settings, APKLogger logger) throws Exception {
         File outFile = FileUtils.getUnusedFile(new File(inputApk.getParentFile(),
                 FilenameUtils.getBaseName(inputApk.getName()) + "_deep.apk"));
-        new DeepOptimizer(logger, settings).run(inputApk, outFile, filesToDelete);
-        return outFile;
+        File working = new File(outFile.getParentFile(), "." + outFile.getName() + "." + System.nanoTime() + ".tmp.apk");
+        try {
+            new DeepOptimizer(logger, settings).run(inputApk, working, filesToDelete);
+            promoteOutput(working, outFile);
+            return outFile;
+        } finally {
+            if (working.exists()) working.delete();
+        }
+    }
+
+    private static void promoteOutput(File working, File destination) throws Exception {
+        if (!working.isFile() || working.length() == 0) throw new java.io.IOException("Deep optimizer produced no APK output");
+        if (destination.exists() && !destination.delete()) throw new java.io.IOException("Cannot replace deep optimizer output: " + destination);
+        if (working.renameTo(destination)) return;
+        try (java.io.InputStream in = new java.io.BufferedInputStream(new java.io.FileInputStream(working));
+             java.io.OutputStream out = new java.io.BufferedOutputStream(new java.io.FileOutputStream(destination))) {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            out.flush();
+        }
+        if (!working.delete() && working.exists()) throw new java.io.IOException("Cannot remove deep optimizer temporary output");
     }
 
     private DeepOptimizer(APKLogger logger, SharedPreferences settings) {
@@ -204,12 +224,17 @@ public class DeepOptimizer {
      * max-compression setting applies to absolutely everything (including entries the plain
      * optimizer previously left STORED).
      */
-    private void compressAll(ApkModule module) {
-        try {
-            for (InputSource source : module.getInputSources()) {
+    private void compressAll(ApkModule module) throws Exception {
+        for (InputSource source : module.getInputSources()) {
+            String name = source.getName();
+            // Native libraries are safest when stored: this preserves the APK
+            // layout expected by extractNativeLibs=false packages and allows
+            // the alignment pass to enforce the 4096-byte boundary.
+            if (name != null && name.startsWith("lib/") && name.toLowerCase(Locale.US).endsWith(".so")) {
+                source.setMethod(ZipEntry.STORED);
+            } else {
                 source.setMethod(ZipEntry.DEFLATED);
             }
-        } catch (Exception ignored) {
         }
         module.setCompressionLevel(9);
     }

@@ -66,6 +66,7 @@ public class HexEditorActivity extends AppCompatActivity {
     private RandomAccessFile raf;
     private long size;
     private boolean readOnly;
+    private boolean savingChanges;
     private String rootOriginalPath;
 
     private final TreeMap<Integer, Integer> mods = new TreeMap<>();
@@ -293,7 +294,7 @@ public class HexEditorActivity extends AppCompatActivity {
     }
 
     private void inputNibble(int digit) {
-        if (readOnly || cursorPos >= size) return;
+        if (readOnly || savingChanges || cursorPos >= size) return;
         int oldVal = readByte(cursorPos);
         if (oldVal == -1) return;
         boolean wasHigh = nibbleHigh;
@@ -545,6 +546,7 @@ public class HexEditorActivity extends AppCompatActivity {
     }
 
     private void writeBytesAt(long pos, byte[] data, Runnable extraUndoAction) {
+        if (readOnly || savingChanges || data == null || data.length == 0) return;
         List<int[]> entries = new ArrayList<>();
         for (int i = 0; i < data.length; i++) {
             int p = (int) (pos + i);
@@ -655,6 +657,7 @@ public class HexEditorActivity extends AppCompatActivity {
 
 
     private void saveChanges() {
+        if (savingChanges) return;
         if (mods.isEmpty()) {
             Extensions.showMessage(this, getString(R.string.hex_nothing_to_save));
             return;
@@ -676,47 +679,65 @@ public class HexEditorActivity extends AppCompatActivity {
     }
 
     private void saveChangesRoot() {
-        backupForSave();
-        try (RandomAccessFile w = new RandomAccessFile(file, "rw")) {
-            for (Map.Entry<Integer, Integer> entry : mods.entrySet()) {
-                w.seek(entry.getKey());
-                w.writeByte(entry.getValue());
-            }
-            Extensions.showMessage(this, R.string.saved);
-        } catch (Exception e) {
-            new ErrorUtil(this).showError(e);
-            return;
-        }
-        if (rootOriginalPath != null) {
-            Extensions.showMessage(this, getString(R.string.editor_writing_root));
-            new Thread(() -> {
-                try {
-                    RootStaging.writeBack(this, file, rootOriginalPath);
-                    runOnUiThread(() -> Extensions.showMessage(this, getString(R.string.editor_saved_root)));
-                } catch (Exception e) {
-                    runOnUiThread(() -> new ErrorUtil(this).showError(e));
+        final ArrayList<Map.Entry<Integer, Integer>> snapshot = new ArrayList<>(mods.entrySet());
+        if (snapshot.isEmpty() || savingChanges) return;
+        savingChanges = true;
+        Extensions.showMessage(this, rootOriginalPath != null
+                ? getString(R.string.editor_writing_root)
+                : getString(R.string.saved) + "…");
+        new Thread(() -> {
+            try {
+                backupForSave();
+                try (RandomAccessFile w = new RandomAccessFile(file, "rw")) {
+                    for (Map.Entry<Integer, Integer> entry : snapshot) {
+                        w.seek(entry.getKey());
+                        w.writeByte(entry.getValue());
+                    }
+                    w.getFD().sync();
                 }
-            }).start();
-        }
+                if (rootOriginalPath != null) {
+                    RootStaging.writeBack(this, file, rootOriginalPath);
+                }
+                runOnUiThread(() -> {
+                    savingChanges = false;
+                    // The file and optional root target are both committed. Clear the
+                    // in-memory delta so Save/Back no longer treats the tab as dirty.
+                    mods.clear();
+                    undoStack.clear();
+                    redoStack.clear();
+                    nibbleHigh = true;
+                    updateStatus();
+                    if (rootOriginalPath != null) {
+                        Extensions.showMessage(this, getString(R.string.editor_saved_root));
+                    } else {
+                        Extensions.showMessage(this, R.string.saved);
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    savingChanges = false;
+                    new ErrorUtil(this).showError(e);
+                });
+            }
+        }).start();
     }
 
-    private void backupForSave() {
-        try {
-            if (!UiPrefs.genBackup(this)) return;
-            if (rootOriginalPath != null) {
-                if (AccessManager.fileOpsOn(this) && AccessManager.exists(this, rootOriginalPath)) {
-                    AccessManager.copyFile(this, rootOriginalPath, rootOriginalPath + ".bak", true);
-                }
-            } else if (file != null && file.isFile()) {
-                File bak = new File(file.getPath() + ".bak");
-                try (RandomAccessFile in = new RandomAccessFile(file, "r");
-                     RandomAccessFile out = new RandomAccessFile(bak, "rw")) {
-                    byte[] buf = new byte[65536];
-                    int n;
-                    while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
-                }
+    private void backupForSave() throws IOException {
+        if (!UiPrefs.genBackup(this)) return;
+        if (rootOriginalPath != null) {
+            if (AccessManager.fileOpsOn(this) && AccessManager.exists(this, rootOriginalPath)) {
+                AccessManager.copyFile(this, rootOriginalPath, rootOriginalPath + ".bak", true);
             }
-        } catch (Exception ignored) {
+        } else if (file != null && file.isFile()) {
+            File bak = new File(file.getPath() + ".bak");
+            try (RandomAccessFile in = new RandomAccessFile(file, "r");
+                 RandomAccessFile out = new RandomAccessFile(bak, "rw")) {
+                out.setLength(0);
+                byte[] buf = new byte[65536];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                out.getFD().sync();
+            }
         }
     }
 

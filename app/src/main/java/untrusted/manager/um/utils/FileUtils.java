@@ -17,6 +17,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.KeyStore;
 import java.util.Locale;
@@ -29,7 +30,7 @@ public class FileUtils {
     public static final String[] VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".avi", ".3gp", ".mov", ".ts", ".m4v", ".flv", ".wmv"};
     public static final String[] AUDIO_EXTS = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".wma", ".opus"};
     public static final String[] ARCHIVE_EXTS = {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2"};
-    public static final String[] TEXT_EXTS = {".txt", ".log", ".xml", ".json", ".html", ".css", ".js", ".java", ".kt", ".md", ".smali", ".pro", ".gradle", ".properties"};
+    public static final String[] TEXT_EXTS = {".txt", ".log", ".xml", ".json", ".html", ".htm", ".xhtml", ".css", ".js", ".java", ".kt", ".md", ".smali", ".pro", ".gradle", ".properties"};
 
     public static boolean areFilesDifferent(File[] files1, File[] files2) throws IOException {
         if (files1 == null || files2 == null)
@@ -60,7 +61,8 @@ public class FileUtils {
 
     public static boolean isAxml(InputStream inputStream) throws IOException {
         try (InputStreamReader isr = new InputStreamReader(inputStream); BufferedReader abr = new BufferedReader(isr)) {
-            return !abr.readLine().startsWith("<?xml version=");
+            String firstLine = abr.readLine();
+            return firstLine != null && !firstLine.startsWith("<?xml version=");
         }
     }
      public static File copyFileFromAssetsAndGetFile(String fileName, Context context) throws IOException {
@@ -93,14 +95,25 @@ public class FileUtils {
     }
 
     public static File getUnusedFile(File file) {
-        int i = 0;
-        while(file.exists()) {
+        if (file == null || !file.exists()) return file;
+        File parent = file.getParentFile();
+        String fileName = file.getName();
+        String extension = FilenameUtils.getExtension(fileName);
+        String base = extension.isEmpty()
+                ? fileName
+                : fileName.substring(0, fileName.length() - extension.length() - 1);
+        // Avoid producing names such as "foo_1." for extensionless files.
+        base = base.replaceFirst("_\\d+$", "");
+        int i = 1;
+        File candidate;
+        do {
+            String candidateName = extension.isEmpty()
+                    ? base + "_" + i
+                    : base + "_" + i + "." + extension;
+            candidate = new File(parent, candidateName);
             i++;
-            String fileName = file.getName();
-            String extension = FilenameUtils.getExtension(fileName);
-            file = new File(file.getParentFile(), fileName.replace('.' + extension, "").replaceFirst("_\\d+$", "") + '_' + i + '.' + extension);
-        }
-        return file;
+        } while (candidate.exists());
+        return candidate;
     }
 
     public static File getUnusedFile(String file) {
@@ -108,21 +121,45 @@ public class FileUtils {
     }
 
     public static void copyFolder(File src, File dest) throws IOException {
-        if (src.isDirectory()) {
-            if (!dest.exists()) {
-                dest.mkdir();
+        if (src == null || dest == null) throw new IOException("Source and destination are required");
+        Path sourcePath = src.toPath();
+        Path destinationPath = dest.toPath();
+        if (Files.isSymbolicLink(sourcePath)) {
+            throw new IOException("Refusing to follow symbolic link: " + src);
+        }
+        if (Files.isSymbolicLink(destinationPath)) {
+            throw new IOException("Refusing to write through symbolic-link destination: " + dest);
+        }
+        if (!src.isDirectory()) {
+            File target = dest.isDirectory() ? new File(dest, src.getName()) : dest;
+            if (Files.isSymbolicLink(target.toPath())) {
+                throw new IOException("Refusing to overwrite symbolic link: " + target);
             }
+            copyFile(src, target);
+            return;
+        }
 
-            String[] files = src.list();
-            if (files == null) return;
+        Path sourceReal = sourcePath.toRealPath();
+        Path destinationParent = destinationPath.toAbsolutePath().normalize();
+        if (destinationParent.startsWith(sourceReal)) {
+            throw new IOException("Destination cannot be inside the source directory: " + dest);
+        }
+        if (dest.exists() && !dest.isDirectory()) {
+            throw new IOException("Destination is not a directory: " + dest);
+        }
+        if (!dest.exists() && !dest.mkdirs() && !dest.isDirectory()) {
+            throw new IOException("Cannot create directory: " + dest);
+        }
 
-            for (String file : files) {
-                File f = new File(file);
-                copyFolder(new File(src, file), f.isDirectory() ? new File(dest, file) : (dest));
+        File[] children = src.listFiles();
+        if (children == null) throw new IOException("Cannot read directory: " + src);
+        for (File child : children) {
+            if (Files.isSymbolicLink(child.toPath())) {
+                throw new IOException("Refusing to follow symbolic link: " + child);
             }
-        } else {
-            File copy = new File(dest, src.getName());
-            copyFile(src, copy);
+            File target = new File(dest, child.getName());
+            if (child.isDirectory()) copyFolder(child, target);
+            else copyFile(child, target);
         }
     }
 

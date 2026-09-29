@@ -223,7 +223,12 @@ public class SignWrapper {
             ApkZipAlignUtil.ensureInstallable(inputApk);
         }
         boolean inPlace = inputApk.equals(output);
-        File actualOutput = inPlace ? resolveSibling(output, output.getName() + ".tmp") : output;
+        File actualOutput = inPlace
+                ? new File(output.getParentFile(), "." + output.getName() + ".signing-" + System.nanoTime() + ".tmp.apk")
+                : output;
+        if (actualOutput.exists() && !actualOutput.delete()) {
+            throw new IOException("Cannot create signing output: " + actualOutput);
+        }
 
         ApkSigner.Builder builder = new ApkSigner.Builder(Collections.singletonList(createSignerConfig()))
                 .setInputApk(inputApk)
@@ -236,10 +241,22 @@ public class SignWrapper {
         if (v4) {
             builder.setV4SignatureOutputFile(getV4SignatureOutputFile(inputApk, actualOutput));
         }
-        builder.build().sign();
-
-        if (inPlace) {
-            finishInPlaceSign(inputApk, actualOutput);
+        File temporaryV4 = v4 ? getV4SignatureOutputFile(inputApk, actualOutput) : null;
+        try {
+            builder.build().sign();
+            if (!actualOutput.isFile() || actualOutput.length() == 0) {
+                throw new IOException("Signer produced no usable APK output");
+            }
+            if (inPlace) {
+                finishInPlaceSign(inputApk, actualOutput);
+                if (v4) {
+                    File finalV4 = getV4SignatureOutputFile(inputApk, inputApk);
+                    replaceSidecar(temporaryV4, finalV4);
+                }
+            }
+        } finally {
+            if (inPlace && actualOutput.exists()) actualOutput.delete();
+            if (inPlace && temporaryV4 != null && temporaryV4.exists()) temporaryV4.delete();
         }
     }
 
@@ -410,12 +427,70 @@ public class SignWrapper {
         return resolveSibling(output, idsigName);
     }
 
-    private void finishInPlaceSign(File inputApk, File output) throws IOException {
-        if (!inputApk.delete()) {
-            throw new IOException("Failed to delete original file " + inputApk.getPath());
+    private static void replaceSidecar(File source, File destination) throws IOException {
+        if (source == null || !source.isFile()) throw new IOException("Signer did not produce the v4 signature sidecar");
+        File parent = destination.getParentFile();
+        if (parent == null) throw new IOException("Signature sidecar has no parent directory");
+        File backup = new File(parent, "." + destination.getName() + ".backup-" + System.nanoTime());
+        boolean hadOriginal = destination.isFile();
+        if (hadOriginal && !destination.renameTo(backup)) throw new IOException("Cannot stage existing v4 signature");
+        try {
+            if (!source.renameTo(destination)) {
+                try (InputStream in = new java.io.BufferedInputStream(new FileInputStream(source));
+                     java.io.OutputStream out = new java.io.BufferedOutputStream(new java.io.FileOutputStream(destination))) {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                    out.flush();
+                }
+                if (!source.delete() && source.exists()) throw new IOException("Cannot remove temporary v4 signature");
+            }
+            if (backup.exists()) backup.delete();
+        } catch (Throwable t) {
+            if (destination.exists()) destination.delete();
+            if (hadOriginal && backup.isFile() && !backup.renameTo(destination))
+                throw new IOException("Could not restore previous v4 signature", t);
+            if (t instanceof IOException) throw (IOException)t;
+            throw new IOException("Failed to replace v4 signature", t);
         }
-        if (!output.renameTo(inputApk)) {
-            throw new IOException("Failed to move signed file to " + inputApk.getPath());
+    }
+
+    private void finishInPlaceSign(File inputApk, File output) throws IOException {
+        if (!output.isFile() || output.length() == 0) {
+            throw new IOException("Signing produced no usable APK output");
+        }
+        File parent = inputApk.getParentFile();
+        if (parent == null) throw new IOException("APK has no parent directory");
+        File backup = new File(parent, "." + inputApk.getName() + ".pre-sign-" + System.nanoTime() + ".bak");
+        if (!inputApk.renameTo(backup)) {
+            throw new IOException("Could not stage original APK for safe replacement: " + inputApk);
+        }
+        boolean installed = false;
+        try {
+            installed = output.renameTo(inputApk);
+            if (!installed) {
+                try (InputStream in = new java.io.BufferedInputStream(new FileInputStream(output));
+                     java.io.OutputStream out = new java.io.BufferedOutputStream(new java.io.FileOutputStream(inputApk))) {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                    out.flush();
+                }
+                installed = true;
+                if (!output.delete() && output.exists()) throw new IOException("Could not remove temporary signed APK");
+            }
+            if (!backup.delete() && backup.exists()) {
+                // Keep the original only if cleanup is impossible; never remove the valid output.
+            }
+        } catch (Throwable t) {
+            if (inputApk.isFile() && installed) inputApk.delete();
+            if (!inputApk.exists() && backup.isFile() && !backup.renameTo(inputApk)) {
+                throw new IOException("Signing failed and original APK could not be restored: " + inputApk, t);
+            }
+            if (t instanceof IOException) throw (IOException)t;
+            throw new IOException("Failed to replace signed APK", t);
+        } finally {
+            if (output.exists()) output.delete();
         }
     }
 

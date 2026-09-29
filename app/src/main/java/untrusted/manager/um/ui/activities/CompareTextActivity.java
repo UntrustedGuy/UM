@@ -11,8 +11,11 @@ import com.github.difflib.text.DiffRow;
 import com.github.difflib.text.DiffRowGenerator;
 
 import java.io.BufferedReader;
-import java.io.FileReader;
+import java.io.File;
+import java.io.IOException;
+import java.io.FileInputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
@@ -36,14 +39,20 @@ public class CompareTextActivity extends AppCompatActivity {
         Intent intent = getIntent();
         String path1 = intent.getStringExtra("file1");
         String path2 = intent.getStringExtra("file2");
+        String text1 = intent.getStringExtra("text1");
+        String text2 = intent.getStringExtra("text2");
         boolean isZip1 = intent.getBooleanExtra("isZip1", false);
         boolean isZip2 = intent.getBooleanExtra("isZip2", false);
         String zip1 = intent.getStringExtra("zip1");
         String zip2 = intent.getStringExtra("zip2");
+        String title1 = intent.getStringExtra("title1");
+        String title2 = intent.getStringExtra("title2");
+        if (title1 == null || title1.isEmpty()) title1 = "File 1";
+        if (title2 == null || title2.isEmpty()) title2 = "File 2";
 
         try {
-            List<String> lines1 = readLines(path1, isZip1, zip1);
-            List<String> lines2 = readLines(path2, isZip2, zip2);
+            List<String> lines1 = text1 != null ? splitLines(text1) : readLines(path1, isZip1, zip1);
+            List<String> lines2 = text2 != null ? splitLines(text2) : readLines(path2, isZip2, zip2);
 
             DiffRowGenerator generator = DiffRowGenerator.create()
                     .showInlineDiffs(true)
@@ -62,7 +71,7 @@ public class CompareTextActivity extends AppCompatActivity {
                 .append("th { background-color: #f2f2f2; } ")
                 .append("</style></head><body>");
 
-            html.append("<table><tr><th style=\"width:50%\">File 1</th><th style=\"width:50%\">File 2</th></tr>");
+            html.append("<table><tr><th style=\"width:50%\">").append(escapeDiffHtml(title1)).append("</th><th style=\"width:50%\">").append(escapeDiffHtml(title2)).append("</th></tr>");
 
             for (DiffRow row : rows) {
                 html.append("<tr>");
@@ -73,8 +82,8 @@ public class CompareTextActivity extends AppCompatActivity {
                 String oldBg = row.getTag() == DiffRow.Tag.DELETE ? "background-color:#ffe6e6;" : "";
                 String newBg = row.getTag() == DiffRow.Tag.INSERT ? "background-color:#e6ffe6;" : "";
 
-                html.append("<td style=\"").append(oldBg).append("\">").append(oldLine).append("</td>");
-                html.append("<td style=\"").append(newBg).append("\">").append(newLine).append("</td>");
+                html.append("<td style=\"").append(oldBg).append("\">").append(escapeDiffHtml(oldLine)).append("</td>");
+                html.append("<td style=\"").append(newBg).append("\">").append(escapeDiffHtml(newLine)).append("</td>");
                 
                 html.append("</tr>");
             }
@@ -89,20 +98,48 @@ public class CompareTextActivity extends AppCompatActivity {
         }
     }
 
+    private static final long MAX_COMPARE_BYTES = 16L * 1024L * 1024L;
+
+    private List<String> splitLines(String text) {
+        List<String> lines = new ArrayList<>();
+        if (text == null || text.isEmpty()) return lines;
+        String[] parts = text.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1);
+        java.util.Collections.addAll(lines, parts);
+        return lines;
+    }
+
+    private String escapeDiffHtml(String value) {
+        if (value == null) return "";
+        final String openOld = "<span style=\"background-color:#ffcccc;text-decoration:line-through;\">";
+        final String openNew = "<span style=\"background-color:#ccffcc;\">";
+        final String close = "</span>";
+        String escaped = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&#39;");
+        // DiffRowGenerator inserts only these known tags. Restore them after escaping file content
+        // so arbitrary source text cannot inject HTML while inline highlighting still works.
+        return escaped
+                .replace("&lt;span style=&quot;background-color:#ffcccc;text-decoration:line-through;&quot;&gt;", openOld)
+                .replace("&lt;span style=&quot;background-color:#ccffcc;&quot;&gt;", openNew)
+                .replace("&lt;/span&gt;", close);
+    }
+
     private List<String> readLines(String path, boolean isZip, String zipPath) throws Exception {
         List<String> lines = new ArrayList<>();
         if (isZip) {
             try (ZipFile zf = new ZipFile(zipPath)) {
                 ZipEntry ze = zf.getEntry(path);
                 if (ze != null) {
-                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(zf.getInputStream(ze)))) {
+                    if (ze.getSize() > MAX_COMPARE_BYTES) throw new IOException("File is too large to compare safely");
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(zf.getInputStream(ze), StandardCharsets.UTF_8))) {
                         String line;
                         while ((line = reader.readLine()) != null) lines.add(line);
                     }
                 }
             }
         } else {
-            try (BufferedReader reader = new BufferedReader(new FileReader(path))) {
+            File file = new File(path);
+            if (file.length() > MAX_COMPARE_BYTES) throw new IOException("File is too large to compare safely");
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) lines.add(line);
             }

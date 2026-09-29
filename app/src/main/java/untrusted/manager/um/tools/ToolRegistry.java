@@ -45,6 +45,13 @@ public class ToolRegistry {
         tools.add(new ToolItem("dlleditor", "DLL Editor", "Edit managed and native DLL files", resId(context, "edit_24px", pkg), CAT_GAME));
         tools.add(new ToolItem("wifimanager", "Wi-Fi Manager", "DNS profiles passwords usage", resId(context, "wifi_24px", pkg), CAT_NETWORK));
         tools.add(new ToolItem("connectivity", "Connectivity Hub", "Network data Bluetooth NFC", resId(context, "wifi_24px", pkg), CAT_NETWORK));
+        tools.add(new ToolItem("httpremote", "HTTP Remote Management", "Browser file manager with Bearer authentication", resId(context, "wifi_24px", pkg), CAT_NETWORK));
+        tools.add(new ToolItem("networkstorage", "Network Storage", "Unified SMB, SFTP, WebDAV and S3 locations", resId(context, "folder_open_24px", pkg), CAT_NETWORK));
+        tools.add(new ToolItem("networktransfers", "Network Transfers", "Unified transfer queue with cancellation and history", resId(context, "file_download_24px", pkg), CAT_NETWORK));
+        tools.add(new ToolItem("webdav", "WebDAV Storage", "Browse, upload, download, rename and manage WebDAV", resId(context, "folder_open_24px", pkg), CAT_NETWORK));
+        tools.add(new ToolItem("s3", "S3 Storage", "Browse S3-compatible object storage with upload, download and rename", resId(context, "folder_open_24px", pkg), CAT_NETWORK));
+        tools.add(new ToolItem("smb", "SMB Storage", "SMB2/SMB3 network shares with secure authentication", resId(context, "folder_open_24px", pkg), CAT_NETWORK));
+        tools.add(new ToolItem("sftp", "SFTP Storage", "Browse and transfer files over SSH/SFTP", resId(context, "folder_open_24px", pkg), CAT_NETWORK));
         tools.add(new ToolItem("qrgen", "QR Generator", "Text URL Wi-Fi to QR", resId(context, "qr_24px", pkg), CAT_NETWORK));
         tools.add(new ToolItem("qrscan", "QR Scanner", "Camera barcode scan", resId(context, "qr_scan_24px", pkg), CAT_NETWORK));
         tools.add(new ToolItem("nfc", "NFC Reader", "Scan tags", resId(context, "wifi_24px", pkg), CAT_NETWORK));

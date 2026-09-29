@@ -33,6 +33,22 @@
     <string name="dark_theme">Dark theme</string>
     <string name="light_theme">Light theme</string>
     <string name="system_theme">System theme</string>
+    <string name="more_themes">More themes</string>
+    <string name="choose_theme">Choose a theme</string>
+    <string name="theme_dynamic_aurora">Dynamic Aurora</string>
+    <string name="theme_tokyo_night">Tokyo Night</string>
+    <string name="theme_dracula">Dracula</string>
+    <string name="theme_tokyo_night_day">Tokyo Night Day</string>
+    <string name="theme_yinyang">YinYang</string>
+    <string name="theme_nord">Nord</string>
+    <string name="theme_catppuccin">Catppuccin Mocha</string>
+    <string name="theme_gruvbox">Gruvbox Dark</string>
+    <string name="theme_monochrome">Monochrome</string>
+    <string name="theme_blood_lilith">Blood of Lilith</string>
+    <string name="theme_aurora_ocean">Aurora Ocean</string>
+    <string name="theme_aurora_sunset">Aurora Sunset</string>
+    <string name="theme_aurora_emerald">Aurora Emerald</string>
+    <string name="theme_cyberpunk">Cyberpunk Neon</string>
     <string name="func">Functionality</string>
     <string name="pkg_name_save">Save files with package name instead of app name</string>
     <string name="split">Split</string>
@@ -1403,4 +1419,5 @@ Layout Inspector
         <item>CSS</item>
         <item>Markdown</item>
     </string-array>
+    <string name="sidebar_network_storage">Network Storage</string>
 </resources>

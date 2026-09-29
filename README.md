@@ -210,103 +210,13 @@ Extract APKs in batch and pull out specific parts: the app icon, resources.arsc,
 <!-- TODO: Add screenshots/videos -->
 </details>
 
-### FTP
+### Network Storage
 
-<details><summary>FTP server</summary>
+### Credential protection
+Network-storage passwords, S3 access/secret keys, session tokens, and other persisted credentials are encrypted with an Android Keystore AES-256-GCM key. Legacy plaintext values are migrated once on first open and are not written back in plaintext. Non-secret endpoint/profile metadata remains in normal preferences.
 
-Use FTP server with custom port, username and password. The server keeps a notification while running so it can be stopped easily. Connection settings can be saved as profiles, and the device IP can be copied or shared.
+## Network Storage Hub profile isolation (2026-09-29)
 
-<p align="center">
-  <img src="./images/ftps.png" width="200" alt="FTP server dialog">
-  <br>
-  <em>The FTP server dialog</em>
-</p>
-</details>
+Saved Network Storage Hub locations now have a stable per-location ID. Opening a saved SFTP, SMB, WebDAV, or S3 location passes that ID into the protocol activity, so connection metadata and encrypted credentials are kept in a profile-specific preference namespace instead of being shared between unrelated saved locations. Existing hub entries without an ID receive one during migration and are persisted on the next save. The hub also passes the saved endpoint into the protocol connection dialog (including SFTP host/port parsing), so selecting a saved location no longer discards the endpoint and falls back to the last global connection.
 
-<details><summary>FTP client</summary>
-
-Connect to an FTP server and browse remote folders in either pane, with the same navigation controls as local files. Files can be uploaded from the device, and connection details can be saved as profiles (to connect to multiple devices easily).
-
-<p align="center">
-  <img src="./images/ftpc.png" width="200" alt="FTP client dialog">
-  <br>
-  <em>The FTP client dialog</em>
-</p>
-</details>
-
-### Utilities
-
-<details><summary>Screen color picker</summary>
-
-[Use a floating overlay to find out colors anywhere on the screen.](https://github.com/codehasan/ScreenColorPicker)
-
-<p align="center">
-  <img src="./images/colorpicker.png" width="200" alt="Screen color picker dialog"> <img src="./images/colorpicking.png" width="200" alt="Screen color picker active">
-  <br>
-  <em>Configuration dialog</em>&nbsp;·&nbsp;
-  <em>Picking color</em>
-</p>
-</details>
-
-<details><summary>Layout inspector</summary>
-
-[Inspect the view hierarchy of any app through a floating overlay window.](https://github.com/AbdurazaaqMohammed/Layout-Inspector)
-
-<p align="center">
-  <img src="./images/li.png" width="200" alt="Layout Inspector">
-  <br>
-  <em>Layout Inspection</em>
-</p>
-</details></details>
-
-<details><summary>Command Helper</summary>
-
-Command Helper is a simple but powerful tool. It allows you to create templates for commands that can then be quickly applied to any file you select.
-
-It can generate commands for several files at once, preview them, copy or run them directly in Termux.
-
-* In this way you can quickly run command line tools like dex2c etc. on files via Untrusted Manager
-
-<p align="center">
-  <img src="./images/cmdhp.png" width="200" alt="Profile creation"> <img src="./images/cmdh.png" width="200" alt="Generated command">
-  <br>
-  <em>Creating a command profile</em> &nbsp;·&nbsp; <em>The generated command</em>
-</p>
-</details>
-
-<details><summary>Appearance and storage info</summary>
-
-Choose between system, light, dark and black theme all with Material theme and Dynamic Colors. The sidebar shows mounted storages with used and free space available.
-
-<p align="center">
-  <img src="./images/sidebar.png" width="200" alt="Sidebar with storage info">
-  <br>
-  <em>The sidebar with storage usage</em>
-</p>
-</details>
-
-# Todo / Status
-
-The original TODO items have been implemented or integrated into the current codebase:
-
-* APK Patcher: integrated APK Editor `patch.txt` rules (`ADD_FILES`, `REMOVE_FILES`, `MATCH_REPLACE`, `MATCH_ASSIGN`, `MATCH_GOTO`, `GOTO`, `MERGE`, `EXECUTE_DEX`, `DUMMY`) plus Lucky Patcher `CLASSES`/`ODEX`/`LIB` byte-pattern patches with wildcard and sequential R/W capture support. APK Editor `.zip` patches and standalone Lucky Patcher text patches are accepted.
-* Root and Shizuku file management: integrated through the existing AccessManager/RootManager/Shizuku backend; the Tools Kit exposes a dedicated Root Manager entry that reports the current backend and can execute a controlled shell test.
-* Lucky Patcher: exposed as a dedicated Tools Kit entry and uses the existing CLASSES/ODEX/LIB byte-pattern engine instead of a placeholder screen.
-* APK optimization: batch and deep optimization are integrated through ApkOptimizer and ApkDeepOptimizer.
-
-The app also records asynchronous crash, lag, network and operational diagnostics under `/storage/emulated/0/Untrusted Manager/logs`.
-
-## Game Analysis & Modding
-
-Game analysis is integrated into the main Tools Kit and file context menu; it is not a separate application.
-
-* **Game Analyzer** accepts APK/XAPK/APKM/AAB/ZIP files and automatically locates `libil2cpp.so` and `global-metadata.dat`, including nested APKs.
-* **IL2CPP Dumper** takes `libil2cpp.so` and `global-metadata.dat` as the required analysis inputs; an APK/XAPK/APKM/APKS/AAB/ZIP is optional context only. All three selections use UM's internal file picker. It parses supported standard IL2CPP metadata, resolves named `g_CodeRegistration` / `g_MetadataRegistration` structures when safely available, follows per-image code-generation modules, maps native method pointers, extracts field-offset tables, and emits a metadata-backed `dump.cs` and, when native registration is resolved, enriches it with native RVAs; it also emits UM-compatible `script.json`/`stringliteral.json` artifacts, a metadata-backed `il2cpp.h`, registration/method maps, and browseable `DummyDll/*.dll` artifacts. Native/report artifacts are flattened into the timestamped dump directory rather than creating a directory for every analyzed `.so`. It refuses to invent native addresses when registration data cannot be validated.
-* **Global Metadata** validates supported metadata versions and safely recovers standard metadata wrapped in a file envelope or simple XOR transformation when the recovered header is structurally valid. It never fabricates a dump when the representation cannot be validated.
-* **Game Encryption** reports standard metadata/ELF signatures, simple transformations, entropy and protected/non-standard representations. Arbitrary game-specific encryption is not treated as universally solvable.
-* **IL2CPP Editor / DLL Editor** is integrated with UM's existing Text Editor and Hex Editor. Generated C#/JSON/header artifacts can be edited directly; `.dll`, `.so` and other binary assemblies/libraries can be opened from the Tools Kit or file context menu for byte-level editing through UM's existing binary editor, including SAF document write-back.
-* **Frida Runtime Kit** generates UM-maintained Frida scripts for live IL2CPP metadata extraction and `frida-il2cpp-bridge` runtime dumps, opens those scripts in UM's editor, and can launch the bridge workflow through Termux/npm (`npm exec frida-il2cpp-bridge -- -U -f <package> dump --out-dir <directory>`). Frida remains an external runtime dependency and requires an attachable target/runtime.
-* **Game Modding Toolkit** links to the existing APK Patcher, APK Extractor, Hex Editor, IL2CPP Editor and Frida Runtime Kit and keeps their output/logging inside UM.
-* Results are written to `/storage/emulated/0/Untrusted Manager/Dump/` in timestamped directories with SHA-256 hashes and an `analysis_report.txt`.
-
-The IL2CPP metadata implementation follows public version-gated structures used by open-source projects such as Perfare/Il2CppDumper and Cpp2IL. Archive/envelope handling is informed by modern open-source IL2CPP dumpers. Runtime Frida workflows are explicitly separated from the offline parser: when a game exposes plaintext metadata only after runtime initialization, a runtime artifact can be obtained through the Frida kit and then fed back into UM's static analysis pipeline. UM does not claim that arbitrary game-specific protection can always be defeated.
+Deleting a saved location clears its profile-specific protocol preferences as well, preventing orphaned credentials from remaining after the location is removed.

@@ -201,10 +201,50 @@ public final class PatchEngine {
         stripInvalidatedSignatures(apkWork);
         mkdirs(outputDir);
         File out = new File(outputDir, apk.getName().replaceFirst("(?i)\\.apk$", "") + "-patched.apk");
-        if (out.exists() && !out.delete()) throw new IOException("Cannot replace existing output: " + out);
-        zipDirectory(apkWork, out);
-        delete(work);
-        return new Result(true, prefix + ": " + out.getAbsolutePath() + " (sign before installing)", out);
+        File tmp = new File(outputDir, "." + out.getName() + "." + System.nanoTime() + ".tmp");
+        try {
+            zipDirectory(apkWork, tmp);
+            ApkZipAlignUtil.ensureInstallable(tmp);
+            String issue = ApkZipAlignUtil.installIssue(tmp);
+            if (issue != null) throw new IOException("Patched APK failed installability validation: " + issue);
+            atomicReplace(tmp, out);
+            delete(work);
+            return new Result(true, prefix + ": " + out.getAbsolutePath() + " (sign before installing)", out);
+        } finally {
+            if (tmp.exists()) delete(tmp);
+            if (work.exists()) delete(work);
+        }
+    }
+
+    private static void atomicReplace(File tmp, File dst) throws IOException {
+        if (tmp == null || !tmp.isFile()) throw new IOException("Temporary output was not created: " + tmp);
+        File backup = new File(dst.getParentFile(), "." + dst.getName() + ".backup-" + System.nanoTime());
+        boolean hadOriginal = dst.isFile();
+        if (hadOriginal && !dst.renameTo(backup)) {
+            throw new IOException("Cannot stage existing output for replacement: " + dst);
+        }
+        try {
+            if (!tmp.renameTo(dst)) {
+                try (InputStream in = new BufferedInputStream(new FileInputStream(tmp));
+                     OutputStream out = new BufferedOutputStream(new FileOutputStream(dst))) {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                    out.flush();
+                }
+                if (!tmp.delete() && tmp.exists()) throw new IOException("Cannot remove temporary APK: " + tmp);
+            }
+            if (hadOriginal && backup.exists() && !backup.delete()) {
+                // Cleanup failure must not invalidate the successfully installed output.
+            }
+        } catch (Throwable t) {
+            if (dst.exists()) dst.delete();
+            if (hadOriginal && backup.isFile() && !backup.renameTo(dst)) {
+                throw new IOException("Replacement failed and the previous output could not be restored: " + dst, t);
+            }
+            if (t instanceof IOException) throw (IOException)t;
+            throw new IOException("Failed to replace output APK", t);
+        }
     }
 
     private static Result fail(String message) { return new Result(false, message, null); }

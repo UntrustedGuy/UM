@@ -223,11 +223,25 @@ public class ArchiveUtil {
         }
     }
 
-    private static String sanitizeEntryName(String entryName) {
+    private static String sanitizeEntryName(String entryName) throws IOException {
+        if (entryName == null || entryName.isEmpty()) throw new IOException("Archive contains an empty entry name");
         String cleaned = entryName.replace('\\', '/');
         while (cleaned.startsWith("/")) cleaned = cleaned.substring(1);
-        cleaned = cleaned.replaceAll("\\.\\./", "");
-        return cleaned;
+        String[] parts = cleaned.split("/");
+        java.util.ArrayDeque<String> safe = new java.util.ArrayDeque<>();
+        for (String part : parts) {
+            if (part.isEmpty() || ".".equals(part)) continue;
+            if ("..".equals(part)) {
+                if (safe.isEmpty()) throw new IOException("Unsafe archive entry: " + entryName);
+                safe.removeLast();
+            } else if (part.indexOf('\0') >= 0) {
+                throw new IOException("Unsafe archive entry: " + entryName);
+            } else {
+                safe.addLast(part);
+            }
+        }
+        if (safe.isEmpty()) throw new IOException("Unsafe archive entry: " + entryName);
+        return String.join("/", safe);
     }
 
     private static void copy(InputStream is, OutputStream os) throws IOException {

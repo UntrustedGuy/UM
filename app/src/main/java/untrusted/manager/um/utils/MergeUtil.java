@@ -312,8 +312,15 @@ public class MergeUtil {
                     mergedModule.refreshTable();
                     mergedModule.refreshManifest();
                     logger.logMessage(context.getString(R.string.logger_writing_apk));
-                    File outputFile = FileUtils.getUnusedFile(new File(file.getParentFile(), file.getName().replaceFirst("\\.(?:xapk|aspk|apk[sm])", "_antisplit.apk")));
+                    File outputFile = FileUtils.getUnusedFile(new File(file.getParentFile(), file.getName().replaceFirst("(?i)\\.(?:xapk|aspk|apk[sm])$", "_antisplit.apk")));
                     mergedModule.writeApk(outputFile);
+                    if (!outputFile.isFile() || outputFile.length() == 0) {
+                        throw new IOException("Merged APK was not written correctly: " + outputFile);
+                    }
+                    String installIssue = ApkZipAlignUtil.installIssue(outputFile);
+                    if (installIssue != null && !ApkZipAlignUtil.ensureInstallable(outputFile)) {
+                        throw new IOException("Merged APK is not installable: " + installIssue);
+                    }
                     pm.dismiss();
                     if (options.autosign) {
                         context.handler.post(() -> SignWrapper.requireAuth(context, sw -> {
@@ -341,10 +348,16 @@ public class MergeUtil {
                         });
                     }
                 }
+            } finally {
+                try {
+                    Util.deleteDir(dir);
+                } catch (Exception ignored) {
+                }
+                try {
+                    dir.delete();
+                } catch (Exception ignored) {
+                }
             }
-            Util.deleteDir(dir);
-            dir.deleteOnExit();
-            return true;
         });
     }
 
@@ -352,7 +365,7 @@ public class MergeUtil {
         for (ApkModule apkModule : bundle.getApkModuleList()) {
             String protect = Util.isProtected(apkModule);
             if (protect != null) {
-
+                throw new IOException("Cannot merge protected split module: " + protect);
             }
         }
         try(ApkModule mergedModule = bundle.mergeModules(false)) {
@@ -361,6 +374,13 @@ public class MergeUtil {
             mergedModule.refreshManifest();
             File outputFile = FileUtils.getUnusedFile(APKExtractorActivity.getAppFolder(), mergedModule.getPackageName() + ".apk");
             mergedModule.writeApk(outputFile);
+            if (!outputFile.isFile() || outputFile.length() == 0) {
+                throw new IOException("Merged APK was not written correctly: " + outputFile);
+            }
+            String installIssue = ApkZipAlignUtil.installIssue(outputFile);
+            if (installIssue != null && !ApkZipAlignUtil.ensureInstallable(outputFile)) {
+                throw new IOException("Merged APK is not installable: " + installIssue);
+            }
             return outputFile;
         }
     }

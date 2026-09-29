@@ -60,6 +60,7 @@
            android:name="io.github.ratul.topactivity.App"
            android:icon="@mipmap/ic_launcher"
            android:label="Untrusted Manager">
+        <activity android:name="untrusted.manager.um.network.NetworkTransferActivity" android:exported="false" android:label="Network Transfers" />
         <activity
             android:theme="@style/Theme.Material3.DayNight.NoActionBar"
             android:name="untrusted.manager.um.UMManager.MainActivity"
@@ -74,6 +75,22 @@
                android:name="untrusted.manager.um.ApkExtractor.APKExtractorActivity"
             android:exported="false">
         </activity>
+        <activity
+            android:theme="@style/Theme.Material3.DayNight.NoActionBar"
+            android:name="untrusted.manager.um.remote.HttpRemoteActivity"
+            android:exported="false" />
+        <activity
+            android:theme="@style/Theme.Material3.DayNight.NoActionBar"
+            android:name="untrusted.manager.um.network.WebDavActivity"
+            android:exported="false" />
+        <activity
+            android:theme="@style/Theme.Material3.DayNight.NoActionBar"
+            android:name="untrusted.manager.um.network.NetworkStorageActivity"
+            android:exported="false" />
+        <service
+            android:name="untrusted.manager.um.remote.HttpRemoteService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <activity
             android:theme="@style/Theme.Material3.DayNight.NoActionBar"
             android:name="untrusted.manager.um.tools.ToolsHubActivity"
@@ -93,6 +110,10 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <activity
+            android:theme="@style/Theme.Material3.DayNight.NoActionBar"
+            android:name="untrusted.manager.um.ui.activities.HtmlPreviewActivity"
+            android:exported="false" />
         <activity
             android:theme="@style/Theme.Material3.DayNight.NoActionBar"
             android:name="untrusted.manager.um.tools.StorageManagerActivity"
@@ -295,5 +316,8 @@
            <activity android:name="untrusted.manager.um.gameanalysis.GameAnalysisActivity" android:exported="false" android:label="Game Analysis" />
            <activity android:name="untrusted.manager.um.gameanalysis.Il2CppEditorActivity" android:exported="false" android:label="IL2CPP Editor" />
            <activity android:name="untrusted.manager.um.gameanalysis.FridaToolkitActivity" android:exported="false" android:label="Frida Runtime Kit" />
+           <activity android:name="untrusted.manager.um.network.S3Activity" android:exported="false" android:label="S3 Storage" />
+           <activity android:name="untrusted.manager.um.network.SmbActivity" android:exported="false" android:label="SMB Storage" />
+           <activity android:name="untrusted.manager.um.network.SftpActivity" android:exported="false" android:label="SFTP Storage" />
     </application>
 </manifest>

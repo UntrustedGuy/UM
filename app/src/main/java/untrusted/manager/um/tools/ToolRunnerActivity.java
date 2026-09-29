@@ -316,6 +316,13 @@ public class ToolRunnerActivity extends AppCompatActivity {
         setContentView(root);
         untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
         String id = toolId;
+        if ("smb".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.SmbActivity.class)); finish(); return; }
+        if ("sftp".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.SftpActivity.class)); finish(); return; }
+        if ("webdav".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.WebDavActivity.class)); finish(); return; }
+        if ("s3".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.S3Activity.class)); finish(); return; }
+        if ("httpremote".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.remote.HttpRemoteActivity.class)); finish(); return; }
+        if ("networkstorage".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.NetworkStorageActivity.class)); finish(); return; }
+        if ("networktransfers".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.NetworkTransferActivity.class)); finish(); return; }
         switch (id) {
             case "calc" -> buildCalculator(box);
             case "converter" -> buildConverter(box);

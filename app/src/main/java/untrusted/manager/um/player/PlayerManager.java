@@ -552,13 +552,20 @@ public class PlayerManager {
     public interface VideoSizeChangedListener { void onVideoSizeChanged(int width, int height); }
 
     public static MediaItem buildMediaItem(Context context, String filePath) {
-        Uri uri = Uri.fromFile(new File(filePath));
+        if (filePath == null || filePath.trim().isEmpty()) throw new IllegalArgumentException("Media path is required");
+        String trimmed = filePath.trim();
+        Uri uri = (trimmed.startsWith("http://") || trimmed.startsWith("https://"))
+                ? Uri.parse(trimmed) : Uri.fromFile(new File(trimmed));
         String title = null, artist = null, album = null;
         long duration = 0;
         boolean isVideo = false;
         MediaMetadataRetriever mmr = new MediaMetadataRetriever();
         try {
-            mmr.setDataSource(context, uri);
+            if ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme())) {
+                // Network streams do not expose reliable metadata through MediaMetadataRetriever
+                // on every Android vendor implementation; MediaPlayer will prepare them directly.
+                mmr.setDataSource(context, uri);
+            } else mmr.setDataSource(context, uri);
             String t = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
             if (t != null) title = t;
             String a = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST);

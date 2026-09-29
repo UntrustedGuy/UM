@@ -24,11 +24,12 @@ public class ApkOptimizer {
         String filePath = apk.getPath();
         File tempFolder = new File(context.getCacheDir(), System.currentTimeMillis() + '_' + fileName);
         File optFile = FileUtils.getUnusedFile(filePath.replaceFirst("(?i)\\.apk$", "_opt.apk"));
+        File workingOutput = new File(optFile.getParentFile(), "." + optFile.getName() + "." + System.nanoTime() + ".tmp.apk");
         File parent = optFile.getParentFile();
         if (parent != null && !parent.isDirectory() && !parent.mkdirs() && !parent.isDirectory()) {
             throw new IOException("Cannot create optimizer output directory");
         }
-        try (ZipFile zf = new ZipFile(apk); ZipFile opt = new ZipFile(optFile)) {
+        try (ZipFile zf = new ZipFile(apk); ZipFile opt = new ZipFile(workingOutput)) {
             zf.extractAll(tempFolder.getPath());
             ZipParameters zp = new ZipParameters();
             zp.setCompressionLevel(CompressionLevel.NO_COMPRESSION);
@@ -62,7 +63,8 @@ public class ApkOptimizer {
                 if (relativePath.equals(amS) || relativePath.equals(rssS)) continue;
                 logger.logMessage(context.getString(R.string.adding, relativePath));
                 ZipParameters params = new ZipParameters(zipParameters);
-                if (relativePath.startsWith("res/") && !relativePath.endsWith(".xml")) {
+                if ((relativePath.startsWith("res/") && !relativePath.endsWith(".xml"))
+                        || (relativePath.startsWith("lib/") && relativePath.toLowerCase(java.util.Locale.US).endsWith(".so"))) {
                     params.setCompressionLevel(CompressionLevel.NO_COMPRESSION);
                     params.setCompressionMethod(CompressionMethod.STORE);
                 }
@@ -75,8 +77,25 @@ public class ApkOptimizer {
         // APK installation requires specific uncompressed/aligned entries.
         // Rebuild/alignment is done after compression so optimization cannot leave
         // a technically valid ZIP that Android rejects as an APK.
-        ApkZipAlignUtil.ensureInstallable(optFile);
-        if (!optFile.isFile() || optFile.length() == 0) throw new IOException("Optimizer produced an empty APK");
+        try {
+            ApkZipAlignUtil.ensureInstallable(workingOutput);
+            if (!workingOutput.isFile() || workingOutput.length() == 0) throw new IOException("Optimizer produced an empty APK");
+            String issue = ApkZipAlignUtil.installIssue(workingOutput);
+            if (issue != null) throw new IOException("Optimizer produced an invalid APK: " + issue);
+            if (optFile.exists() && !optFile.delete()) throw new IOException("Cannot replace optimizer output: " + optFile);
+            if (!workingOutput.renameTo(optFile)) {
+                try (java.io.InputStream in = new java.io.BufferedInputStream(new java.io.FileInputStream(workingOutput));
+                     java.io.OutputStream out = new java.io.BufferedOutputStream(new java.io.FileOutputStream(optFile))) {
+                    byte[] buf = new byte[65536];
+                    int n;
+                    while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+                    out.flush();
+                }
+                if (!workingOutput.delete() && workingOutput.exists()) throw new IOException("Cannot remove optimizer temporary output");
+            }
+        } finally {
+            if (workingOutput.exists()) workingOutput.delete();
+        }
         return optFile;
     }
 

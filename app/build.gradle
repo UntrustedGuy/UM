@@ -76,6 +76,8 @@ dependencies {
     implementation 'io.github.skylot:jadx-plugins-api:1.4.7'
     implementation 'io.github.skylot:jadx-dex-input:1.4.7'
     implementation 'org.slf4j:slf4j-android:1.7.36'
+    implementation 'org.codelibs:jcifs:3.0.0'
+    implementation 'com.hierynomus:sshj:0.38.0'
     implementation "androidx.preference:preference:1.2.1"
     implementation "androidx.collection:collection:1.6.0"
     implementation 'io.noties.markwon:core:4.6.2'
@@ -91,8 +93,6 @@ dependencies {
     implementation "androidx.window:window:1.5.1"
 
     implementation files('libs/commons-net-3.11.1.jar')
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("org.apache.ftpserver:ftplet-api:1.2.1")
     implementation("org.apache.ftpserver:ftpserver-core:1.2.1")
     implementation("commons-io:commons-io:2.22.0")
