@@ -82,6 +82,7 @@
                     android:layout_marginTop="10dp"
                     android:text="@string/more_themes"
                     app:icon="@drawable/baseline_palette_24"
+                    app:iconTint="?attr/colorOnSurface"
                     style="@style/Widget.Material3.Button.TextButton" />
 
                 <TextView
