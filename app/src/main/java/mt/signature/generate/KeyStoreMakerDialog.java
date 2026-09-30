@@ -358,9 +358,20 @@ public class KeyStoreMakerDialog extends DialogFragment {
         String obj = keySize.getText().toString();
         keyParam.keySize = obj.isEmpty() ? 2048 : Integer.parseInt(obj);
 
-        String basePath = Environment.getExternalStorageDirectory() +
-                directory.getText().toString() +
-                key_name.getText().toString();
+        String directoryText = directory.getText() == null ? "" : directory.getText().toString().trim();
+        File outputDirectory;
+        if (directoryText.isEmpty()) {
+            outputDirectory = new File(Environment.getExternalStorageDirectory(), "Untrusted Manager/keys");
+        } else {
+            File requested = new File(directoryText);
+            outputDirectory = requested.isAbsolute()
+                    ? requested
+                    : new File(Environment.getExternalStorageDirectory(), directoryText);
+        }
+        if (!outputDirectory.exists() && !outputDirectory.mkdirs() && !outputDirectory.isDirectory()) {
+            throw new IOException("Cannot create destination directory: " + outputDirectory.getAbsolutePath());
+        }
+        String basePath = new File(outputDirectory, key_name.getText().toString()).getAbsolutePath();
         keyParam.keyPath = basePath + ".pk8";
         keyParam.certOrAlias = basePath + ".x509.pem";
         keyParam.alias = key_name.getText().toString();

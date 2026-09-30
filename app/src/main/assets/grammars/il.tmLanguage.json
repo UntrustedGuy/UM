@@ -1,0 +1,37 @@
+{
+  "name": "CIL/MSIL",
+  "scopeName": "source.il",
+  "fileTypes": [
+    "il"
+  ],
+  "patterns": [
+    {
+      "name": "comment.line.il",
+      "match": "//.*$"
+    },
+    {
+      "name": "keyword.control.il",
+      "match": "\\\\b(?:br|br\\.s|brtrue|brfalse|beq|bne\\.un|bge|bgt|ble|blt|switch|leave|leave\\.s|ret|throw|try|catch|finally|filter|handler)\\\\b"
+    },
+    {
+      "name": "keyword.il",
+      "match": "\\\\b(?:ld|st|call|callvirt|newobj|newarr|ldstr|ldfld|stfld|ldsfld|stsfld|ldarg|starg|ldloc|stloc|box|unbox|castclass|isinst|conv|add|sub|mul|div|rem|and|or|xor|shl|shr|ceq|cgt|clt|dup|pop|nop|initobj|sizeof|ldtoken)\\\\S*"
+    },
+    {
+      "name": "constant.numeric.il",
+      "match": "(?<![A-Za-z_])(?:0x[0-9A-Fa-f]+|-?[0-9]+)(?![A-Za-z_])"
+    },
+    {
+      "name": "string.quoted.double.il",
+      "match": "\"(?:\\\\\\\\.|[^\"])*\""
+    },
+    {
+      "name": "entity.name.type.il",
+      "match": "(?<=class )[^,\\\\s]+|(?<=valuetype )[^,\\\\s]+"
+    },
+    {
+      "name": "entity.name.function.il",
+      "match": "(?<=::)[A-Za-z_.$<>`]+(?=\\\\()"
+    }
+  ]
+}

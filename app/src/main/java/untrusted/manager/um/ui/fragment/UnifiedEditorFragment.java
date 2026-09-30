@@ -603,6 +603,8 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
     private static String languageKeyFor(String name) {
         if (name == null) return null;
         String n = name.toLowerCase(java.util.Locale.ROOT);
+        if (n.endsWith(".cs") || n.endsWith(".csx")) return "csharp";
+        if (n.endsWith(".il") || n.endsWith(".cil")) return "il";
         if (n.endsWith(".xml") || n.endsWith(".axml") || n.endsWith(".plist")) return "xml";
         if (n.endsWith(".html") || n.endsWith(".htm") || n.endsWith(".xhtml")) return "html";
         if (n.endsWith(".json") || n.endsWith(".jsonc")) return "json";

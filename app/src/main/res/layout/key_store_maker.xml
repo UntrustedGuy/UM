@@ -61,15 +61,13 @@
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
 				android:padding="8dp"
-				android:text="/MT2/keys/"
+				android:text="/storage/emulated/0/Untrusted Manager/keys/"
 				android:textSize="16sp"
 				android:hint="@string/destination_path"
 				android:textColorHint="?attr/colorSurface"
 				android:imeOptions="actionDone"
 				android:layout_gravity="center_vertical"
-				android:digits="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890_@$¢"
-
-				android:inputType="textFilter"
+				android:inputType="text"
 				android:focusable="true"
                 tools:ignore="HardcodedText" />
 		</com.google.android.material.textfield.TextInputLayout>

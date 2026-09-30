@@ -1,0 +1,141 @@
+{
+  "name": "C#",
+  "scopeName": "source.cs",
+  "fileTypes": [
+    "cs"
+  ],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#attributes"
+    },
+    {
+      "name": "keyword.control.cs",
+      "match": "\\\\b(?:if|else|for|foreach|while|do|switch|case|default|break|continue|return|throw|try|catch|finally|goto|yield|lock|using|fixed|checked|unchecked|sizeof|typeof|nameof|stackalloc|when|is|as)\\\\b"
+    },
+    {
+      "name": "storage.type.cs",
+      "match": "\\\\b(?:class|struct|interface|enum|delegate|record|namespace|void|bool|byte|sbyte|char|decimal|double|float|int|uint|long|ulong|short|ushort|object|string|dynamic|var|nint|nuint|Task|ValueTask)\\\\b"
+    },
+    {
+      "name": "storage.modifier.cs",
+      "match": "\\\\b(?:public|private|protected|internal|static|readonly|const|volatile|virtual|override|abstract|sealed|extern|unsafe|async|await|partial|new|ref|out|in|params|required|init|operator|implicit|explicit)\\\\b"
+    },
+    {
+      "name": "constant.language.cs",
+      "match": "\\\\b(?:true|false|null|this|base)\\\\b"
+    },
+    {
+      "name": "entity.name.type.cs",
+      "match": "\\\\b[A-Z][A-Za-z0-9_]*(?:<[^>]+>)?\\\\b"
+    },
+    {
+      "name": "entity.name.function.cs",
+      "match": "\\\\b[A-Za-z_][A-Za-z0-9_]*(?=\\\\s*\\\\()"
+    },
+    {
+      "name": "support.type.primitive.cs",
+      "match": "\\\\b(?:System\\\\.(?:String|Object|Int32|Int64|Boolean|Double|Single|Decimal|Exception|Action|Func|DateTime|Guid))\\\\b"
+    },
+    {
+      "name": "keyword.operator.cs",
+      "match": "=>|==|!=|<=|>=|&&|\\\\|\\\\||\\\\?\\\\?|\\\\?\\\\.|\\\\+\\\\+|--|<<|>>|\\\\+=|-=|\\\\*=|/=|%=|&=|\\\\|=|\\\\^=|[+*/%=&|^<>!~-]"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.cs",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.cs",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.cs",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cs",
+              "match": "\\\\\\\\(?:[\"\\\\\\\\0abfnrtv]|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8}|x[0-9A-Fa-f]{1,4})"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.verbatim.cs",
+          "begin": "@\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cs",
+              "match": "\"\""
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.interpolated.cs",
+          "begin": "\\$\"",
+          "end": "\""
+        },
+        {
+          "name": "string.quoted.double.raw.cs",
+          "begin": "\\$?\"\"\"",
+          "end": "\"\"\""
+        },
+        {
+          "name": "string.quoted.single.cs",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cs",
+              "match": "\\\\\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.cs",
+          "match": "\\\\b(?:0[xX][0-9A-Fa-f_]+|0[bB][01_]+|(?:[0-9][0-9_]*)(?:\\\\.[0-9_]+)?(?:[eE][+-]?[0-9_]+)?)[uUlLfFdDmM]*\\\\b"
+        }
+      ]
+    },
+    "attributes": {
+      "patterns": [
+        {
+          "name": "meta.attribute.cs",
+          "begin": "\\[",
+          "end": "\\]",
+          "patterns": [
+            {
+              "include": "#strings"
+            },
+            {
+              "name": "entity.name.type.attribute.cs",
+              "match": "\\\\b[A-Z][A-Za-z0-9_]*\\\\b"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

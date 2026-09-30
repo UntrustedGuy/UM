@@ -38,12 +38,14 @@ final class DotNetAssemblyParser {
         PropertyDef(String n, String t) { name=n; type=t; }
     }
     static final class MethodDef {
-        final String name; String ret="void"; int params; int flags; int token; int rva;
+        final String name; String ownerType=""; String ret="void"; int params; int flags; int token; int rva;
         String[] paramTypes = new String[0]; String[] paramNames = new String[0];
         String il = ""; String source = "";
         MethodDef(String n) { name=n; }
         String signature() {
-            StringBuilder b=new StringBuilder(ret).append(' ').append(name).append('(');
+            String display = ".ctor".equals(name) || ".cctor".equals(name) ? ownerType : cleanMemberName(name);
+            if (display == null || display.isEmpty()) display = name;
+            StringBuilder b=new StringBuilder((".ctor".equals(name)||".cctor".equals(name)) ? "" : ret+" ").append(display).append('(');
             for(int i=0;i<paramTypes.length;i++){if(i>0)b.append(", ");b.append(paramTypes[i]).append(' ').append(paramNames.length>i&&paramNames[i]!=null&&!paramNames[i].isEmpty()?paramNames[i]:"arg"+i);}
             return b.append(')').toString();
         }
@@ -79,8 +81,19 @@ final class DotNetAssemblyParser {
         Section[] ss=new Section[sections]; int sh=opt+u16(b,coff+16);
         for(int i=0;i<sections;i++){int o=sh+i*40; if(o+40>b.length)throw new IOException("Invalid PE section table"); ss[i]=new Section(u32(b,o+12),u32(b,o+16),u32(b,o+20),u32(b,o+8));}
         int cliOff=rva(ss,cliRva); if(cliOff<0||cliOff+16>b.length) throw new IOException("Invalid CLR header");
-        int mdRva=u32(b,cliOff+8), mdOff=rva(ss,mdRva); if(mdOff<0) throw new IOException("Invalid metadata RVA");
-        return parseMetadata(b,ss,mdOff);
+        int mdRva=u32(b,cliOff+8), mdOff=rva(ss,mdRva);
+        IOException primary=null;
+        if(mdOff>=0){
+            try { return parseMetadata(b,ss,mdOff); } catch(IOException e){ primary=e; }
+        }
+        // Some protected/rewritten managed files leave a stale CLI metadata RVA.
+        // Search for a valid BSJB metadata root as a conservative recovery path.
+        for(int i=0;i+4<=b.length;i++){
+            if((b[i]&255)==0x42&&(b[i+1]&255)==0x53&&(b[i+2]&255)==0x4A&&(b[i+3]&255)==0x42){
+                try { return parseMetadata(b,ss,i); } catch(IOException ignored) { }
+            }
+        }
+        throw primary!=null?primary:new IOException("Invalid CLR metadata");
     }
 
     private static DotNetAssemblyParser parseMetadata(byte[] b, Section[] ss, int off) throws IOException {
@@ -132,7 +145,7 @@ final class DotNetAssemblyParser {
             TypeDef td=byRid.get(rid);Row tr=tables.row(2,rid-1);int nextField=(rid<typeCount)?tables.row(2,rid).table(4):fieldCount+1;int firstField=tr.table(4);
             for(int x=firstField;x<nextField&&x>0&&x<=fieldCount;x++)td.fields.add(fieldByRid.get(x));
             int nextMethod=(rid<typeCount)?tables.row(2,rid).table(5):methodCount+1;int firstMethod=tr.table(5);
-            for(int x=firstMethod;x<nextMethod&&x>0&&x<=methodCount;x++)td.methods.add(methods.get(x));
+            for(int x=firstMethod;x<nextMethod&&x>0&&x<=methodCount;x++){ methods.get(x).ownerType=td.name; td.methods.add(methods.get(x)); }
         }
         // Properties and accessor methods.
         int propCount=tables.count(23); List<PropertyDef> props=new ArrayList<>();props.add(null);
@@ -171,7 +184,15 @@ final class DotNetAssemblyParser {
         if(!t.baseType.isEmpty()&&!"System.Object".equals(t.baseType)&&!"System.ValueType".equals(t.baseType))s.append(" : ").append(simple(t.baseType));s.append(" {\n");
         for(FieldDef f:t.fields){s.append(ind).append("    ").append(fieldAccess(f.flags)).append(simple(f.type)).append(' ').append(f.name).append(";\n");}
         for(PropertyDef p:t.properties){s.append(ind).append("    public ").append(simple(p.type)).append(' ').append(p.name).append(" { ");if(p.getter!=null)s.append("get; ");if(p.setter!=null)s.append("set; ");s.append("}\n");}
-        for(MethodDef m:t.methods){s.append(indent(depth+1)).append(methodAccess(m.flags)).append(m.signature()).append(" {\n");String src=m.source; if(src==null||src.isEmpty())src="        // No method body\n";for(String line:src.split("\\n",-1))if(!line.isEmpty())s.append(indent(depth+2)).append(line).append('\n');s.append(indent(depth+1)).append("}\n\n");}
+        for(MethodDef m:t.methods){
+            s.append(indent(depth+1)).append(methodAccess(m.flags)).append(m.signature());
+            boolean noBody = (m.flags & 0x0400) != 0 || (m.flags & 0x2000) != 0 || m.rva == 0;
+            if(noBody){ s.append(';').append("\n\n"); continue; }
+            s.append(" {\n");
+            String src=m.source; if(src==null||src.isEmpty())src="// No method body\n";
+            for(String line:src.split("\\n",-1)) if(!line.isEmpty()) s.append(indent(depth+2)).append(line).append('\n');
+            s.append(indent(depth+1)).append("}\n\n");
+        }
         for(TypeDef n:t.nested){appendType(s,n,depth+1);}
         s.append(ind).append("}\n");if(!t.namespace.isEmpty()&&depth==0)s.append("}\n");
     }
@@ -179,41 +200,152 @@ final class DotNetAssemblyParser {
     private String renderMethod(MethodDef m){
         if(m.rva==0)return "// abstract/external method\n";
         if(m.il==null||m.il.isEmpty())return "// No CIL body decoded\n";
-        String[] lines=m.il.split("\\n");StringBuilder out=new StringBuilder();ArrayDeque<String> stack=new ArrayDeque<>();boolean safe=true;int statements=0;
-        for(String line:lines){String z=line.trim();if(z.isEmpty())continue;int colon=z.indexOf(':');if(colon>=0)z=z.substring(colon+1).trim();int sp=z.indexOf(' ');String op=sp<0?z:z.substring(0,sp);String arg=sp<0?"":z.substring(sp+1).trim();
-            String a;
+        String[] lines=m.il.split("\\n");
+        ArrayDeque<String> stack=new ArrayDeque<>();
+        Map<String,String> locals=new HashMap<>();
+        Set<String> declared=new HashSet<>();
+        StringBuilder out=new StringBuilder();
+        boolean degraded=false;
+        int statements=0;
+        for(String raw:lines){
+            String z=raw.trim(); if(z.isEmpty()) continue;
+            int colon=z.indexOf(':');
+            String offset=colon>0?z.substring(3,colon):"";
+            String ins=colon>0?z.substring(colon+1).trim():z;
+            int sp=ins.indexOf(' ');
+            String op=sp<0?ins:ins.substring(0,sp);
+            String arg=sp<0?"":ins.substring(sp+1).trim();
+            String value;
             switch(op){
-                case "nop": break;
-                case "ldnull": stack.push("null");break;
-                case "ldstr": stack.push(arg);break;
-                case "ldc.i4.0":stack.push("0");break;case "ldc.i4.1":stack.push("1");break;case "ldc.i4.2":stack.push("2");break;case "ldc.i4.3":stack.push("3");break;case "ldc.i4.4":stack.push("4");break;case "ldc.i4.5":stack.push("5");break;case "ldc.i4.6":stack.push("6");break;case "ldc.i4.7":stack.push("7");break;case "ldc.i4.8":stack.push("8");break;
-                case "ldc.i4.m1":stack.push("-1");break;
-                case "ldc.i4":case "ldc.i4.s":case "ldc.i8":case "ldc.r4":case "ldc.r8":stack.push(arg);break;
-                case "ldarg.0":stack.push("arg0");break;case "ldarg.1":stack.push("arg1");break;case "ldarg.2":stack.push("arg2");break;case "ldarg.3":stack.push("arg3");break;
-                case "ldarg":case "ldarg.s":stack.push("arg"+arg);break;
-                case "add":safe=binary(stack,"+")&&safe;break;case "sub":safe=binary(stack,"-")&&safe;break;case "mul":safe=binary(stack,"*")&&safe;break;case "div":safe=binary(stack,"/")&&safe;break;case "rem":safe=binary(stack,"%")&&safe;break;
-                case "ceq":safe=binary(stack,"==")&&safe;break;case "cgt":safe=binary(stack,">")&&safe;break;case "clt":safe=binary(stack,"<")&&safe;break;
-                case "neg":if(stack.isEmpty()){safe=false;}else stack.push("(-"+stack.pop()+")");break;
-                case "pop":if(stack.isEmpty()){safe=false;}else stack.pop();break;
-                case "ret":if("void".equals(m.ret)){out.append("return;");}else if(!stack.isEmpty())out.append("return ").append(stack.pop()).append(';');else{safe=false;out.append("return /* value unavailable */;");}out.append('\n');statements++;break;
-                case "call":case "callvirt":case "newobj":a=resolveMethodToken(parseToken(arg));if(a==null)a=arg;stack.push(("newobj".equals(op)?"new ":"")+a+"()");break;
-                case "br.s":case "br":case "brtrue.s":case "brtrue":case "brfalse.s":case "brfalse":case "leave":case "leave.s":
-                    safe=false;out.append("// ").append(z).append('\n');break;
-                default:safe=false;out.append("// ").append(z).append('\n');break;
+                case "nop": case "break": case "volatile.": case "readonly.": case "tail.": case "constrained.":
+                    break;
+                case "ldnull": stack.push("null"); break;
+                case "ldstr": stack.push(arg); break;
+                case "ldc.i4.m1": stack.push("-1"); break;
+                case "ldc.i4.0": case "ldc.i4.1": case "ldc.i4.2": case "ldc.i4.3": case "ldc.i4.4": case "ldc.i4.5": case "ldc.i4.6": case "ldc.i4.7": case "ldc.i4.8": stack.push(op.substring(op.length()-1)); break;
+                case "ldc.i4": case "ldc.i4.s": case "ldc.i8": case "ldc.r4": case "ldc.r8": stack.push(arg); break;
+                case "ldarg.0": stack.push(m.paramNames.length==0?"this":(m.flags&0x0010)!=0?paramName(m,0):"this"); break;
+                case "ldarg.1": stack.push(paramName(m,1)); break;
+                case "ldarg.2": stack.push(paramName(m,2)); break;
+                case "ldarg.3": stack.push(paramName(m,3)); break;
+                case "ldarg": case "ldarg.s": stack.push(paramName(m,parseVar(arg))); break;
+                case "ldarga": case "ldarga.s": stack.push("ref "+paramName(m,parseVar(arg))); break;
+                case "starg": case "starg.s": { int ai=parseVar(arg); value=pop(stack); out.append(paramName(m,ai)).append(" = ").append(value).append(';').append('\n'); statements++; } break;
+                case "ldloc.0": case "ldloc.1": case "ldloc.2": case "ldloc.3": stack.push(locals.getOrDefault(op.substring(op.length()-1),"local"+op.substring(op.length()-1))); break;
+                case "ldloc": case "ldloc.s": case "ldloca": case "ldloca.s": stack.push(locals.getOrDefault(arg,"local"+arg)); break;
+                case "stloc.0": case "stloc.1": case "stloc.2": case "stloc.3": {String id=op.substring(op.length()-1); value=pop(stack); emitLocal(out,locals,declared,id,value); statements++;} break;
+                case "stloc": case "stloc.s": case "stloca": case "stloca.s": {String id=arg; value=pop(stack); emitLocal(out,locals,declared,id,value); statements++;} break;
+                case "dup": if(stack.isEmpty()){degraded=true;}else stack.push(stack.peek()); break;
+                case "pop": if(stack.isEmpty()) degraded=true; else stack.pop(); break;
+                case "add": case "add.ovf": case "add.ovf.un": degraded|=!binary(stack,"+"); break;
+                case "sub": case "sub.ovf": case "sub.ovf.un": degraded|=!binary(stack,"-"); break;
+                case "mul": case "mul.ovf": case "mul.ovf.un": degraded|=!binary(stack,"*"); break;
+                case "div": case "div.un": degraded|=!binary(stack,"/"); break;
+                case "rem": case "rem.un": degraded|=!binary(stack,"%"); break;
+                case "and": degraded|=!binary(stack,"&"); break;
+                case "or": degraded|=!binary(stack,"|"); break;
+                case "xor": degraded|=!binary(stack,"^"); break;
+                case "shl": degraded|=!binary(stack,"<<"); break;
+                case "shr": case "shr.un": degraded|=!binary(stack,">>"); break;
+                case "ceq": degraded|=!binary(stack,"=="); break;
+                case "cgt": case "cgt.un": degraded|=!binary(stack,">"); break;
+                case "clt": case "clt.un": degraded|=!binary(stack,"<"); break;
+                case "neg": if(stack.isEmpty())degraded=true; else stack.push("(-"+stack.pop()+")"); break;
+                case "not": if(stack.isEmpty())degraded=true; else stack.push("(~"+stack.pop()+")"); break;
+                case "conv.i1":case "conv.i2":case "conv.i4":case "conv.i8":case "conv.u1":case "conv.u2":case "conv.u4":case "conv.u8":case "conv.i":case "conv.u":case "conv.r4":case "conv.r8":case "conv.r.un":
+                    if(stack.isEmpty()) degraded=true; else { value=stack.pop(); stack.push("("+convType(op)+")"+value); } break;
+                case "box": case "unbox.any": case "castclass": case "isinst":
+                    if(stack.isEmpty()) degraded=true; else { value=stack.pop(); stack.push("("+tokenTypeName(arg)+")"+value); } break;
+                case "ldsfld": { String f=resolveToken(parseToken(arg)); stack.push(f==null?arg:f); } break;
+                case "ldfld": { String f=resolveToken(parseToken(arg)); value=pop(stack); stack.push(value+"."+(f==null?arg:shortMember(f))); } break;
+                case "stsfld": { String f=resolveToken(parseToken(arg)); value=pop(stack); out.append(f==null?arg:shortMember(f)).append(" = ").append(value).append(';').append('\n'); statements++; } break;
+                case "stfld": { String f=resolveToken(parseToken(arg)); value=pop(stack); String obj=pop(stack); out.append(obj).append('.').append(f==null?arg:shortMember(f)).append(" = ").append(value).append(';').append('\n'); statements++; } break;
+                case "ldlen": if(stack.isEmpty())degraded=true; else stack.push(stack.pop()+".Length"); break;
+                case "newarr": { value=pop(stack); stack.push("new "+tokenTypeName(arg)+"["+value+"]"); } break;
+                case "ldelem": case "ldelem.i1":case "ldelem.u1":case "ldelem.i2":case "ldelem.u2":case "ldelem.i4":case "ldelem.u4":case "ldelem.i8":case "ldelem.i":case "ldelem.r4":case "ldelem.r8":case "ldelem.ref":
+                    {String idx=pop(stack), arr=pop(stack);stack.push(arr+"["+idx+"]");} break;
+                case "stelem": case "stelem.i":case "stelem.i1":case "stelem.i2":case "stelem.i4":case "stelem.i8":case "stelem.r4":case "stelem.r8":case "stelem.ref":
+                    {String val=pop(stack),idx=pop(stack),arr=pop(stack);out.append(arr).append('[').append(idx).append("] = ").append(val).append(';').append('\n');statements++;} break;
+                case "call": case "callvirt": case "newobj":
+                    value=renderCall(parseToken(arg), op.equals("newobj"), stack, arg);
+                    if(value==null) degraded=true; else stack.push(value); break;
+                case "ret":
+                    if("void".equals(m.ret)){out.append("return;");}else{value=pop(stack);out.append("return ").append(value).append(';');}out.append('\n');statements++;break;
+                case "throw": value=pop(stack);out.append("throw ").append(value).append(';').append('\n');statements++;break;
+                case "br": case "br.s": case "leave": case "leave.s": out.append("goto ").append(labelFor(arg)).append(';').append('\n'); statements++; break;
+                case "brtrue": case "brtrue.s": value=pop(stack);out.append("if (").append(value).append(") goto ").append(labelFor(arg)).append(';').append('\n');statements++;break;
+                case "brfalse": case "brfalse.s": value=pop(stack);out.append("if (!(").append(value).append(") goto ").append(labelFor(arg)).append(';').append('\n');statements++;break;
+                case "beq":case "beq.s":case "bne.un":case "bne.un.s":case "bge":case "bge.s":case "bgt":case "bgt.s":case "ble":case "ble.s":case "blt":case "blt.s":case "bge.un":case "bge.un.s":case "bgt.un":case "bgt.un.s":case "ble.un":case "ble.un.s":case "blt.un":case "blt.un.s":
+                    {String r=pop(stack),l=pop(stack);String cmp=branchCmp(op);out.append("if (").append(l).append(' ').append(cmp).append(' ').append(r).append(") goto ").append(labelFor(arg)).append(';').append('\n');statements++;}break;
+                case "switch":
+                    value=pop(stack); out.append("switch (").append(value).append(") {").append('\n');
+                    if(arg.startsWith("[")) { String x=arg.substring(1,arg.length()-1); String[] ts=x.split(","); for(int i=0;i<ts.length;i++) out.append("    case ").append(i).append(": goto ").append(labelFor(ts[i].trim())).append(';').append('\n'); }
+                    out.append("}").append('\n'); statements++; break;
+                case "ldtoken": stack.push(arg); break;
+                default:
+                    degraded=true; out.append("// ").append(z).append('\n'); break;
             }
         }
-        if(statements==0 && safe)return "// Method body contains no reconstructable statements\n";
-        if(!safe)out.insert(0,"// C# reconstruction is partial for this method; original CIL is retained below.\n");
+        if(statements==0 && !degraded)return "// Method body contains no statements\n";
+        if(degraded)out.insert(0,"// C# reconstruction uses conservative fallbacks where control flow or metadata could not be proven.\n");
         return out.toString().trim();
     }
+    private static String pop(ArrayDeque<String>s){return s.isEmpty()?"/* stack value unavailable */":s.pop();}
+    private static String paramName(MethodDef m,int i){return (m.flags&0x0010)!=0?argName(m,i):i==0?"this":argName(m,i-1);}
+    private static String argName(MethodDef m,int i){if(i>=0&&i<m.paramNames.length&&m.paramNames[i]!=null&&!m.paramNames[i].isEmpty())return m.paramNames[i];return "arg"+i;}
+    private static int parseVar(String s){try{return Integer.parseInt(s.replaceAll("[^0-9-]",""));}catch(Exception e){return 0;}}
+    private static void emitLocal(StringBuilder out,Map<String,String> locals,Set<String> declared,String id,String value){String n=locals.computeIfAbsent(id,k->"local"+k);if(declared.add(id))out.append("var ").append(n).append(" = ").append(value).append(';').append('\n');else out.append(n).append(" = ").append(value).append(';').append('\n');}
+    private static String branchCmp(String op){if(op.startsWith("beq"))return"==";if(op.startsWith("bne"))return"!=";if(op.startsWith("bge"))return">=";if(op.startsWith("bgt"))return">";if(op.startsWith("ble"))return"<=";return"<";}
+    private static String labelFor(String s){s=s.trim();if(s.startsWith("IL_"))return s;try{return "IL_"+String.format(Locale.ROOT,"%04X",Integer.parseInt(s));}catch(Exception e){return "IL_"+s;}}
+    private static String shortMember(String s){int i=s.lastIndexOf('.');return i<0?s:s.substring(i+1);}
+    private static String convType(String op){if(op.contains("r"))return"double";if(op.endsWith("i8")||op.endsWith("u8"))return"long";return"int";}
+    private String tokenTypeName(String token){String r=resolveToken(parseToken(token));return r==null?token:simple(r);}
+    private String renderCall(int tok,boolean ctor,ArrayDeque<String>stack,String raw){
+        String sig=resolveMethodToken(tok); if(sig==null)return null;
+        MethodRef ref=methodRef(tok); if(ref==null)return sig+"()";
+        int n=ref.params.length; List<String>args=new ArrayList<>(); for(int i=0;i<n;i++)args.add(0,pop(stack));
+        String target=shortMember(sig);
+        if(ctor){return "new "+simple(ref.owner)+"("+String.join(", ",args)+")";}
+        String instance=""; if(!ref.isStatic){instance=pop(stack)+".";}
+        return instance+target+"("+String.join(", ",args)+")";
+    }
+
     private static boolean binary(ArrayDeque<String>s,String op){if(s.size()<2)return false;String r=s.pop(),l=s.pop();s.push("("+l+" "+op+" "+r+")");return true;}
 
-    private String decodeMethodIL(MethodDef m){if(m.rva==0)return "";int off=rva(sections,m.rva);if(off<0||off>=image.length)return "";int p=off;int first=image[p]&255;int codeSize;if((first&3)==2){codeSize=first>>>2;p++;}else{int flags=u16(image,p);if((flags&3)!=3)return "";int headerWords=((flags>>>12)&15);p+=headerWords*4;codeSize=u32(image,off+4)&0x7fffffff;}
-        if(codeSize<0||p+codeSize>image.length)return "";int end=p+codeSize;StringBuilder s=new StringBuilder();while(p<end){int at=p-off;int op=image[p++]&255;String name=opcodeName(op);if(op==0xFE&&p<end){int op2=image[p++]&255;name=opcodeName(0xFE00|op2);}String operand="";int n=operandSize(name);if(n>0){if(p+n>end){operand="<truncated>";p=end;}else{operand=operandValue(name,p,n);p+=n;}}s.append(String.format(Locale.ROOT,"IL_%04X: %s",at,name));if(!operand.isEmpty())s.append(' ').append(operand);s.append('\n');}return s.toString().trim();}
+    private static final class MethodRef { final String owner,name; final String[] params; final boolean isStatic; MethodRef(String o,String n,String[]p,boolean st){owner=o;name=n;params=p;isStatic=st;} }
+    private MethodRef methodRef(int tok){
+        int table=(tok>>>24)&255,rid=tok&0xffffff; if(rid<=0)return null;
+        try{
+            if(table==6){ Row r=tables.row(6,rid-1); if(r==null)return null; MethodSig s=decodeMethodSig(r.blobIndex(4)); String owner="object"; for(TypeDef t:types)for(MethodDef m:t.methods)if(m.token==tok)owner=t.fullName(); return new MethodRef(owner,str(r.strIndex(3)),s.params,(r.u2(2)&0x10)!=0); }
+            if(table==10){ Row r=tables.row(10,rid-1); if(r==null)return null; byte[] sig=blob(r.blobIndex(2)); if(sig.length==0)return null; MethodSig ms; try{ms=decodeMethodSig(r.blobIndex(2));}catch(Exception ex){return null;} int parent=r.coded(0,"MemberRefParent"); String owner=resolveToken(parent); if(owner==null)owner="object"; return new MethodRef(owner,str(r.strIndex(1)),ms.params,false); }
+        }catch(Exception ignored){}
+        return null;
+    }
+
+    private String decodeMethodIL(MethodDef m){
+        if(m.rva==0)return ""; int off=rva(sections,m.rva); if(off<0||off>=image.length)return "";
+        int p=off, first=image[p]&255, codeSize;
+        if((first&3)==2){codeSize=first>>>2;p++;}
+        else{int flags=u16(image,p);if((flags&3)!=3)return "";int words=(flags>>>12)&15;p+=words*4;codeSize=u32(image,off+4);}
+        if(codeSize<0||p+codeSize>image.length)return "";int codeStart=p,end=p+codeSize;StringBuilder s=new StringBuilder();
+        while(p<end){int at=p-codeStart;int op=image[p++]&255;String name=opcodeName(op);if(op==0xFE&&p<end){name=opcodeName(0xFE00|(image[p++]&255));}
+            if(name.equals("switch")){if(p+4>end){s.append(String.format(Locale.ROOT,"IL_%04X: switch <truncated>\n",at));break;}int count=u32(image,p);p+=4;int base=p+count*4;StringBuilder a=new StringBuilder("[");for(int i=0;i<count;i++){int d=u32(image,p);p+=4;if(i>0)a.append(", ");a.append(String.format(Locale.ROOT,"IL_%04X",base+(int)d-codeStart));}a.append(']');s.append(String.format(Locale.ROOT,"IL_%04X: switch %s\n",at,a));continue;}
+            int n=operandSize(name);String operand="";if(n>0){if(p+n>end){operand="<truncated>";p=end;}else{operand=operandValue(name,p,n);if(isBranch(name)){int delta=n==1?(byte)image[p]:(int)u32(image,p);int target=p+n+delta-codeStart;operand="IL_"+String.format(Locale.ROOT,"%04X",target);}p+=n;}}
+            s.append(String.format(Locale.ROOT,"IL_%04X: %s",at,name));if(!operand.isEmpty())s.append(' ').append(operand);s.append('\n');}
+        return s.toString().trim();
+    }
+    private static boolean isBranch(String n){return n.startsWith("br")||n.startsWith("beq")||n.startsWith("bge")||n.startsWith("bgt")||n.startsWith("ble")||n.startsWith("blt")||n.startsWith("bne")||n.startsWith("leave");}
 
     private String operandValue(String name,int p,int n){long v=0;for(int i=0;i<n;i++)v|=(long)(image[p+i]&255)<<(8*i);if(name.equals("ldstr")){int tok=(int)v;String us=resolveUserString(tok);if(us!=null)return "\""+escape(us)+"\"";} if(name.contains("token")||name.equals("call")||name.equals("callvirt")||name.equals("newobj")||name.equals("ldfld")||name.equals("stfld")||name.equals("ldsfld")||name.equals("stsfld")){int tok=(int)v;String resolved=resolveToken(tok);if(resolved!=null)return String.format(Locale.ROOT,"0x%08X /* %s */",tok,resolved);}if(n==1)return Integer.toString((byte)v);if(n==2)return Integer.toString((short)v);if(n==4)return Integer.toString((int)v);return Long.toString(v);}
-    private int operandSize(String n){if(n==null)return 0; if(n.equals("ldstr")||n.equals("call")||n.equals("callvirt")||n.equals("newobj")||n.equals("ldfld")||n.equals("stfld")||n.equals("ldsfld")||n.equals("stsfld")||n.equals("ldtoken"))return 4;if(n.endsWith(".s")||n.equals("ldc.i4.s"))return 1;if(n.startsWith("ldarg")||n.startsWith("ldloc")||n.startsWith("stloc"))return 2;if(n.equals("ldc.i4")||n.equals("br")||n.startsWith("br")||n.equals("leave")||n.equals("ldc.r4")||n.equals("ldc.i8"))return n.equals("ldc.i8")?8:4;if(n.equals("ldc.r8"))return 8;return 0;}
-
+    private int operandSize(String n){
+        if(n==null)return 0;
+        if(n.equals("ldstr")||n.equals("call")||n.equals("callvirt")||n.equals("calli")||n.equals("newobj")||n.equals("ldfld")||n.equals("stfld")||n.equals("ldsfld")||n.equals("stsfld")||n.equals("ldtoken")||n.equals("box")||n.equals("unbox")||n.equals("unbox.any")||n.equals("castclass")||n.equals("isinst")||n.equals("newarr")||n.equals("ldobj")||n.equals("stobj")||n.equals("cpobj")||n.equals("initobj")||n.equals("sizeof")||n.equals("ldelem")||n.equals("stelem")||n.equals("ldelema")||n.equals("ldftn")||n.equals("ldvirtftn"))return 4;
+        if(n.equals("ldarg.s")||n.equals("ldarga.s")||n.equals("starg.s")||n.equals("ldloc.s")||n.equals("ldloca.s")||n.equals("stloc.s")||n.endsWith(".s")&&isBranch(n)||n.equals("ldc.i4.s"))return 1;
+        if(n.equals("ldarg")||n.equals("ldarga")||n.equals("starg")||n.equals("ldloc")||n.equals("ldloca")||n.equals("stloc"))return 2;
+        if(n.equals("ldc.i4")||n.equals("br")||n.startsWith("br")||n.equals("leave")||n.startsWith("beq")||n.startsWith("bge")||n.startsWith("bgt")||n.startsWith("ble")||n.startsWith("blt")||n.startsWith("bne")||n.equals("ldc.r4"))return 4;
+        if(n.equals("ldc.i8")||n.equals("ldc.r8"))return 8;
+        return 0;
+    }
     private String resolveToken(int tok){String s=tokenNames.get(tok);if(s!=null)return s;int table=(tok>>>24)&255,rid=tok&0xffffff;try{if(rid<=0)return null;Row r=tables.row(table,rid-1);if(r==null)return null;if(table==1)return tokenNames.computeIfAbsent(tok,k->str(r.strIndex(1))+"."+str(r.strIndex(2)));if(table==2)return tokenNames.computeIfAbsent(tok,k->str(r.strIndex(1)));if(table==4)return tokenNames.computeIfAbsent(tok,k->str(r.strIndex(1)));if(table==6)return tokenNames.computeIfAbsent(tok,k->str(r.strIndex(3)));if(table==10)return tokenNames.computeIfAbsent(tok,k->str(r.strIndex(1)));if(table==27)return tokenNames.computeIfAbsent(tok,k->"TypeSpec");}catch(Exception ignored){}return null;}
     private String resolveTypeToken(int tok){
         if(tok==0)return "";
@@ -252,6 +384,8 @@ final class DotNetAssemblyParser {
     private static String indent(int n){return"    ".repeat(Math.max(0,n));}
     private static String opcodeName(int op){return OPCODES.getOrDefault(op,"op_"+Integer.toHexString(op));}
     private static final Map<Integer,String> OPCODES=new HashMap<>();static{String[][]a={{"00","nop"},{"01","break"},{"02","ldarg.0"},{"03","ldarg.1"},{"04","ldarg.2"},{"05","ldarg.3"},{"06","ldloc.0"},{"07","ldloc.1"},{"08","ldloc.2"},{"09","ldloc.3"},{"0A","stloc.0"},{"0B","stloc.1"},{"0C","stloc.2"},{"0D","stloc.3"},{"0E","ldarg.s"},{"0F","ldarga.s"},{"10","starg.s"},{"11","ldloc.s"},{"12","ldloca.s"},{"13","stloc.s"},{"14","ldnull"},{"15","ldc.i4.m1"},{"16","ldc.i4.0"},{"17","ldc.i4.1"},{"18","ldc.i4.2"},{"19","ldc.i4.3"},{"1A","ldc.i4.4"},{"1B","ldc.i4.5"},{"1C","ldc.i4.6"},{"1D","ldc.i4.7"},{"1E","ldc.i4.8"},{"1F","ldc.i4.s"},{"20","ldc.i4"},{"21","ldc.i8"},{"22","ldc.r4"},{"23","ldc.r8"},{"25","dup"},{"26","pop"},{"28","call"},{"29","calli"},{"2A","ret"},{"2B","br.s"},{"2C","brfalse.s"},{"2D","brtrue.s"},{"2E","beq.s"},{"2F","bge.s"},{"30","bgt.s"},{"31","ble.s"},{"32","blt.s"},{"33","bne.un.s"},{"34","bge.un.s"},{"35","bgt.un.s"},{"36","ble.un.s"},{"37","blt.un.s"},{"38","br"},{"39","brfalse"},{"3A","brtrue"},{"3B","beq"},{"3C","bge"},{"3D","bgt"},{"3E","ble"},{"3F","blt"},{"40","bne.un"},{"41","bge.un"},{"42","bgt.un"},{"43","ble.un"},{"44","blt.un"},{"45","switch"},{"46","ldind.i1"},{"47","ldind.u1"},{"48","ldind.i2"},{"49","ldind.u2"},{"4A","ldind.i4"},{"4B","ldind.u4"},{"4C","ldind.i8"},{"4D","ldind.i"},{"4E","ldind.r4"},{"4F","ldind.r8"},{"50","ldind.ref"},{"51","stind.ref"},{"52","stind.i1"},{"53","stind.i2"},{"54","stind.i4"},{"55","stind.i8"},{"56","stind.i"},{"57","stind.r4"},{"58","stind.r8"},{"59","add"},{"5A","sub"},{"5B","mul"},{"5C","div"},{"5D","div.un"},{"5E","rem"},{"5F","rem.un"},{"60","and"},{"61","or"},{"62","xor"},{"63","shl"},{"64","shr"},{"65","shr.un"},{"66","neg"},{"67","not"},{"68","conv.i1"},{"69","conv.i2"},{"6A","conv.i4"},{"6B","conv.i8"},{"6C","conv.r4"},{"6D","conv.r8"},{"6F","callvirt"},{"70","cpobj"},{"71","ldobj"},{"72","ldstr"},{"73","newobj"},{"74","castclass"},{"75","isinst"},{"76","conv.r.un"},{"79","unbox"},{"7A","throw"},{"7B","ldfld"},{"7C","ldflda"},{"7D","stfld"},{"7E","ldsfld"},{"7F","ldsflda"},{"80","stsfld"},{"81","stobj"},{"8C","box"},{"8D","newarr"},{"8E","ldlen"},{"8F","ldelema"},{"90","ldelem.i1"},{"91","ldelem.u1"},{"92","ldelem.i2"},{"93","ldelem.u2"},{"94","ldelem.i4"},{"95","ldelem.u4"},{"96","ldelem.i8"},{"97","ldelem.i"},{"98","ldelem.r4"},{"99","ldelem.r8"},{"9A","ldelem.ref"},{"9B","stelem.i"},{"9C","stelem.i1"},{"9D","stelem.i2"},{"9E","stelem.i4"},{"9F","stelem.i8"},{"A0","stelem.r4"},{"A1","stelem.r8"},{"A2","stelem.ref"},{"A3","ldelem"},{"A4","stelem"},{"A5","unbox.any"},{"B3","conv.u4"},{"B4","conv.u8"},{"B5","conv.i"},{"B6","conv.ovf.i"},{"B7","conv.ovf.u"},{"B8","add.ovf"},{"B9","add.ovf.un"},{"BA","mul.ovf"},{"BB","mul.ovf.un"},{"BC","sub.ovf"},{"BD","sub.ovf.un"},{"BE","endfinally"},{"C2","refanytype"},{"C3","readonly"},{"D0","ldtoken"},{"D1","conv.u2"},{"D2","conv.u1"},{"D3","conv.i1"},{"D4","conv.i2"},{"D5","conv.i"},{"D6","conv.ovf.i1"},{"D7","conv.ovf.u1"},{"D8","conv.ovf.i2"},{"D9","conv.ovf.u2"},{"DA","conv.ovf.i4"},{"DB","conv.ovf.u4"},{"DC","conv.ovf.i8"},{"DD","conv.ovf.u8"},{"DE","starg"},{"DF","ldarg"},{"E0","ceq"},{"E1","cgt"},{"E2","cgt.un"},{"E3","clt"},{"E4","clt.un"},{"FE00","arglist"},{"FE01","ceq"},{"FE02","cgt"},{"FE03","cgt.un"},{"FE04","clt"},{"FE05","clt.un"},{"FE09","ldarg"},{"FE0A","ldarga"},{"FE0B","starg"},{"FE0C","ldloc"},{"FE0D","ldloca"},{"FE0E","stloc"},{"FE16","constrained"},{"FE1A","readonly"}};for(String[]x:a)OPCODES.put(Integer.parseInt(x[0],16),x[1]);}
+
+    private static String cleanMemberName(String n){ if(n==null)return ""; int i=n.indexOf('`'); return i>0?n.substring(0,i):n; }
 
     private static final class MethodSig{final String ret;final String[]params;MethodSig(String r,String[]p){ret=r;params=p;}}
     private static final class Section{final int va,vs,raw,rs;Section(int a,int b,int c,int d){va=a;vs=b;raw=c;rs=d;}}

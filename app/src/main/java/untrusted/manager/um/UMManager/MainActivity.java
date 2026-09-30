@@ -3754,6 +3754,14 @@ public class MainActivity extends AppCompatActivity {
         autosign.setChecked(settings.getBoolean("autosign", true));
         autosign.setOnCheckedChangeListener((buttonView, isChecked) -> settings.edit().putBoolean("autosign", isChecked).apply());
         settingsDialog.findViewById(R.id.sign_settings).setOnClickListener(uiHelper.showSignSettingsDialog());
+        View commandProfiles = settingsDialog.findViewById(R.id.commandHelperProfilesBtn);
+        if (commandProfiles != null) {
+            commandProfiles.setOnClickListener(v -> {
+                untrusted.manager.um.adapters.main.CommandHelperSettingsDialog dialog =
+                        new untrusted.manager.um.adapters.main.CommandHelperSettingsDialog();
+                dialog.show(getSupportFragmentManager(), "CommandHelperSettings");
+            });
+        }
         setupAppearanceSettings(settingsDialog, settings);
         setupLanguageSettings(settingsDialog);
         setupFolderSettings(settingsDialog, settings);
