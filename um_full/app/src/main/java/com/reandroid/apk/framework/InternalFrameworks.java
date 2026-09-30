@@ -145,10 +145,12 @@ public class InternalFrameworks extends FrameworkManager {
     }
     private Map<Integer, String> scanAvailableResourcePaths() {
         Map<Integer, String> results = new HashMap<>();
-        for (int version = LOWEST_AVAILABLE_VERSION; version < HIGHEST_AVAILABLE_VERSION; version ++) {
+        for (int version = LOWEST_AVAILABLE_VERSION; version <= HIGHEST_AVAILABLE_VERSION; version++) {
             String path = toResourcePath(version);
-            results.put(version, path);
-            //if ((version + 1) == maxSearch) maxSearch++;
+            File file = new File(path);
+            if (file.isFile() && file.length() > 0) {
+                results.put(version, path);
+            }
         }
         return results;
     }

@@ -220,3 +220,14 @@ Network-storage passwords, S3 access/secret keys, session tokens, and other pers
 Saved Network Storage Hub locations now have a stable per-location ID. Opening a saved SFTP, SMB, WebDAV, or S3 location passes that ID into the protocol activity, so connection metadata and encrypted credentials are kept in a profile-specific preference namespace instead of being shared between unrelated saved locations. Existing hub entries without an ID receive one during migration and are persisted on the next save. The hub also passes the saved endpoint into the protocol connection dialog (including SFTP host/port parsing), so selecting a saved location no longer discards the endpoint and falls back to the last global connection.
 
 Deleting a saved location clears its profile-specific protocol preferences as well, preventing orphaned credentials from remaining after the location is removed.
+
+
+## Framework resources
+
+Untrusted Manager no longer references compile-time `R.raw.android_*` framework
+binaries. Framework APKs are discovered from `0/Untrusted Manager/frameworks/`.
+Existing user-supplied framework APKs are preserved. On devices that expose
+`/system/framework/framework-res.apk`, the app seeds the current Android API
+level as a fallback when the framework directory is empty. This keeps the
+source distribution buildable without embedding proprietary/system framework
+binaries and avoids creating invalid placeholder APK resources.

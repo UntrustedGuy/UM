@@ -1950,6 +1950,48 @@ public class MainActivity extends AppCompatActivity {
         controller.setAppearanceLightNavigationBars(lightBars);
     }
 
+    /**
+     * Initializes the optional Android framework resources used by the APK/resource
+     * tooling. Older builds bundled one framework APK per API level as raw
+     * resources. Those binary resources are not required to compile and are not
+     * guaranteed to be present in every distribution, so framework discovery is
+     * now data-driven: existing user-provided frameworks are preserved, and on a
+     * device where the platform exposes framework-res.apk we seed the current API
+     * level as a usable fallback.
+     */
+    private void ensureFrameworkResources() {
+        File frameworks = new File("/sdcard/Untrusted Manager/frameworks/");
+        if (doesNotHaveStoragePerm(this)) {
+            return;
+        }
+        if (!frameworks.exists() && !frameworks.mkdirs()) {
+            return;
+        }
+
+        File[] existing = frameworks.listFiles((dir, name) ->
+                name != null && name.startsWith("android_") && name.endsWith(".apk"));
+        if (existing != null && existing.length > 0) {
+            return;
+        }
+
+        File platformFramework = new File("/system/framework/framework-res.apk");
+        if (!platformFramework.isFile() || platformFramework.length() == 0) {
+            return;
+        }
+
+        int api = Build.VERSION.SDK_INT;
+        File target = new File(frameworks, "android_" + api + ".apk");
+        if (target.exists()) {
+            return;
+        }
+        try {
+            FileUtils.copyFile(platformFramework, target);
+        } catch (Exception ignored) {
+            // Framework resources are optional; APK/resource operations can still
+            // run when the user supplies a framework explicitly.
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(this);
@@ -1985,39 +2027,7 @@ public class MainActivity extends AppCompatActivity {
         requestPermissionLauncher = registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> { });
 
         new Thread(() -> {
-            File frameworks = new File("/sdcard/Untrusted Manager/frameworks/");
-            if(!doesNotHaveStoragePerm(this) && !frameworks.exists()) try(
-                    InputStream is23 = rss.openRawResource(R.raw.android_23);
-                    InputStream is24 = rss.openRawResource(R.raw.android_24);
-                    InputStream is25 = rss.openRawResource(R.raw.android_25);
-                    InputStream is26 = rss.openRawResource(R.raw.android_26);
-                    InputStream is27 = rss.openRawResource(R.raw.android_27);
-                    InputStream is28 = rss.openRawResource(R.raw.android_28);
-                    InputStream is29 = rss.openRawResource(R.raw.android_29);
-                    InputStream is30 = rss.openRawResource(R.raw.android_30);
-                    InputStream is31 = rss.openRawResource(R.raw.android_31);
-                    InputStream is32 = rss.openRawResource(R.raw.android_32);
-                    InputStream is33 = rss.openRawResource(R.raw.android_33);
-                    InputStream is34 = rss.openRawResource(R.raw.android_34);
-                    InputStream is35 = rss.openRawResource(R.raw.android_35);
-                    InputStream is36 = rss.openRawResource(R.raw.android_36)
-            ) {
-                frameworks.mkdir();
-                FileUtils.copyFile(is23, new File(frameworks, "android_23.apk"));
-                FileUtils.copyFile(is24, new File(frameworks, "android_24.apk"));
-                FileUtils.copyFile(is25, new File(frameworks, "android_25.apk"));
-                FileUtils.copyFile(is26, new File(frameworks, "android_26.apk"));
-                FileUtils.copyFile(is27, new File(frameworks, "android_27.apk"));
-                FileUtils.copyFile(is28, new File(frameworks, "android_28.apk"));
-                FileUtils.copyFile(is29, new File(frameworks, "android_29.apk"));
-                FileUtils.copyFile(is30, new File(frameworks, "android_30.apk"));
-                FileUtils.copyFile(is31, new File(frameworks, "android_31.apk"));
-                FileUtils.copyFile(is32, new File(frameworks, "android_32.apk"));
-                FileUtils.copyFile(is33, new File(frameworks, "android_33.apk"));
-                FileUtils.copyFile(is34, new File(frameworks, "android_34.apk"));
-                FileUtils.copyFile(is35, new File(frameworks, "android_35.apk"));
-                FileUtils.copyFile(is36, new File(frameworks, "android_36.apk"));
-            } catch (Exception ignored) { }
+            ensureFrameworkResources();
             setupPullToRefresh();
         }).start();
 
