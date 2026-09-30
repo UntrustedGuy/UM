@@ -1,5 +1,6 @@
 package untrusted.manager.um.network;
 
+import untrusted.manager.um.utils.EdgeToEdgeUtil;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Bundle;
@@ -82,7 +83,7 @@ public class SmbActivity extends AppCompatActivity {
             return true;
         });
         root.addView(list, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(root);
+        setContentView(root); EdgeToEdgeUtil.applyContentInsets(this);
         showPath();
     }
 

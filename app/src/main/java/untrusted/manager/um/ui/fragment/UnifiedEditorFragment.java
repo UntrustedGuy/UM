@@ -637,6 +637,7 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
             try {
                 registry.loadTheme(themeSource);
                 registry.setTheme(themeName);
+                cachedColorScheme = createThemeColorScheme(registry, appTheme);
             } catch (Exception ignored) { }
             String grammarPath = "grammars/" + key + ".tmLanguage.json";
             String configPath = "grammars/config/" + key + ".language-configuration.json";
@@ -672,10 +673,17 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
             // unrelated built-in schemes. Java keeps a Sora scheme because its
             // language implementation is not TextMate-backed in this editor.
             boolean textMateDocument = type == TYPE_TEXT && languageKeyFor(getDocumentName()) != null;
-            if (!textMateDocument) {
-                editor.setColorScheme(EditorThemeProvider.soraSchemeFor(
-                        PreferenceManager.getDefaultSharedPreferences(requireContext()).getInt(
-                                "theme", R.style.Theme_MyApp_Dark)));
+            int selectedTheme = PreferenceManager.getDefaultSharedPreferences(requireContext()).getInt(
+                    "theme", R.style.Theme_MyApp_Dark);
+            if (textMateDocument) {
+                try {
+                    ensureTextMateTheme(requireContext().getApplicationContext(), selectedTheme);
+                    if (cachedColorScheme != null) editor.setColorScheme(cachedColorScheme);
+                } catch (Exception e) {
+                    Log.w("UnifiedEditor", "Unable to apply TextMate editor theme", e);
+                }
+            } else {
+                editor.setColorScheme(EditorThemeProvider.soraSchemeFor(selectedTheme));
             }
         }
         String fontType = editorPrefs.getString("font_type", "normal");
@@ -1508,28 +1516,61 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
     }
 
     public static synchronized void ensureLanguageInitialized(Context context) {
-        if (cachedSmaliLanguage != null) return;
+        if (cachedSmaliLanguage != null && cachedColorScheme != null) return;
         try {
             initTMStatic(context);
+            int theme = PreferenceManager.getDefaultSharedPreferences(context).getInt("theme",
+                    (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+                            ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light);
             ThemeRegistry registry = ThemeRegistry.getInstance();
-            boolean dark = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-            int theme = PreferenceManager.getDefaultSharedPreferences(context).getInt("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light);
-            String themeName = theme == R.style.Theme_MyApp_Light ? "light.json" : "dark.json";
-            IThemeSource themeSource = null;
-            try {
-                themeSource = IThemeSource.fromInputStream(context.getAssets().open( "themes/" + themeName), themeName, null);
-                registry.loadTheme(themeSource);
-                registry.setTheme(themeName);
-            } catch (Exception e) { Log.e("UnifiedEditor", "Theme load error", e); }
+            IThemeSource themeSource = prepareThemeSource(context, registry, theme);
             try {
                 cachedSmaliLanguage = TextMateLanguage.create(
                         IGrammarSource.fromInputStream(context.getAssets().open("smali/syntaxes/smali.tmLanguage.json"), "smali.tmLanguage.json", null),
                         new InputStreamReader(context.getAssets().open("smali/language-configuration.json")),
                         themeSource);
             } catch (Exception e) { Log.e("UnifiedEditor", "Smali language load error", e); }
-            cachedColorScheme = TextMateColorScheme.create(registry);
+            cachedColorScheme = createThemeColorScheme(registry, theme);
             cachedInstructions = SmaliInstructionHelper.getAllSmaliInstructions();
         } catch (Exception e) { Log.e("UnifiedEditor", "Static init error", e); }
+    }
+
+    private static synchronized void ensureTextMateTheme(Context context, int theme) throws Exception {
+        initTMStatic(context);
+        ThemeRegistry registry = ThemeRegistry.getInstance();
+        prepareThemeSource(context, registry, theme);
+        cachedColorScheme = createThemeColorScheme(registry, theme);
+    }
+
+    private static IThemeSource prepareThemeSource(Context context, ThemeRegistry registry, int theme) throws Exception {
+        String themeName = "um-" + theme + ".json";
+        String themeJson = EditorThemeProvider.themeJson(theme);
+        IThemeSource source = IThemeSource.fromInputStream(
+                new ByteArrayInputStream(themeJson.getBytes(StandardCharsets.UTF_8)), themeName, null);
+        registry.loadTheme(source);
+        registry.setTheme(themeName);
+        return source;
+    }
+
+    private static TextMateColorScheme createThemeColorScheme(ThemeRegistry registry, int theme) {
+        TextMateColorScheme scheme = TextMateColorScheme.create(registry);
+        String[] p = EditorThemeProvider.palette(theme);
+        int bg = android.graphics.Color.parseColor(p[0]);
+        int fg = android.graphics.Color.parseColor(p[1]);
+        int accent = android.graphics.Color.parseColor(p[2]);
+        int comment = android.graphics.Color.parseColor(p[8]);
+        scheme.setColor(EditorColorScheme.WHOLE_BACKGROUND, bg);
+        scheme.setColor(EditorColorScheme.TEXT_NORMAL, fg);
+        scheme.setColor(EditorColorScheme.LINE_NUMBER_BACKGROUND, bg);
+        scheme.setColor(EditorColorScheme.LINE_NUMBER_CURRENT, fg);
+        scheme.setColor(EditorColorScheme.LINE_NUMBER, comment);
+        scheme.setColor(EditorColorScheme.LINE_DIVIDER, bg);
+        scheme.setColor(EditorColorScheme.CURRENT_LINE, bg);
+        scheme.setColor(EditorColorScheme.SELECTION_HANDLE, accent);
+        scheme.setColor(EditorColorScheme.SELECTION_INSERT, accent);
+        scheme.setColor(EditorColorScheme.SELECTED_TEXT_BACKGROUND, accent);
+        scheme.setColor(EditorColorScheme.TEXT_ACTION_WINDOW_BACKGROUND, bg);
+        return scheme;
     }
 
     private static void initTMStatic(Context context) {
@@ -1675,6 +1716,7 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
                     + "{\"scope\":[\"punctuation.definition.string\",\"punctuation.separator\",\"punctuation.accessor\"],\"settings\":{\"foreground\":\"" + fg + "\"}}]}";
         }
         private static String[] palette(int t) {
+            if (t == R.style.Theme_MyApp_Dark) return new String[]{"#121212","#F2F2F2","#FF3D71","#8FA7FF","#69E3A6","#FFD166","#FF6B7A","#C7A0FF","#777777"};
             if (t == R.style.Theme_MyApp_TokyoNight || t == R.style.Theme_MyApp_Aurora) return new String[]{"#1A1B26","#A9B1D6","#7AA2F7","#7DCFFF","#9ECE6A","#E0AF68","#F7768E","#BB9AF7","#565F89"};
             if (t == R.style.Theme_MyApp_TokyoNightDay) return new String[]{"#E6E7ED","#3760BF","#2E7DE9","#006C9C","#587539","#8C6C3E","#F52A65","#9854F1","#848CB5"};
             if (t == R.style.Theme_MyApp_Dracula) return new String[]{"#282A36","#F8F8F2","#8BE9FD","#50FA7B","#50FA7B","#F1FA8C","#FF5555","#BD93F9","#6272A4"};
@@ -1696,12 +1738,22 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
             // Keep the editor background/foreground coherent with the selected app theme.
             // Token-level highlighting for Java/Smali remains supplied by Sora's language.
             String[] p=palette(t);
+            int bg = android.graphics.Color.parseColor(p[0]);
+            int fg = android.graphics.Color.parseColor(p[1]);
+            int accent = android.graphics.Color.parseColor(p[2]);
+            int comment = android.graphics.Color.parseColor(p[8]);
             EditorColorScheme s = new SchemeDarcula();
-            s.setColor(EditorColorScheme.WHOLE_BACKGROUND, android.graphics.Color.parseColor(p[0]));
-            s.setColor(EditorColorScheme.TEXT_NORMAL, android.graphics.Color.parseColor(p[1]));
-            s.setColor(EditorColorScheme.LINE_NUMBER, android.graphics.Color.parseColor(p[8]));
-            s.setColor(EditorColorScheme.LINE_DIVIDER, android.graphics.Color.parseColor(p[0]));
-            s.setColor(EditorColorScheme.SELECTION_HANDLE, android.graphics.Color.parseColor(p[2]));
+            s.setColor(EditorColorScheme.WHOLE_BACKGROUND, bg);
+            s.setColor(EditorColorScheme.TEXT_NORMAL, fg);
+            s.setColor(EditorColorScheme.LINE_NUMBER_BACKGROUND, bg);
+            s.setColor(EditorColorScheme.LINE_NUMBER_CURRENT, fg);
+            s.setColor(EditorColorScheme.LINE_NUMBER, comment);
+            s.setColor(EditorColorScheme.LINE_DIVIDER, bg);
+            s.setColor(EditorColorScheme.CURRENT_LINE, bg);
+            s.setColor(EditorColorScheme.SELECTION_HANDLE, accent);
+            s.setColor(EditorColorScheme.SELECTION_INSERT, accent);
+            s.setColor(EditorColorScheme.SELECTED_TEXT_BACKGROUND, accent);
+            s.setColor(EditorColorScheme.TEXT_ACTION_WINDOW_BACKGROUND, bg);
             return s;
         }
     }

@@ -16,6 +16,7 @@
  */
 package io.github.ratul.topactivity.ui;
 
+import untrusted.manager.um.utils.EdgeToEdgeUtil;
 import android.Manifest;
 import android.content.ComponentName;
 import android.content.Intent;

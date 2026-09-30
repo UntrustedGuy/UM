@@ -41,7 +41,7 @@ public class Il2CppEditorActivity extends AppCompatActivity {
         }
     }
 
-    private void open(File f){String n=f.getName().toLowerCase();if(n.endsWith(".cs")||n.endsWith(".json")||n.endsWith(".h")||n.endsWith(".txt")){startActivity(new android.content.Intent(this,TextEditorActivity.class).putExtra("path",f.getAbsolutePath()));}else{startActivity(new android.content.Intent(this,HexEditorActivity.class).putExtra("path",f.getAbsolutePath()));}}
+    private void open(File f){String n=f.getName().toLowerCase();if("dll".equals(mode)){startActivity(new android.content.Intent(this,untrusted.manager.um.tools.DllEditorActivity.class).putExtra("path",f.getAbsolutePath()));return;}if(n.endsWith(".cs")||n.endsWith(".json")||n.endsWith(".h")||n.endsWith(".txt")){startActivity(new android.content.Intent(this,TextEditorActivity.class).putExtra("path",f.getAbsolutePath()));}else{startActivity(new android.content.Intent(this,HexEditorActivity.class).putExtra("path",f.getAbsolutePath()));}}
     private Button button(String t){MaterialButton b=new MaterialButton(this);b.setText(t);return b;}
     private LinearLayout.LayoutParams lp(int l,int t,int r,int b){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(dp(l),dp(t),dp(r),dp(b));return p;}
     private int dp(int v){return(int)(v*getResources().getDisplayMetrics().density+.5f);}

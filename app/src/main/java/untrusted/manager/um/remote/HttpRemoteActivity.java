@@ -1,5 +1,6 @@
 package untrusted.manager.um.remote;
 
+import untrusted.manager.um.utils.EdgeToEdgeUtil;
 import android.content.ClipboardManager;
 import android.content.ClipData;
 import android.os.Bundle;
@@ -96,7 +97,7 @@ public class HttpRemoteActivity extends AppCompatActivity {
         });
         body.addView(copy, lp());
         root.addView(body, new LinearLayout.LayoutParams(-1, -1));
-        setContentView(root);
+        setContentView(root); EdgeToEdgeUtil.applyContentInsets(this);
     }
 
     private void toggleServer() {

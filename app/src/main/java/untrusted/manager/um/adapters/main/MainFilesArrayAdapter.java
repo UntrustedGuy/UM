@@ -438,8 +438,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                                 openGameAnalysis("modding", file);
                                 return;
                             case FileMenuOrder.DLL_EDITOR:
-                                context.startActivity(new Intent(context, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class)
-                                        .putExtra("mode", "dll")
+                                context.startActivity(new Intent(context, untrusted.manager.um.tools.DllEditorActivity.class)
                                         .putExtra("path", file.getAbsolutePath()));
                                 return;
                             case FileMenuOrder.CMP_TEXT:
@@ -1034,8 +1033,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
         if (lower.endsWith(".dll")) {
             actionNames.add(context.getString(R.string.dll_editor));
             actionIcons.add(R.drawable.edit_24px);
-            actionHandlers.add(() -> context.startActivity(new Intent(context, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class)
-                    .putExtra("mode", "dll")
+            actionHandlers.add(() -> context.startActivity(new Intent(context, untrusted.manager.um.tools.DllEditorActivity.class)
                     .putExtra("path", file.getAbsolutePath())));
         }
         String keyExt = FilenameUtils.getExtension(fileName).toLowerCase(Locale.ROOT);

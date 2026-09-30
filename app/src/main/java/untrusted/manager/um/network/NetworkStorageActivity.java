@@ -1,5 +1,6 @@
 package untrusted.manager.um.network;
 
+import untrusted.manager.um.utils.EdgeToEdgeUtil;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -64,7 +65,7 @@ public class NetworkStorageActivity extends AppCompatActivity {
         list.setOnItemClickListener((p, v, pos, id) -> open(profiles.get(pos)));
         list.setOnItemLongClickListener((p, v, pos, id) -> { menu(pos); return true; });
         root.addView(list, new LinearLayout.LayoutParams(-1, 0, 1));
-        setContentView(root);
+        setContentView(root); EdgeToEdgeUtil.applyContentInsets(this);
         load();
     }
 

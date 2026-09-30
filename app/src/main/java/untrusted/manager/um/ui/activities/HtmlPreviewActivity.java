@@ -1,5 +1,6 @@
 package untrusted.manager.um.ui.activities;
 
+import untrusted.manager.um.utils.EdgeToEdgeUtil;
 import android.annotation.SuppressLint;
 import android.graphics.Color;
 import android.os.Bundle;
@@ -76,7 +77,7 @@ public class HtmlPreviewActivity extends AppCompatActivity {
         webView.setOverScrollMode(WebView.OVER_SCROLL_IF_CONTENT_SCROLLS);
         root.addView(webView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        setContentView(root);
+        setContentView(root); EdgeToEdgeUtil.applyContentInsets(this);
 
         webView.loadUrl(html.toURI().toString());
     }
