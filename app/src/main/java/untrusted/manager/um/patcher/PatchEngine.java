@@ -1,5 +1,7 @@
 package untrusted.manager.um.patcher;
 
+import untrusted.manager.um.utils.ApkZipAlignUtil;
+
 import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;

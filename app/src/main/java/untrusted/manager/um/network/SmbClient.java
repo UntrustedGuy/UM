@@ -33,7 +33,7 @@ public final class SmbClient implements Closeable {
     private static String normalizeRoot(String u){
         if(u==null)throw new IllegalArgumentException("SMB URL required"); String s=u.trim().replace('\\','/');
         if(!s.regionMatches(true,0,"smb://",0,6))s="smb://"+s;
-        while(s.contains("//",6))s=s.replace("//","/");
+        while(s.indexOf("//", 6) >= 0)s=s.replace("//","/");
         if(!s.endsWith("/"))s+="/";
         if(s.indexOf("@")>=0)throw new IllegalArgumentException("Put credentials in the profile, not the SMB URL");
         return s;

@@ -111,6 +111,12 @@ public class ShizukuFile extends File {
         return new ShizukuFile(join(parent, name), type == 'd' || type == 'l' && name.indexOf('.') < 0, size);
     }
 
+    private static String join(String parent, String name) {
+        if (parent == null || parent.isEmpty()) return name == null ? "" : name;
+        if (name == null || name.isEmpty()) return parent;
+        return parent.endsWith("/") ? parent + name : parent + "/" + name;
+    }
+
     private static String safePath(File file) {
         if (file == null) return null;
         try {

@@ -58,7 +58,7 @@ public final class SftpClient implements AutoCloseable {
             boolean dir = a.getType().toString().contains("DIRECTORY");
             boolean link = a.getType().toString().contains("SYMBOLIC_LINK");
             String child = "/".equals(p) ? "/" + n : p + "/" + n;
-            out.add(new Entry(n, child, dir, link, a.getSize(), a.getMtime() == null ? 0L : a.getMtime().getTime()));
+            out.add(new Entry(n, child, dir, link, a.getSize(), a.getMtime()));
         }
         out.sort(Comparator.comparing((Entry e) -> !e.directory).thenComparing(e -> e.name, String.CASE_INSENSITIVE_ORDER));
         return out;
