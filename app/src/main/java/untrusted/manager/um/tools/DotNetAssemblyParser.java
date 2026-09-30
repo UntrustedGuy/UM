@@ -1,0 +1,283 @@
+package untrusted.manager.um.tools;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/**
+ * Managed .NET/CLI assembly reader and C#-style source/IL renderer.
+ *
+ * This is intentionally self-contained so UM can inspect assemblies on Android without
+ * requiring a desktop .NET runtime. It reads ECMA-335 PE/CLI metadata, signatures and
+ * method bodies and reconstructs useful C# for normal managed assemblies. When a method
+ * contains constructs the renderer cannot safely reconstruct, the generated source keeps
+ * the original IL as a comment instead of inventing semantics.
+ */
+final class DotNetAssemblyParser {
+    static final class TypeDef {
+        final String namespace, name, baseType;
+        final int token;
+        final List<FieldDef> fields = new ArrayList<>();
+        final List<MethodDef> methods = new ArrayList<>();
+        final List<PropertyDef> properties = new ArrayList<>();
+        final List<TypeDef> nested = new ArrayList<>();
+        int flags;
+        TypeDef(String ns, String n, String b, int token, int flags) {
+            namespace = ns == null ? "" : ns; name = n == null ? "" : n; baseType = b == null ? "" : b;
+            this.token = token; this.flags = flags;
+        }
+        String fullName() { return namespace.isEmpty() ? name : namespace + "." + name; }
+        String displayName() { return name; }
+    }
+    static final class FieldDef {
+        final String name, type; final int flags, token;
+        FieldDef(String n, String t, int f, int tok) { name=n; type=t; flags=f; token=tok; }
+    }
+    static final class PropertyDef {
+        final String name, type; MethodDef getter, setter;
+        PropertyDef(String n, String t) { name=n; type=t; }
+    }
+    static final class MethodDef {
+        final String name; String ret="void"; int params; int flags; int token; int rva;
+        String[] paramTypes = new String[0]; String[] paramNames = new String[0];
+        String il = ""; String source = "";
+        MethodDef(String n) { name=n; }
+        String signature() {
+            StringBuilder b=new StringBuilder(ret).append(' ').append(name).append('(');
+            for(int i=0;i<paramTypes.length;i++){if(i>0)b.append(", ");b.append(paramTypes[i]).append(' ').append(paramNames.length>i&&paramNames[i]!=null&&!paramNames[i].isEmpty()?paramNames[i]:"arg"+i);}
+            return b.append(')').toString();
+        }
+    }
+
+    final List<TypeDef> types = new ArrayList<>();
+    final String assemblyName;
+    final byte[] image;
+    final Section[] sections;
+    final int metadataOffset;
+    final Tables tables;
+    final int stringsBase, blobBase, usBase;
+    private final Map<Integer,String> tokenNames = new HashMap<>();
+    private final Map<Integer,String> tokenTypes = new HashMap<>();
+
+    private DotNetAssemblyParser(String assemblyName, byte[] image, Section[] sections, int metadataOffset,
+                                 Tables tables, int stringsBase, int blobBase, int usBase) {
+        this.assemblyName=assemblyName; this.image=image; this.sections=sections; this.metadataOffset=metadataOffset;
+        this.tables=tables; this.stringsBase=stringsBase; this.blobBase=blobBase; this.usBase=usBase;
+    }
+
+    static DotNetAssemblyParser parse(File f) throws IOException {
+        return parse(read(f));
+    }
+
+    static DotNetAssemblyParser parse(byte[] b) throws IOException {
+        if(b.length<0x100||u16(b,0)!=0x5A4D) throw new IOException("Missing MZ header");
+        int pe=u32(b,0x3c); if(pe<0||pe+24>b.length||u32(b,pe)!=0x4550) throw new IOException("Missing PE header");
+        int coff=pe+4, sections=u16(b,coff+2), opt=coff+20, magic=u16(b,opt);
+                int dataDir=opt+(magic==0x20b?112:96), cliDir=dataDir+14*8;
+        if(cliDir+8>b.length) throw new IOException("No CLR directory");
+        int cliRva=u32(b,cliDir), cliSize=u32(b,cliDir+4); if(cliRva==0||cliSize==0) throw new IOException("No CLR metadata");
+        Section[] ss=new Section[sections]; int sh=opt+u16(b,coff+16);
+        for(int i=0;i<sections;i++){int o=sh+i*40; if(o+40>b.length)throw new IOException("Invalid PE section table"); ss[i]=new Section(u32(b,o+12),u32(b,o+16),u32(b,o+20),u32(b,o+8));}
+        int cliOff=rva(ss,cliRva); if(cliOff<0||cliOff+16>b.length) throw new IOException("Invalid CLR header");
+        int mdRva=u32(b,cliOff+8), mdOff=rva(ss,mdRva); if(mdOff<0) throw new IOException("Invalid metadata RVA");
+        return parseMetadata(b,ss,mdOff);
+    }
+
+    private static DotNetAssemblyParser parseMetadata(byte[] b, Section[] ss, int off) throws IOException {
+        if(off+20>b.length||u32(b,off)!=0x424A5342) throw new IOException("Invalid CLR metadata root");
+        int verLen=u32(b,off+12); if(verLen<0||off+16+verLen+4>b.length)throw new IOException("Invalid CLR version string");
+        int pos=(off+16+verLen+3)&~3; int streams=u16(b,pos+2); pos+=4;
+        Map<String,int[]> sm=new HashMap<>();
+        for(int i=0;i<streams;i++){
+            if(pos+8>b.length)throw new IOException("Truncated metadata stream header");
+            int so=u32(b,pos), sz=u32(b,pos+4); int p=pos+8,q=p; while(q<b.length&&b[q]!=0)q++;
+            String name=new String(b,p,q-p,StandardCharsets.US_ASCII); q=(q+4)&~3; sm.put(name,new int[]{off+so,sz}); pos=q;
+        }
+        int[] tablesStream=sm.get("#~"); if(tablesStream==null)tablesStream=sm.get("#-"); if(tablesStream==null)throw new IOException("No metadata tables stream");
+        int[] strings=sm.get("#Strings"), blob=sm.get("#Blob"), us=sm.get("#US");
+        if(strings==null)throw new IOException("No #Strings stream");
+        Tables t=Tables.read(b,tablesStream[0]);
+        String assembly="ManagedAssembly";
+        Row asm=t.row(32,0); if(asm!=null) assembly=t.str(strings[0], asm.u4(7));
+        DotNetAssemblyParser out=new DotNetAssemblyParser(assembly,b,ss,off,t,strings[0],blob==null?0:blob[0],us==null?0:us[0]);
+        out.buildModel();
+        return out;
+    }
+
+    private void buildModel() throws IOException {
+        List<TypeDef> byRid=new ArrayList<>(); byRid.add(null);
+        int typeCount=tables.count(2);
+        for(int rid=1;rid<=typeCount;rid++){
+            Row r=tables.row(2,rid-1); int flags=r.u4(0); int nameIx=r.strIndex(1); int nsIx=r.strIndex(2); int extendsTok=r.coded(3,"TypeDefOrRef");
+            TypeDef td=new TypeDef(str(nameIx), str(nsIx), resolveTypeToken(extendsTok), 0x02000000|rid, flags); byRid.add(td); types.add(td);
+            tokenNames.put(td.token,td.fullName()); tokenTypes.put(td.token,"type");
+        }
+        // Nested types are kept visible in the assembly browser and use their full name for source rendering.
+        int nestedCount=tables.count(41);
+        for(int i=0;i<nestedCount;i++){Row r=tables.row(41,i);int nested=r.table(0), enclosing=r.table(1);if(nested>0&&enclosing>0&&nested<byRid.size()&&enclosing<byRid.size())byRid.get(enclosing).nested.add(byRid.get(nested));}
+
+        int fieldCount=tables.count(4); List<FieldDef> fieldByRid=new ArrayList<>();fieldByRid.add(null);
+        for(int rid=1;rid<=fieldCount;rid++){Row r=tables.row(4,rid-1);String n=str(r.strIndex(1));String ty=decodeFieldSig(r.blobIndex(2));FieldDef f=new FieldDef(n,ty,r.u2(0),0x04000000|rid);fieldByRid.add(f);tokenNames.put(f.token,n);tokenTypes.put(f.token,"field");}
+        int methodCount=tables.count(6); List<MethodDef> methods=new ArrayList<>();methods.add(null);
+        for(int rid=1;rid<=methodCount;rid++){
+            Row r=tables.row(6,rid-1); MethodDef m=new MethodDef(str(r.strIndex(3)));m.flags=r.u2(2);m.rva=r.u4(0);m.token=0x06000000|rid;
+            MethodSig sig=decodeMethodSig(r.blobIndex(4));m.ret=sig.ret;m.paramTypes=sig.params;m.params=sig.params.length;m.paramNames=new String[sig.params.length];
+            methods.add(m);tokenNames.put(m.token,m.name);tokenTypes.put(m.token,"method");
+        }
+        // Method parameter names.
+        int paramCount=tables.count(8); for(int i=0;i<paramCount;i++){Row r=tables.row(8,i);int seq=r.u2(1);int nameIx=r.strIndex(2);int owner=findMethodForParam(i+1,methods);if(owner>0){MethodDef m=methods.get(owner);if(seq>=1&&seq<=m.paramNames.length)m.paramNames[seq-1]=str(nameIx);}}
+        for(MethodDef m:methods)if(m!=null&&m.paramNames.length!=m.paramTypes.length)m.paramNames=new String[m.paramTypes.length];
+        // Fields/methods are assigned to TypeDefs by their list-start columns.
+        for(int rid=1;rid<=typeCount;rid++){
+            TypeDef td=byRid.get(rid);Row tr=tables.row(2,rid-1);int nextField=(rid<typeCount)?tables.row(2,rid).table(4):fieldCount+1;int firstField=tr.table(4);
+            for(int x=firstField;x<nextField&&x>0&&x<=fieldCount;x++)td.fields.add(fieldByRid.get(x));
+            int nextMethod=(rid<typeCount)?tables.row(2,rid).table(5):methodCount+1;int firstMethod=tr.table(5);
+            for(int x=firstMethod;x<nextMethod&&x>0&&x<=methodCount;x++)td.methods.add(methods.get(x));
+        }
+        // Properties and accessor methods.
+        int propCount=tables.count(23); List<PropertyDef> props=new ArrayList<>();props.add(null);
+        for(int rid=1;rid<=propCount;rid++){Row r=tables.row(23,rid-1);PropertyDef p=new PropertyDef(str(r.strIndex(2)),decodePropertySig(r.blobIndex(3)));props.add(p);}
+        int semCount=tables.count(24);
+        for(int i=0;i<semCount;i++){
+            Row r=tables.row(24,i);
+            int methodRid=r.table(1), assoc=r.coded(2,"HasSemantics");
+            int bits=r.u2(0);
+            if(methodRid>0&&methodRid<methods.size()&&(assoc>>>24)==23){
+                int pr=assoc&0xffffff;
+                if(pr>0&&pr<props.size()){
+                    if((bits&2)!=0)props.get(pr).getter=methods.get(methodRid);
+                    if((bits&1)!=0)props.get(pr).setter=methods.get(methodRid);
+                }
+            }
+        }
+        // Assign properties by TypeDef property list starts through PropertyMap.
+        int mapCount=tables.count(21);for(int i=0;i<mapCount;i++){Row r=tables.row(21,i);int td=r.table(0),first=r.table(1),next=i+1<mapCount?tables.row(21,i+1).table(1):propCount+1;if(td>0&&td<byRid.size())for(int x=first;x<next&&x>0&&x<=propCount;x++)byRid.get(td).properties.add(props.get(x));}
+        // Decode method bodies only after all token names exist.
+        for(MethodDef m:methods)if(m!=null){m.il=decodeMethodIL(m);m.source=renderMethod(m);}
+    }
+
+    private int findMethodForParam(int paramRid,List<MethodDef> methods){
+        // Param rows are contiguous by owner; infer owner from MethodDef ParamList boundaries.
+        int methodCount=tables.count(6);for(int rid=1;rid<=methodCount;rid++){Row mr=tables.row(6,rid-1);int first=mr.table(5);int next=rid<methodCount?tables.row(6,rid).table(5):tables.count(8)+1;if(paramRid>=first&&paramRid<next)return rid;}return 0;
+    }
+
+    String summary(){return "Managed .NET assembly\nAssembly: "+assemblyName+"\nTypes: "+types.size()+"\nMethods: "+tables.count(6)+"\nFields: "+tables.count(4)+"\nSelect a type, method or property to inspect reconstructed C# and IL.";}
+
+    String decompile(TypeDef t){StringBuilder s=new StringBuilder();appendType(s,t,0);return s.toString();}
+    String decompileAll(){StringBuilder s=new StringBuilder();for(TypeDef t:types){if(t.name.equals("<Module>"))continue;s.append(decompile(t)).append('\n');}return s.toString();}
+
+    private void appendType(StringBuilder s,TypeDef t,int depth){String ind=indent(depth);if(!t.namespace.isEmpty()&&depth==0){s.append("namespace ").append(t.namespace).append(" {\n\n");}
+        String kind=((t.flags&0x20)!=0)?"interface":"class";s.append(ind).append(access(t.flags)).append(kind).append(' ').append(t.name);
+        if(!t.baseType.isEmpty()&&!"System.Object".equals(t.baseType)&&!"System.ValueType".equals(t.baseType))s.append(" : ").append(simple(t.baseType));s.append(" {\n");
+        for(FieldDef f:t.fields){s.append(ind).append("    ").append(fieldAccess(f.flags)).append(simple(f.type)).append(' ').append(f.name).append(";\n");}
+        for(PropertyDef p:t.properties){s.append(ind).append("    public ").append(simple(p.type)).append(' ').append(p.name).append(" { ");if(p.getter!=null)s.append("get; ");if(p.setter!=null)s.append("set; ");s.append("}\n");}
+        for(MethodDef m:t.methods){s.append(indent(depth+1)).append(methodAccess(m.flags)).append(m.signature()).append(" {\n");String src=m.source; if(src==null||src.isEmpty())src="        // No method body\n";for(String line:src.split("\\n",-1))if(!line.isEmpty())s.append(indent(depth+2)).append(line).append('\n');s.append(indent(depth+1)).append("}\n\n");}
+        for(TypeDef n:t.nested){appendType(s,n,depth+1);}
+        s.append(ind).append("}\n");if(!t.namespace.isEmpty()&&depth==0)s.append("}\n");
+    }
+
+    private String renderMethod(MethodDef m){
+        if(m.rva==0)return "// abstract/external method\n";
+        if(m.il==null||m.il.isEmpty())return "// No CIL body decoded\n";
+        String[] lines=m.il.split("\\n");StringBuilder out=new StringBuilder();ArrayDeque<String> stack=new ArrayDeque<>();boolean safe=true;int statements=0;
+        for(String line:lines){String z=line.trim();if(z.isEmpty())continue;int colon=z.indexOf(':');if(colon>=0)z=z.substring(colon+1).trim();int sp=z.indexOf(' ');String op=sp<0?z:z.substring(0,sp);String arg=sp<0?"":z.substring(sp+1).trim();
+            String a;
+            switch(op){
+                case "nop": break;
+                case "ldnull": stack.push("null");break;
+                case "ldstr": stack.push(arg);break;
+                case "ldc.i4.0":stack.push("0");break;case "ldc.i4.1":stack.push("1");break;case "ldc.i4.2":stack.push("2");break;case "ldc.i4.3":stack.push("3");break;case "ldc.i4.4":stack.push("4");break;case "ldc.i4.5":stack.push("5");break;case "ldc.i4.6":stack.push("6");break;case "ldc.i4.7":stack.push("7");break;case "ldc.i4.8":stack.push("8");break;
+                case "ldc.i4.m1":stack.push("-1");break;
+                case "ldc.i4":case "ldc.i4.s":case "ldc.i8":case "ldc.r4":case "ldc.r8":stack.push(arg);break;
+                case "ldarg.0":stack.push("arg0");break;case "ldarg.1":stack.push("arg1");break;case "ldarg.2":stack.push("arg2");break;case "ldarg.3":stack.push("arg3");break;
+                case "ldarg":case "ldarg.s":stack.push("arg"+arg);break;
+                case "add":safe=binary(stack,"+")&&safe;break;case "sub":safe=binary(stack,"-")&&safe;break;case "mul":safe=binary(stack,"*")&&safe;break;case "div":safe=binary(stack,"/")&&safe;break;case "rem":safe=binary(stack,"%")&&safe;break;
+                case "ceq":safe=binary(stack,"==")&&safe;break;case "cgt":safe=binary(stack,">")&&safe;break;case "clt":safe=binary(stack,"<")&&safe;break;
+                case "neg":if(stack.isEmpty()){safe=false;}else stack.push("(-"+stack.pop()+")");break;
+                case "pop":if(stack.isEmpty()){safe=false;}else stack.pop();break;
+                case "ret":if("void".equals(m.ret)){out.append("return;");}else if(!stack.isEmpty())out.append("return ").append(stack.pop()).append(';');else{safe=false;out.append("return /* value unavailable */;");}out.append('\n');statements++;break;
+                case "call":case "callvirt":case "newobj":a=resolveMethodToken(parseToken(arg));if(a==null)a=arg;stack.push(("newobj".equals(op)?"new ":"")+a+"()");break;
+                case "br.s":case "br":case "brtrue.s":case "brtrue":case "brfalse.s":case "brfalse":case "leave":case "leave.s":
+                    safe=false;out.append("// ").append(z).append('\n');break;
+                default:safe=false;out.append("// ").append(z).append('\n');break;
+            }
+        }
+        if(statements==0 && safe)return "// Method body contains no reconstructable statements\n";
+        if(!safe)out.insert(0,"// C# reconstruction is partial for this method; original CIL is retained below.\n");
+        return out.toString().trim();
+    }
+    private static boolean binary(ArrayDeque<String>s,String op){if(s.size()<2)return false;String r=s.pop(),l=s.pop();s.push("("+l+" "+op+" "+r+")");return true;}
+
+    private String decodeMethodIL(MethodDef m){if(m.rva==0)return "";int off=rva(sections,m.rva);if(off<0||off>=image.length)return "";int p=off;int first=image[p]&255;int codeSize;if((first&3)==2){codeSize=first>>>2;p++;}else{int flags=u16(image,p);if((flags&3)!=3)return "";int headerWords=((flags>>>12)&15);p+=headerWords*4;codeSize=u32(image,off+4)&0x7fffffff;}
+        if(codeSize<0||p+codeSize>image.length)return "";int end=p+codeSize;StringBuilder s=new StringBuilder();while(p<end){int at=p-off;int op=image[p++]&255;String name=opcodeName(op);if(op==0xFE&&p<end){int op2=image[p++]&255;name=opcodeName(0xFE00|op2);}String operand="";int n=operandSize(name);if(n>0){if(p+n>end){operand="<truncated>";p=end;}else{operand=operandValue(name,p,n);p+=n;}}s.append(String.format(Locale.ROOT,"IL_%04X: %s",at,name));if(!operand.isEmpty())s.append(' ').append(operand);s.append('\n');}return s.toString().trim();}
+
+    private String operandValue(String name,int p,int n){long v=0;for(int i=0;i<n;i++)v|=(long)(image[p+i]&255)<<(8*i);if(name.equals("ldstr")){int tok=(int)v;String us=resolveUserString(tok);if(us!=null)return "\""+escape(us)+"\"";} if(name.contains("token")||name.equals("call")||name.equals("callvirt")||name.equals("newobj")||name.equals("ldfld")||name.equals("stfld")||name.equals("ldsfld")||name.equals("stsfld")){int tok=(int)v;String resolved=resolveToken(tok);if(resolved!=null)return String.format(Locale.ROOT,"0x%08X /* %s */",tok,resolved);}if(n==1)return Integer.toString((byte)v);if(n==2)return Integer.toString((short)v);if(n==4)return Integer.toString((int)v);return Long.toString(v);}
+    private int operandSize(String n){if(n==null)return 0; if(n.equals("ldstr")||n.equals("call")||n.equals("callvirt")||n.equals("newobj")||n.equals("ldfld")||n.equals("stfld")||n.equals("ldsfld")||n.equals("stsfld")||n.equals("ldtoken"))return 4;if(n.endsWith(".s")||n.equals("ldc.i4.s"))return 1;if(n.startsWith("ldarg")||n.startsWith("ldloc")||n.startsWith("stloc"))return 2;if(n.equals("ldc.i4")||n.equals("br")||n.startsWith("br")||n.equals("leave")||n.equals("ldc.r4")||n.equals("ldc.i8"))return n.equals("ldc.i8")?8:4;if(n.equals("ldc.r8"))return 8;return 0;}
+
+    private String resolveToken(int tok){String s=tokenNames.get(tok);if(s!=null)return s;int table=(tok>>>24)&255,rid=tok&0xffffff;try{if(rid<=0)return null;Row r=tables.row(table,rid-1);if(r==null)return null;if(table==1)return tokenNames.computeIfAbsent(tok,k->str(r.strIndex(1))+"."+str(r.strIndex(2)));if(table==2)return tokenNames.computeIfAbsent(tok,k->str(r.strIndex(1)));if(table==4)return tokenNames.computeIfAbsent(tok,k->str(r.strIndex(1)));if(table==6)return tokenNames.computeIfAbsent(tok,k->str(r.strIndex(3)));if(table==10)return tokenNames.computeIfAbsent(tok,k->str(r.strIndex(1)));if(table==27)return tokenNames.computeIfAbsent(tok,k->"TypeSpec");}catch(Exception ignored){}return null;}
+    private String resolveTypeToken(int tok){
+        if(tok==0)return "";
+        String cached=tokenNames.get(tok); if(cached!=null)return cached;
+        int table=(tok>>>24)&255, rid=tok&0xffffff; if(rid<=0)return "";
+        try{Row r=tables.row(table,rid-1); if(r==null)return ""; String value;
+            if(table==1) value=str(r.strIndex(2))+"."+str(r.strIndex(1));
+            else if(table==2) value=str(r.strIndex(2))+"."+str(r.strIndex(1));
+            else if(table==27) value="TypeSpec"; else value=resolveToken(tok);
+            if(value==null)value=""; tokenNames.put(tok,value); return value;
+        }catch(Exception ignored){return "";}
+    }
+    private String resolveUserString(int tok){
+        if((tok>>>24)!=0x70 || usBase==0)return null;
+        int ix=tok&0x00ffffff; if(ix<=0)return null; int p=usBase+ix; if(p<0||p>=image.length)return null;
+        int[] q={p}; int len=readCompressed(image,q); if(q[0]+len>image.length||len<1)return null;
+        int chars=(len-1)/2; return new String(image,q[0],chars*2,StandardCharsets.UTF_16LE);
+    }
+    private static String escape(String s){return s.replace("\\","\\\\").replace("\"","\\\"").replace("\n","\\n").replace("\r","\\r").replace("\t","\\t");}
+    private String resolveMethodToken(int tok){return resolveToken(tok);}
+    private int parseToken(String s){try{int i=s.indexOf("0x");if(i>=0)return (int)Long.parseLong(s.substring(i+2).split(" ")[0],16);}catch(Exception ignored){}return 0;}
+
+    private String decodeFieldSig(int blobIx){byte[] x=blob(blobIx);if(x.length<2)return "object";int[] p={0};int cc=x[p[0]++]&255;if(cc==0x06)return decodeType(x,p);return decodeType(x,new int[]{0});}
+    private String decodePropertySig(int blobIx){byte[]x=blob(blobIx);if(x.length<2)return "object";int[]p={0};p[0]++;readCompressed(x,p);String ret=decodeType(x,p);return ret;}
+    private MethodSig decodeMethodSig(int blobIx){byte[]x=blob(blobIx);if(x.length==0)return new MethodSig("void",new String[0]);int[]p={0};int cc=x[p[0]++]&255;if((cc&0x10)!=0)readCompressed(x,p);int count=readCompressed(x,p);String ret=decodeType(x,p);String[]params=new String[count];for(int i=0;i<count&&p[0]<x.length;i++)params[i]=decodeType(x,p);return new MethodSig(ret,params);}
+    private String decodeType(byte[]x,int[]p){if(p[0]>=x.length)return "object";int e=x[p[0]++]&255;switch(e){case 0x01:return"void";case 0x02:return"bool";case 0x03:return"char";case 0x04:return"sbyte";case 0x05:return"byte";case 0x06:return"short";case 0x07:return"ushort";case 0x08:return"int";case 0x09:return"uint";case 0x0A:return"long";case 0x0B:return"ulong";case 0x0C:return"float";case 0x0D:return"double";case 0x0E:return"string";case 0x10:return decodeType(x,p)+"&";case 0x0F:return decodeType(x,p)+"*";case 0x11:case 0x12:{int coded=readCompressed(x,p);return simple(resolveTypeToken(decodeSigToken(coded)));}case 0x13:return"T"+readCompressed(x,p);case 0x1E:return"!!"+readCompressed(x,p);case 0x1D:return decodeType(x,p)+"[]";case 0x14:{String elem=decodeType(x,p);int rank=readCompressed(x,p);int ns=readCompressed(x,p);int sizes=readCompressed(x,p);for(int i=0;i<sizes;i++)readCompressed(x,p);int lbs=readCompressed(x,p);for(int i=0;i<lbs;i++)readCompressed(x,p);return elem+"["+",".repeat(Math.max(0,rank-1))+"]";}case 0x15:{readCompressed(x,p);int n=readCompressed(x,p);String base=decodeType(x,p);String[]args=new String[n];for(int i=0;i<n;i++)args[i]=decodeType(x,p);return simple(base)+"<"+String.join(", ",args)+">";}case 0x16:return"typedref";case 0x18:return"native int";case 0x19:return"native uint";case 0x1B:return"methodptr";case 0x1C:return"object";default:return"object";}}
+    private int decodeSigToken(int coded){int tag=coded&3,rid=coded>>>2;int table=switch(tag){case 0->2;case 1->1;default->27;};return table<<24|rid;}
+    private int readCompressed(byte[]x,int[]p){if(p[0]>=x.length)return 0;int b=x[p[0]++]&255;if((b&0x80)==0)return b;if((b&0xC0)==0x80){if(p[0]>=x.length)return 0;return((b&0x3F)<<8)|(x[p[0]++]&255);}if(p[0]+2>=x.length)return 0;return((b&0x1F)<<24)|((x[p[0]++]&255)<<16)|((x[p[0]++]&255)<<8)|(x[p[0]++]&255);}
+    private byte[] blob(int ix){if(blobBase==0||ix<=0)return new byte[0];int p=blobBase+ix;int[]q={p};int len=readCompressed(image,q);if(q[0]<0||q[0]+len>image.length)return new byte[0];return Arrays.copyOfRange(image,q[0],q[0]+len);}
+    private String str(int ix){if(ix<=0)return"";int p=stringsBase+ix;if(p<0||p>=image.length)return"";int e=p;while(e<image.length&&image[e]!=0)e++;return new String(image,p,e-p,StandardCharsets.UTF_8);}
+
+    private static String access(int flags){int a=flags&7;return switch(a){case 1->"public ";case 2,3->"private ";case 4->"protected ";case 5->"internal ";default->"";};}
+    private static String fieldAccess(int flags){return switch(flags&7){case 1->"public ";case 2->"private ";case 4->"family ";default->"private ";};}
+    private static String methodAccess(int flags){String s=switch(flags&7){case 1->"public ";case 2->"private ";case 4->"protected ";case 6->"protected internal ";default->"private ";};if((flags&0x10)!=0)s+="static ";if((flags&0x40)!=0)s+="virtual ";if((flags&0x400)!=0)s+="abstract ";return s;}
+    private static String simple(String s){if(s==null)return"object";int i=s.lastIndexOf('.');return i>=0?s.substring(i+1):s;}
+    private static String indent(int n){return"    ".repeat(Math.max(0,n));}
+    private static String opcodeName(int op){return OPCODES.getOrDefault(op,"op_"+Integer.toHexString(op));}
+    private static final Map<Integer,String> OPCODES=new HashMap<>();static{String[][]a={{"00","nop"},{"01","break"},{"02","ldarg.0"},{"03","ldarg.1"},{"04","ldarg.2"},{"05","ldarg.3"},{"06","ldloc.0"},{"07","ldloc.1"},{"08","ldloc.2"},{"09","ldloc.3"},{"0A","stloc.0"},{"0B","stloc.1"},{"0C","stloc.2"},{"0D","stloc.3"},{"0E","ldarg.s"},{"0F","ldarga.s"},{"10","starg.s"},{"11","ldloc.s"},{"12","ldloca.s"},{"13","stloc.s"},{"14","ldnull"},{"15","ldc.i4.m1"},{"16","ldc.i4.0"},{"17","ldc.i4.1"},{"18","ldc.i4.2"},{"19","ldc.i4.3"},{"1A","ldc.i4.4"},{"1B","ldc.i4.5"},{"1C","ldc.i4.6"},{"1D","ldc.i4.7"},{"1E","ldc.i4.8"},{"1F","ldc.i4.s"},{"20","ldc.i4"},{"21","ldc.i8"},{"22","ldc.r4"},{"23","ldc.r8"},{"25","dup"},{"26","pop"},{"28","call"},{"29","calli"},{"2A","ret"},{"2B","br.s"},{"2C","brfalse.s"},{"2D","brtrue.s"},{"2E","beq.s"},{"2F","bge.s"},{"30","bgt.s"},{"31","ble.s"},{"32","blt.s"},{"33","bne.un.s"},{"34","bge.un.s"},{"35","bgt.un.s"},{"36","ble.un.s"},{"37","blt.un.s"},{"38","br"},{"39","brfalse"},{"3A","brtrue"},{"3B","beq"},{"3C","bge"},{"3D","bgt"},{"3E","ble"},{"3F","blt"},{"40","bne.un"},{"41","bge.un"},{"42","bgt.un"},{"43","ble.un"},{"44","blt.un"},{"45","switch"},{"46","ldind.i1"},{"47","ldind.u1"},{"48","ldind.i2"},{"49","ldind.u2"},{"4A","ldind.i4"},{"4B","ldind.u4"},{"4C","ldind.i8"},{"4D","ldind.i"},{"4E","ldind.r4"},{"4F","ldind.r8"},{"50","ldind.ref"},{"51","stind.ref"},{"52","stind.i1"},{"53","stind.i2"},{"54","stind.i4"},{"55","stind.i8"},{"56","stind.i"},{"57","stind.r4"},{"58","stind.r8"},{"59","add"},{"5A","sub"},{"5B","mul"},{"5C","div"},{"5D","div.un"},{"5E","rem"},{"5F","rem.un"},{"60","and"},{"61","or"},{"62","xor"},{"63","shl"},{"64","shr"},{"65","shr.un"},{"66","neg"},{"67","not"},{"68","conv.i1"},{"69","conv.i2"},{"6A","conv.i4"},{"6B","conv.i8"},{"6C","conv.r4"},{"6D","conv.r8"},{"6F","callvirt"},{"70","cpobj"},{"71","ldobj"},{"72","ldstr"},{"73","newobj"},{"74","castclass"},{"75","isinst"},{"76","conv.r.un"},{"79","unbox"},{"7A","throw"},{"7B","ldfld"},{"7C","ldflda"},{"7D","stfld"},{"7E","ldsfld"},{"7F","ldsflda"},{"80","stsfld"},{"81","stobj"},{"8C","box"},{"8D","newarr"},{"8E","ldlen"},{"8F","ldelema"},{"90","ldelem.i1"},{"91","ldelem.u1"},{"92","ldelem.i2"},{"93","ldelem.u2"},{"94","ldelem.i4"},{"95","ldelem.u4"},{"96","ldelem.i8"},{"97","ldelem.i"},{"98","ldelem.r4"},{"99","ldelem.r8"},{"9A","ldelem.ref"},{"9B","stelem.i"},{"9C","stelem.i1"},{"9D","stelem.i2"},{"9E","stelem.i4"},{"9F","stelem.i8"},{"A0","stelem.r4"},{"A1","stelem.r8"},{"A2","stelem.ref"},{"A3","ldelem"},{"A4","stelem"},{"A5","unbox.any"},{"B3","conv.u4"},{"B4","conv.u8"},{"B5","conv.i"},{"B6","conv.ovf.i"},{"B7","conv.ovf.u"},{"B8","add.ovf"},{"B9","add.ovf.un"},{"BA","mul.ovf"},{"BB","mul.ovf.un"},{"BC","sub.ovf"},{"BD","sub.ovf.un"},{"BE","endfinally"},{"C2","refanytype"},{"C3","readonly"},{"D0","ldtoken"},{"D1","conv.u2"},{"D2","conv.u1"},{"D3","conv.i1"},{"D4","conv.i2"},{"D5","conv.i"},{"D6","conv.ovf.i1"},{"D7","conv.ovf.u1"},{"D8","conv.ovf.i2"},{"D9","conv.ovf.u2"},{"DA","conv.ovf.i4"},{"DB","conv.ovf.u4"},{"DC","conv.ovf.i8"},{"DD","conv.ovf.u8"},{"DE","starg"},{"DF","ldarg"},{"E0","ceq"},{"E1","cgt"},{"E2","cgt.un"},{"E3","clt"},{"E4","clt.un"},{"FE00","arglist"},{"FE01","ceq"},{"FE02","cgt"},{"FE03","cgt.un"},{"FE04","clt"},{"FE05","clt.un"},{"FE09","ldarg"},{"FE0A","ldarga"},{"FE0B","starg"},{"FE0C","ldloc"},{"FE0D","ldloca"},{"FE0E","stloc"},{"FE16","constrained"},{"FE1A","readonly"}};for(String[]x:a)OPCODES.put(Integer.parseInt(x[0],16),x[1]);}
+
+    private static final class MethodSig{final String ret;final String[]params;MethodSig(String r,String[]p){ret=r;params=p;}}
+    private static final class Section{final int va,vs,raw,rs;Section(int a,int b,int c,int d){va=a;vs=b;raw=c;rs=d;}}
+    private static int rva(Section[]s,int r){for(Section x:s)if(r>=x.va&&r<x.va+Math.max(x.vs,x.rs))return x.raw+(r-x.va);return -1;}
+    private static byte[] read(File f)throws IOException{try(InputStream in=new FileInputStream(f);ByteArrayOutputStream o=new ByteArrayOutputStream()){byte[]b=new byte[65536];int n;while((n=in.read(b))!=-1)o.write(b,0,n);return o.toByteArray();}}
+    private static int u16(byte[]b,int p){return p>=0&&p+2<=b.length?(b[p]&255)|((b[p+1]&255)<<8):0;}
+    private static int u32(byte[]b,int p){return p>=0&&p+4<=b.length?(b[p]&255)|((b[p+1]&255)<<8)|((b[p+2]&255)<<16)|((b[p+3]&255)<<24):0;}
+
+    /** Generic ECMA-335 table reader. */
+    private static final class Tables {
+        final byte[] b;final int base;final int[] rows=new int[64];final int[] rowSizes=new int[64];final int[] offsets=new int[64];final int heapFlags;final Map<String,int[]> coded=new HashMap<>();
+        private Tables(byte[]b,int base){this.b=b;this.base=base;heapFlags=b[base+6]&255;}
+        static Tables read(byte[]b,int base)throws IOException{Tables t=new Tables(b,base);int validLo=u32(b,base+8),validHi=u32(b,base+12);int p=base+24;for(int i=0;i<64;i++){if(i<32&&((validLo>>>i)&1)!=0)t.rows[i]=u32(b,p++);else if(i>=32&&((validHi>>>(i-32))&1)!=0)t.rows[i]=u32(b,p++);}for(int id=0;id<64;id++){if(t.rows[id]==0)continue;t.offsets[id]=p;t.rowSizes[id]=t.rowSize(id);if(t.rowSizes[id]<=0)throw new IOException("Unsupported metadata table schema "+id);p+=t.rowSizes[id]*t.rows[id];if(p<0||p>b.length)throw new IOException("Metadata table exceeds file");}return t;}
+        int count(int id){return id>=0&&id<64?rows[id]:0;}
+        Row row(int id,int index){if(id<0||id>=64||index<0||index>=rows[id])return null;return new Row(this,id,offsets[id]+index*rowSizes[id]);}
+        int indexSize(int id){return rows[id]>65535?4:2;}int heapSize(int bit){return (heapFlags&bit)!=0?4:2;}
+        int codedSize(String name){int[]d=CODED.get(name);int max=0;for(int i=0;i<d.length;i++)max=Math.max(max,rows[d[i]]);int bits=0;switch(name){case"TypeDefOrRef":case"HasConstant":case"HasFieldMarshal":case"HasDeclSecurity":case"HasSemantics":case"MethodDefOrRef":case"MemberForwarded":case"Implementation":case"CustomAttributeType":case"ResolutionScope":case"TypeOrMethodDef":case"MemberRefParent":break;default:break;}int tagBits=TAG_BITS.getOrDefault(name,2);return max<(1<<(16-tagBits))?2:4;}
+        int rowSize(int id){Col[]c=SCHEMA.get(id);if(c==null)return -1;int n=0;for(Col x:c)n+=x.size(this);return n;}
+        String str(int strings,int ix){if(ix<=0||strings<=0)return"";int p=strings+ix;if(p<0||p>=b.length)return"";int e=p;while(e<b.length&&b[e]!=0)e++;return new String(b,p,e-p,StandardCharsets.UTF_8);}
+        static final class Col{final int k;final int v;Col(int k,int v){this.k=k;this.v=v;}int size(Tables t){return switch(k){case U2->2;case U4->4;case STR->t.heapSize(1);case GUID->t.heapSize(2);case BLOB->t.heapSize(4);case TAB->t.indexSize(v);case COD->t.codedSize(CODED_NAME[v]);default->0;};}}
+        static final int U2=1,U4=2,STR=3,GUID=4,BLOB=5,TAB=6,COD=7;static final String[] CODED_NAME={"","TypeDefOrRef","HasConstant","HasCustomAttribute","HasFieldMarshal","HasDeclSecurity","MemberRefParent","HasSemantics","MethodDefOrRef","MemberForwarded","Implementation","CustomAttributeType","ResolutionScope","TypeOrMethodDef"};
+        static final Map<String,Integer> TAG_BITS=new HashMap<>(); static { TAG_BITS.put("TypeDefOrRef",2); TAG_BITS.put("HasConstant",2); TAG_BITS.put("HasCustomAttribute",5); TAG_BITS.put("HasFieldMarshal",1); TAG_BITS.put("HasDeclSecurity",2); TAG_BITS.put("MemberRefParent",3); TAG_BITS.put("HasSemantics",1); TAG_BITS.put("MethodDefOrRef",1); TAG_BITS.put("MemberForwarded",1); TAG_BITS.put("Implementation",2); TAG_BITS.put("CustomAttributeType",3); TAG_BITS.put("ResolutionScope",2); TAG_BITS.put("TypeOrMethodDef",1); }
+        static final Map<String,int[]>CODED=new HashMap<>();static{CODED.put("TypeDefOrRef",new int[]{2,1,27});CODED.put("HasConstant",new int[]{4,8,23});CODED.put("HasCustomAttribute",new int[]{6,10,9,0,4,8,23,20,17,26,27,32,35,1,2,38,39,40,42,43,44});CODED.put("HasFieldMarshal",new int[]{4,8});CODED.put("HasDeclSecurity",new int[]{2,6,32});CODED.put("MemberRefParent",new int[]{2,1,26,6,27});CODED.put("HasSemantics",new int[]{20,23});CODED.put("MethodDefOrRef",new int[]{6,10});CODED.put("MemberForwarded",new int[]{4,6});CODED.put("Implementation",new int[]{38,35,39});CODED.put("CustomAttributeType",new int[]{6,10});CODED.put("ResolutionScope",new int[]{0,26,35,1});CODED.put("TypeOrMethodDef",new int[]{2,6});}
+        static Col S(){return new Col(STR,0);}static Col B(){return new Col(BLOB,0);}static Col U2(){return new Col(Tables.U2,0);}static Col U4(){return new Col(Tables.U4,0);}static Col T(int id){return new Col(TAB,id);}static Col C(String n){return new Col(COD,Arrays.asList(CODED_NAME).indexOf(n));}
+        static final Map<Integer,Col[]>SCHEMA=new HashMap<>();static{SCHEMA.put(0,new Col[]{U2(),S(),G(),G(),G()});SCHEMA.put(1,new Col[]{C("ResolutionScope"),S(),S()});SCHEMA.put(2,new Col[]{U4(),S(),S(),C("TypeDefOrRef"),T(4),T(6)});SCHEMA.put(3,new Col[]{T(2),T(1)});SCHEMA.put(4,new Col[]{U2(),S(),B()});SCHEMA.put(5,new Col[]{T(6)});SCHEMA.put(6,new Col[]{U4(),U2(),U2(),S(),B(),T(8)});SCHEMA.put(7,new Col[]{T(8)});SCHEMA.put(8,new Col[]{U2(),U2(),S()});SCHEMA.put(9,new Col[]{T(2),C("TypeDefOrRef")});SCHEMA.put(10,new Col[]{C("MemberRefParent"),S(),B()});SCHEMA.put(11,new Col[]{U2(),C("HasConstant"),B()});SCHEMA.put(12,new Col[]{C("HasCustomAttribute"),C("CustomAttributeType"),B()});SCHEMA.put(13,new Col[]{C("HasFieldMarshal"),B()});SCHEMA.put(14,new Col[]{U2(),C("HasDeclSecurity"),B()});SCHEMA.put(15,new Col[]{U2(),U4(),T(2)});SCHEMA.put(16,new Col[]{U4(),T(4)});SCHEMA.put(17,new Col[]{B()});SCHEMA.put(18,new Col[]{T(2),T(20)});SCHEMA.put(19,new Col[]{T(20)});SCHEMA.put(20,new Col[]{U2(),S(),C("TypeDefOrRef")});SCHEMA.put(21,new Col[]{T(2),T(23)});SCHEMA.put(22,new Col[]{T(23)});SCHEMA.put(23,new Col[]{U2(),S(),B()});SCHEMA.put(24,new Col[]{U2(),T(6),C("HasSemantics")});SCHEMA.put(25,new Col[]{T(2),C("MethodDefOrRef"),C("MethodDefOrRef")});SCHEMA.put(26,new Col[]{S()});SCHEMA.put(27,new Col[]{B()});SCHEMA.put(28,new Col[]{U2(),C("MemberForwarded"),S(),T(26)});SCHEMA.put(29,new Col[]{U4(),T(4)});SCHEMA.put(30,new Col[]{U4(),U4(),T(32)});SCHEMA.put(31,new Col[]{U4()});SCHEMA.put(32,new Col[]{U4(),U2(),U2(),U2(),U2(),U4(),S(),S(),B()});SCHEMA.put(33,new Col[]{U4()});SCHEMA.put(34,new Col[]{U4(),U4(),U4()});SCHEMA.put(35,new Col[]{U2(),U2(),U2(),U2(),U4(),S(),S(),B()});SCHEMA.put(36,new Col[]{U4(),T(6),T(35)});SCHEMA.put(37,new Col[]{U4(),U4(),U4(),T(35)});SCHEMA.put(38,new Col[]{U4(),S(),B()});SCHEMA.put(39,new Col[]{U4(),U4(),U2(),C("Implementation"),S(),S()});SCHEMA.put(40,new Col[]{U4(),U4(),S(),S(),U2()});SCHEMA.put(41,new Col[]{T(2),T(2)});SCHEMA.put(42,new Col[]{U2(),U2(),C("TypeOrMethodDef"),S()});SCHEMA.put(43,new Col[]{C("MethodDefOrRef"),B()});SCHEMA.put(44,new Col[]{C("TypeDefOrRef"),B()});}
+        static Col G(){return new Col(GUID,0);}
+    }
+    private static final class Row{final Tables t;final int id,p;Row(Tables t,int id,int p){this.t=t;this.id=id;this.p=p;}int u2(int c){return u16(t.b,p+offset(c));}int u4(int c){return u32(t.b,p+offset(c));}int strIndex(int c){return idx(c,Tables.STR);}int blobIndex(int c){return idx(c,Tables.BLOB);}int table(int c){return idx(c,Tables.TAB);}int coded(int c,String name){return coded(c,name,Tables.COD);}private int idx(int c,int kind){int off=offset(c);int size=sizes()[c];return size==4?u32(t.b,p+off):u16(t.b,p+off);}private int coded(int c,String name,int kind){int raw=idx(c,kind);int bits=Tables.TAG_BITS.getOrDefault(name,2);int tag=raw&((1<<bits)-1);int rid=raw>>>bits;int[]d=Tables.CODED.get(name);return d!=null&&tag<d.length?(d[tag]<<24)|rid:0;}private int offset(int c){int o=0;Tables.Col[]cs=Tables.SCHEMA.get(id);for(int i=0;i<c;i++)o+=cs[i].size(t);return o;}private int[]sizes(){Tables.Col[]cs=Tables.SCHEMA.get(id);int[]s=new int[cs.length];for(int i=0;i<s.length;i++)s[i]=cs[i].size(t);return s;}}
+}

@@ -52,6 +52,8 @@ import org.json.JSONObject;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.InputStreamReader;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -610,6 +612,10 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
         if (n.endsWith(".ts") || n.endsWith(".tsx")) return "javascript";
         if (n.endsWith(".md") || n.endsWith(".markdown")) return "markdown";
         if (n.endsWith(".py")) return "python";
+        if (n.endsWith(".gd") || n.endsWith(".gdscript")) return "gdscript";
+        if (n.endsWith(".rpy")) return "renpy";
+        if (n.endsWith(".tscn") || n.endsWith(".tres")) return "godot-resource";
+        if (n.endsWith(".shader") || n.endsWith(".gdshader")) return "gdshader";
         return null;
     }
 
@@ -621,10 +627,13 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
         try {
             initTMStatic(context);
             ThemeRegistry registry = ThemeRegistry.getInstance();
-            boolean dark = (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
-            int appTheme = PreferenceManager.getDefaultSharedPreferences(context).getInt("theme", dark ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light);
-            String themeName = appTheme == R.style.Theme_MyApp_Light ? "light.json" : "dark.json";
-            IThemeSource themeSource = IThemeSource.fromInputStream(context.getAssets().open("themes/" + themeName), themeName, null);
+            int appTheme = PreferenceManager.getDefaultSharedPreferences(context).getInt("theme",
+                    (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+                            ? R.style.Theme_MyApp_Dark : R.style.Theme_MyApp_Light);
+            String themeName = "um-" + appTheme + ".json";
+            String themeJson = EditorThemeProvider.themeJson(appTheme);
+            IThemeSource themeSource = IThemeSource.fromInputStream(
+                    new ByteArrayInputStream(themeJson.getBytes(StandardCharsets.UTF_8)), themeName, null);
             try {
                 registry.loadTheme(themeSource);
                 registry.setTheme(themeName);
@@ -658,16 +667,16 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
     public void applyPreferences() {
         SharedPreferences editorPrefs = requireContext().getSharedPreferences("editor_prefs", Context.MODE_PRIVATE);
         if (!isSmali) {
-            String colorScheme = editorPrefs.getString("pref_theme", "drac");
-            EditorColorScheme ecs = switch (colorScheme) {
-                case "drac" -> new SchemeDarcula();
-                case "ecl" -> new SchemeEclipse();
-                case "vs" -> new SchemeVS2019();
-                case "gh" -> new SchemeGitHub();
-                case "np" -> new SchemeNotepadXX();
-                default -> null;
-            };
-            if (ecs != null) editor.setColorScheme(ecs);
+            // TextMate languages receive their token palette from the currently
+            // selected UM application theme. Do not overwrite it with Sora's
+            // unrelated built-in schemes. Java keeps a Sora scheme because its
+            // language implementation is not TextMate-backed in this editor.
+            boolean textMateDocument = type == TYPE_TEXT && languageKeyFor(getDocumentName()) != null;
+            if (!textMateDocument) {
+                editor.setColorScheme(EditorThemeProvider.soraSchemeFor(
+                        PreferenceManager.getDefaultSharedPreferences(requireContext()).getInt(
+                                "theme", R.style.Theme_MyApp_Dark)));
+            }
         }
         String fontType = editorPrefs.getString("font_type", "normal");
         Typeface typeface = fontType.equals("normal") ? Typeface.DEFAULT : Typeface.MONOSPACE;
@@ -1646,4 +1655,55 @@ public class UnifiedEditorFragment extends Fragment implements SmaliMethodFieldL
             new ErrorUtil(getActivity()).showError(e);
         }
     }
+
+    /** Theme-aware syntax palette used by TextMate grammars and Sora fallback editors. */
+    private static final class EditorThemeProvider {
+        private static String themeJson(int theme) {
+            String[] p = palette(theme);
+            String bg=p[0], fg=p[1], primary=p[2], secondary=p[3], green=p[4], yellow=p[5], red=p[6], purple=p[7], comment=p[8];
+            return "{\"name\":\"UM Theme\",\"settings\":["
+                    + "{\"settings\":{\"background\":\"" + bg + "\",\"foreground\":\"" + fg + "\"}},"
+                    + "{\"scope\":[\"comment\",\"punctuation.definition.comment\"],\"settings\":{\"foreground\":\"" + comment + "\",\"fontStyle\":\"italic\"}},"
+                    + "{\"scope\":[\"keyword\",\"storage\",\"storage.type\",\"storage.modifier\"],\"settings\":{\"foreground\":\"" + purple + "\"}},"
+                    + "{\"scope\":[\"entity.name.function\",\"support.function\",\"meta.function-call\"],\"settings\":{\"foreground\":\"" + primary + "\"}},"
+                    + "{\"scope\":[\"entity.name.type\",\"support.type\",\"entity.name.class\"],\"settings\":{\"foreground\":\"" + secondary + "\"}},"
+                    + "{\"scope\":[\"string\",\"string.quoted\",\"constant.other.symbol\"],\"settings\":{\"foreground\":\"" + green + "\"}},"
+                    + "{\"scope\":[\"constant.numeric\",\"constant.language\"],\"settings\":{\"foreground\":\"" + yellow + "\"}},"
+                    + "{\"scope\":[\"constant.language.boolean\",\"constant.language.null\",\"variable.language\"],\"settings\":{\"foreground\":\"" + red + "\"}},"
+                    + "{\"scope\":[\"variable\",\"variable.other\",\"parameter\"],\"settings\":{\"foreground\":\"" + fg + "\"}},"
+                    + "{\"scope\":[\"entity.name.tag\",\"entity.other.attribute-name\",\"support.type.property-name\"],\"settings\":{\"foreground\":\"" + secondary + "\"}},"
+                    + "{\"scope\":[\"punctuation.definition.string\",\"punctuation.separator\",\"punctuation.accessor\"],\"settings\":{\"foreground\":\"" + fg + "\"}}]}";
+        }
+        private static String[] palette(int t) {
+            if (t == R.style.Theme_MyApp_TokyoNight || t == R.style.Theme_MyApp_Aurora) return new String[]{"#1A1B26","#A9B1D6","#7AA2F7","#7DCFFF","#9ECE6A","#E0AF68","#F7768E","#BB9AF7","#565F89"};
+            if (t == R.style.Theme_MyApp_TokyoNightDay) return new String[]{"#E6E7ED","#3760BF","#2E7DE9","#006C9C","#587539","#8C6C3E","#F52A65","#9854F1","#848CB5"};
+            if (t == R.style.Theme_MyApp_Dracula) return new String[]{"#282A36","#F8F8F2","#8BE9FD","#50FA7B","#50FA7B","#F1FA8C","#FF5555","#BD93F9","#6272A4"};
+            if (t == R.style.Theme_MyApp_Nord) return new String[]{"#2E3440","#D8DEE9","#88C0D0","#81A1C1","#A3BE8C","#EBCB8B","#BF616A","#B48EAD","#616E88"};
+            if (t == R.style.Theme_MyApp_Catppuccin) return new String[]{"#1E1E2E","#CDD6F4","#89B4FA","#74C7EC","#A6E3A1","#F9E2AF","#F38BA8","#CBA6F7","#6C7086"};
+            if (t == R.style.Theme_MyApp_Gruvbox) return new String[]{"#282828","#EBDBB2","#83A598","#8EC07C","#B8BB26","#FABD2F","#FB4934","#D3869B","#928374"};
+            if (t == R.style.Theme_MyApp_Monochrome) return new String[]{"#121212","#F2F2F2","#FFFFFF","#BDBDBD","#E0E0E0","#FFFFFF","#B0B0B0","#D0D0D0","#777777"};
+            if (t == R.style.Theme_MyApp_BloodLilith) return new String[]{"#170A10","#F6D9E1","#FF365E","#FF8AA2","#63E6BE","#FFD166","#FF365E","#D88CFF","#875566"};
+            if (t == R.style.Theme_MyApp_YinYang) return new String[]{"#121212","#F2F2F2","#FFFFFF","#BBBBBB","#E6E6E6","#FFFFFF","#AAAAAA","#DDDDDD","#777777"};
+            if (t == R.style.Theme_MyApp_AuroraOcean) return new String[]{"#0A1B27","#D9F4FF","#59D7FF","#79B8FF","#63E6BE","#FFE08A","#FF7B9C","#C5A3FF","#557B8B"};
+            if (t == R.style.Theme_MyApp_AuroraSunset) return new String[]{"#24131D","#FFE7DC","#FF8A65","#FFB86C","#8BE9FD","#FFD166","#FF5577","#D9A3FF","#8B6572"};
+            if (t == R.style.Theme_MyApp_AuroraEmerald) return new String[]{"#0D2118","#DDFBEF","#63E6BE","#7AD7C1","#9BE564","#FFE08A","#FF7B9C","#C8A3FF","#557C69"};
+            if (t == R.style.Theme_MyApp_Cyberpunk) return new String[]{"#120C1D","#F4F1FF","#FFEA00","#59D7FF","#63E6BE","#FFEA00","#FF4D8D","#D98CFF","#765F8A"};
+            if (t == R.style.Theme_MyApp_Light) return new String[]{"#FAFAFA","#202124","#1A73E8","#0077CC","#188038","#B06000","#D93025","#7B1FA2","#5F6368"};
+            if (t == R.style.Theme_MyApp_Black) return new String[]{"#000000","#F5F5F5","#FFFFFF","#BDBDBD","#81C784","#FFD54F","#FF5252","#CE93D8","#757575"};
+            return new String[]{"#121212","#F2F2F2","#FF3D71","#8FA7FF","#69E3A6","#FFD166","#FF6B7A","#C7A0FF","#777777"};
+        }
+        private static EditorColorScheme soraSchemeFor(int t) {
+            // Keep the editor background/foreground coherent with the selected app theme.
+            // Token-level highlighting for Java/Smali remains supplied by Sora's language.
+            String[] p=palette(t);
+            EditorColorScheme s = new SchemeDarcula();
+            s.setColor(EditorColorScheme.WHOLE_BACKGROUND, android.graphics.Color.parseColor(p[0]));
+            s.setColor(EditorColorScheme.TEXT_NORMAL, android.graphics.Color.parseColor(p[1]));
+            s.setColor(EditorColorScheme.LINE_NUMBER, android.graphics.Color.parseColor(p[8]));
+            s.setColor(EditorColorScheme.LINE_DIVIDER, android.graphics.Color.parseColor(p[0]));
+            s.setColor(EditorColorScheme.SELECTION_HANDLE, android.graphics.Color.parseColor(p[2]));
+            return s;
+        }
+    }
+
 }

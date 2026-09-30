@@ -3886,11 +3886,30 @@ public class MainActivity extends AppCompatActivity {
             });
             list.addView(row);
         }
+        ScrollView pickerScroll = new ScrollView(this);
+        pickerScroll.setFillViewport(true);
+        pickerScroll.setClipToPadding(false);
+        pickerScroll.setPadding(0, 0, 0, dpToPx(4));
+        pickerScroll.addView(list, new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         AlertDialog picker = new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.choose_theme)
-                .setView(list)
+                .setView(pickerScroll)
                 .setNegativeButton(android.R.string.cancel, null)
                 .create();
+        picker.setOnShowListener(dialog -> {
+            int maxHeight = (int) (getResources().getDisplayMetrics().heightPixels * 0.62f);
+            View dialogView = picker.findViewById(com.google.android.material.R.id.alertTitle);
+            android.view.Window window = picker.getWindow();
+            if (window != null) {
+                window.setLayout(Math.min((int) (getResources().getDisplayMetrics().widthPixels * 0.94f),
+                        (int) (getResources().getDisplayMetrics().widthPixels * 0.96f)),
+                        ViewGroup.LayoutParams.WRAP_CONTENT);
+            }
+            ViewGroup.LayoutParams lp = pickerScroll.getLayoutParams();
+            lp.height = maxHeight;
+            pickerScroll.setLayoutParams(lp);
+        });
         picker.show();
     }
 

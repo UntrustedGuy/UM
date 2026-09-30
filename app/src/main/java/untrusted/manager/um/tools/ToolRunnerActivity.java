@@ -316,6 +316,24 @@ public class ToolRunnerActivity extends AppCompatActivity {
         setContentView(root);
         untrusted.manager.um.utils.EdgeToEdgeUtil.applyContentInsets(this);
         String id = toolId;
+        if ("patcher".equals(id) || "luckypatcher".equals(id)) {
+            startActivity(new Intent(this, untrusted.manager.um.patcher.PatcherActivity.class)); finish(); return;
+        }
+        if ("rootmanager".equals(id)) {
+            startActivity(new Intent(this, RootManagerActivity.class)); finish(); return;
+        }
+        if ("gameanalyzer".equals(id) || "metadata".equals(id) || "encryption".equals(id) || "gamemodding".equals(id)) {
+            startActivity(new Intent(this, untrusted.manager.um.gameanalysis.GameAnalysisActivity.class)); finish(); return;
+        }
+        if ("il2cppeditor".equals(id)) {
+            startActivity(new Intent(this, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class)); finish(); return;
+        }
+        if ("frida".equals(id)) {
+            startActivity(new Intent(this, untrusted.manager.um.gameanalysis.FridaToolkitActivity.class)); finish(); return;
+        }
+        if ("dlleditor".equals(id)) {
+            startActivity(new Intent(this, DllEditorActivity.class)); finish(); return;
+        }
         if ("smb".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.SmbActivity.class)); finish(); return; }
         if ("sftp".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.SftpActivity.class)); finish(); return; }
         if ("webdav".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.WebDavActivity.class)); finish(); return; }
