@@ -15,9 +15,15 @@
 </p>
 
 <p align="center">
-  <img src="./images/Ss1.png" width="190" alt="Untrusted Manager main screen">
-  <img src="./images/Ss2.png" width="190" alt="Untrusted Manager file manager">
-  <img src="./images/sidebar.png" width="190" alt="Untrusted Manager sidebar">
+  <img src="./home.jpg" width="190" alt="Untrusted Manager main screen">
+  <img src="./sidebar.jpg" width="190" alt="Untrusted Manager sidebar">
+  <img src="./settings.jpg" width="190" alt="Untrusted Manager settings">
+  <img src="./themes.jpg" width="190" alt="Untrusted Manager Themes">
+  <img src="./toolkit.jpg" width="190" alt="Untrusted Manager toolskit">
+  <img src="./toolkit2.jpg" width="190" alt="Untrusted Manager toolskit2">
+  <img src="./onclickoptions.jpg" width="190" alt="Untrusted Manager onclick options">
+  <img src="./gametools.jpg" width="190" alt="Untrusted Manager gametools options">
+  <img src="./il2cppdumper.jpg" width="190" alt="Untrusted Manager il2cpp dumper">
 </p>
 
 ## About
