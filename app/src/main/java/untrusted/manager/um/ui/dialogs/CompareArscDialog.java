@@ -16,6 +16,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
 import untrusted.manager.um.R;
+import untrusted.manager.um.utils.ComparisonDigest;
 
 public class CompareArscDialog {
     private final Context context;
@@ -37,47 +38,44 @@ public class CompareArscDialog {
             if (tb1.getStringPool().size() != tb2.getStringPool().size()) {
                 differences.add("String Pool count: " + tb1.getStringPool().size() + " -> " + tb2.getStringPool().size());
             }
-
             int p1Count = tb1.getPackageArray().size();
             int p2Count = tb2.getPackageArray().size();
-            if (p1Count != p2Count) {
-                differences.add("Package count: " + p1Count + " -> " + p2Count);
-            }
-
+            if (p1Count != p2Count) differences.add("Package count: " + p1Count + " -> " + p2Count);
             for (int i = 0; i < Math.max(p1Count, p2Count); i++) {
                 PackageBlock pb1 = i < p1Count ? tb1.getPackageArray().get(i) : null;
                 PackageBlock pb2 = i < p2Count ? tb2.getPackageArray().get(i) : null;
-
                 if (pb1 != null && pb2 != null) {
-                    if (!pb1.getName().equals(pb2.getName())) {
-                        differences.add("Package name at index " + i + ": " + pb1.getName() + " -> " + pb2.getName());
-                    }
-                    // Simple type count diff
-                    if (pb1.getSpecTypePairArray().size() != pb2.getSpecTypePairArray().size()) {
-                        differences.add("Package " + pb1.getName() + " SpecType count: " + pb1.getSpecTypePairArray().size() + " -> " + pb2.getSpecTypePairArray().size());
-                    }
-                } else if (pb1 != null) {
-                    differences.add("[Removed Package] " + pb1.getName());
-                } else if (pb2 != null) {
-                    differences.add("[Added Package] " + pb2.getName());
-                }
+                    if (!pb1.getName().equals(pb2.getName())) differences.add("Package name at index " + i + ": " + pb1.getName() + " -> " + pb2.getName());
+                    if (pb1.getSpecTypePairArray().size() != pb2.getSpecTypePairArray().size()) differences.add("Package " + pb1.getName() + " SpecType count: " + pb1.getSpecTypePairArray().size() + " -> " + pb2.getSpecTypePairArray().size());
+                } else if (pb1 != null) differences.add("[Removed Package] " + pb1.getName());
+                else differences.add("[Added Package] " + pb2.getName());
             }
 
-            if (differences.isEmpty()) {
-                differences.add("No structural differences found in packages and string counts.");
+            String hash1 = digest(file1);
+            String hash2 = digest(file2);
+            if (!hash1.equals(hash2)) {
+                differences.add("Binary SHA-256 differs");
+                differences.add("#1 SHA-256: " + hash1);
+                differences.add("#2 SHA-256: " + hash2);
             }
+            if (differences.isEmpty()) differences.add("No structural or binary differences found.");
         } catch (Exception e) {
             differences.add("Error parsing ARSC files: " + e.getMessage());
         }
-
         ListView listView = new ListView(context);
         listView.setAdapter(new ArrayAdapter<>(context, android.R.layout.simple_list_item_1, differences));
+        new MaterialAlertDialogBuilder(context).setTitle(R.string.arsc_differences).setView(listView).setPositiveButton(android.R.string.ok, null).show();
+    }
 
-        new MaterialAlertDialogBuilder(context)
-                .setTitle(R.string.arsc_differences)
-                .setView(listView)
-                .setPositiveButton(android.R.string.ok, null)
-                .show();
+    private String digest(String path) throws Exception {
+        if (path.toLowerCase(java.util.Locale.ROOT).endsWith(".apk")) {
+            try (ZipFile zf = new ZipFile(path)) {
+                ZipEntry ze = zf.getEntry("resources.arsc");
+                if (ze == null) throw new Exception("resources.arsc not found in APK");
+                return ComparisonDigest.sha256(zf, ze);
+            }
+        }
+        return ComparisonDigest.sha256(new File(path));
     }
 
     private TableBlock loadTableBlock(String path) throws Exception {
@@ -85,14 +83,11 @@ public class CompareArscDialog {
             try (ZipFile zf = new ZipFile(path)) {
                 ZipEntry ze = zf.getEntry("resources.arsc");
                 if (ze != null) {
-                    try (InputStream is = zf.getInputStream(ze)) {
-                        return TableBlock.load(is);
-                    }
+                    try (InputStream is = zf.getInputStream(ze)) { return TableBlock.load(is); }
                 }
             }
             throw new Exception("resources.arsc not found in APK");
-        } else {
-            return TableBlock.load(new File(path));
         }
+        return TableBlock.load(new File(path));
     }
 }

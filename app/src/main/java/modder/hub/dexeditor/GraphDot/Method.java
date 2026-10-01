@@ -48,6 +48,16 @@ public class Method {
     public final List<Instruction> instructions = new ArrayList<>();
     public final Map<String, Instruction> labelDict = new HashMap<>();
     public final Map<String, List<Instruction>> jumpToLabelDict = new HashMap<>();
+    private final List<CatchSpec> pendingCatches = new ArrayList<>();
+
+    private static final class CatchSpec {
+        final String start;
+        final String end;
+        final String handler;
+        CatchSpec(String start, String end, String handler) {
+            this.start = start; this.end = end; this.handler = handler;
+        }
+    }
 
     public Method(String methodName) {
         this.methodName = methodName;
@@ -78,6 +88,7 @@ public class Method {
                 }
                 labelDict.put(ins, instruction);
                 instructions.add(instruction);
+                resolveCatches();
                 break;
 
             case InstructionType.GOTO:
@@ -96,9 +107,44 @@ public class Method {
                 instructions.add(instruction);
                 break;
 
+            case InstructionType.TRY_CATCH:
+                parseCatch(ins);
+                break;
             case InstructionType.RETURN:
                 instructions.add(instruction);
                 break;
         }
     }
+    private void parseCatch(String ins) {
+        int open = ins.indexOf('{');
+        int range = ins.indexOf("..", open + 1);
+        int close = ins.indexOf('}', range + 2);
+        if (open < 0 || range < 0 || close < 0) return;
+        String start = ins.substring(open + 1, range).trim();
+        String end = ins.substring(range + 2, close).trim();
+        String handler = ins.substring(close + 1).trim();
+        if (start.startsWith(":" ) && end.startsWith(":" ) && handler.startsWith(":")) {
+            pendingCatches.add(new CatchSpec(start, end, handler));
+            resolveCatches();
+        }
+    }
+
+    private void resolveCatches() {
+        for (CatchSpec spec : pendingCatches) {
+            Instruction start = labelDict.get(spec.start);
+            Instruction end = labelDict.get(spec.end);
+            Instruction handler = labelDict.get(spec.handler);
+            if (start == null || end == null || handler == null) continue;
+            boolean active = false;
+            for (Instruction instruction : instructions) {
+                if (instruction == start) active = true;
+                if (active && instruction != handler) {
+                    instruction.addChild(handler);
+                    handler.addParent(instruction);
+                }
+                if (instruction == end) active = false;
+            }
+        }
+    }
+
 }

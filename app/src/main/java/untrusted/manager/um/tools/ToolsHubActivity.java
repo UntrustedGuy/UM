@@ -1,6 +1,8 @@
 package untrusted.manager.um.tools;
 
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.ComponentName;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
@@ -40,6 +42,7 @@ import java.util.Map;
 import untrusted.manager.um.R;
 import untrusted.manager.um.ui.UiFields;
 import untrusted.manager.um.utils.EdgeToEdgeUtil;
+import untrusted.manager.um.plugin.PluginManager;
 
 public final class ToolsHubActivity extends AppCompatActivity {
     private RecyclerView grid;
@@ -64,6 +67,17 @@ public final class ToolsHubActivity extends AppCompatActivity {
         toolbar.setTitle("Tools Kit");
         toolbar.setNavigationIcon(androidx.appcompat.R.drawable.abc_ic_ab_back_material);
         toolbar.setNavigationOnClickListener(v -> finish());
+        toolbar.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 0x554d5001) {
+                startActivity(new Intent(this, PluginManagerActivity.class));
+                return true;
+            }
+            return false;
+        });
+        android.view.Menu menu = toolbar.getMenu();
+        menu.add(0, 0x554d5001, 0, "Manage plugins")
+                .setIcon(android.R.drawable.ic_menu_manage)
+                .setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_IF_ROOM);
         root.addView(toolbar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -137,6 +151,21 @@ public final class ToolsHubActivity extends AppCompatActivity {
     }
 
     private void openTool(ToolRegistry.ToolItem item) {
+        if (item.isPlugin()) {
+            Intent pluginIntent = new Intent(untrusted.manager.um.plugin.api.UmPluginContract.ACTION_PLUGIN_ENTRY);
+            pluginIntent.setComponent(new ComponentName(item.pluginPackage(), item.pluginActivity()));
+            pluginIntent.putExtra(untrusted.manager.um.plugin.api.UmPluginContract.EXTRA_PLUGIN_ID,
+                    item.id().substring("plugin:".length() + item.pluginPackage().length() + 1));
+            pluginIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (getPackageManager().resolveActivity(pluginIntent, 0) == null) {
+                android.widget.Toast.makeText(this, "Plugin is no longer installed", android.widget.Toast.LENGTH_SHORT).show();
+                return;
+            }
+            try { startActivity(pluginIntent); } catch (RuntimeException e) {
+                android.widget.Toast.makeText(this, "Unable to open plugin: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         Intent intent;
         switch (item.id()) {
             case "wifimanager" -> intent = new Intent(this, WifiManagerActivity.class);
@@ -148,6 +177,8 @@ public final class ToolsHubActivity extends AppCompatActivity {
             case "il2cppeditor" -> intent = new Intent(this, untrusted.manager.um.gameanalysis.Il2CppEditorActivity.class);
             case "frida" -> intent = new Intent(this, untrusted.manager.um.gameanalysis.FridaToolkitActivity.class);
             case "dlleditor" -> intent = new Intent(this, DllEditorActivity.class);
+            case "terminal" -> intent = new Intent(this, untrusted.manager.um.ui.activities.TerminalActivity.class);
+            case "mcp" -> intent = new Intent(this, untrusted.manager.um.remote.HttpRemoteActivity.class).putExtra("mode", "mcp");
             default -> {
                 intent = new Intent(this, ToolRunnerActivity.class);
                 intent.putExtra("tool_id", item.id());
@@ -242,9 +273,19 @@ public final class ToolsHubActivity extends AppCompatActivity {
                 h.label.setText(cat + "  (" + count + ")");
             } else if (holder instanceof ToolViewHolder h) {
                 ToolRegistry.ToolItem item = (ToolRegistry.ToolItem) row;
-                h.icon.setImageResource(item.iconRes());
-                ImageViewCompat.setImageTintList(h.icon, ColorStateList.valueOf(MaterialColors.getColor(
-                        h.card.getContext(), com.google.android.material.R.attr.colorPrimary, Color.WHITE)));
+                if (item.isPlugin()) {
+                    try {
+                        android.graphics.drawable.Drawable d = getPackageManager().getApplicationIcon(item.pluginPackage());
+                        h.icon.setImageDrawable(d);
+                        ImageViewCompat.setImageTintList(h.icon, null);
+                    } catch (PackageManager.NameNotFoundException e) {
+                        h.icon.setImageResource(android.R.drawable.sym_def_app_icon);
+                    }
+                } else {
+                    h.icon.setImageResource(item.iconRes());
+                    ImageViewCompat.setImageTintList(h.icon, ColorStateList.valueOf(MaterialColors.getColor(
+                            h.card.getContext(), com.google.android.material.R.attr.colorPrimary, Color.WHITE)));
+                }
                 h.title.setText(item.title());
                 h.subtitle.setText(item.subtitle());
                 h.card.setOnClickListener(v -> openTool(item));

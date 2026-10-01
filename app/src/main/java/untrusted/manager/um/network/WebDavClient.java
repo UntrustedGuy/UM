@@ -93,9 +93,21 @@ public final class WebDavClient {
         return c;
     }
     private String resolvePath(String path)throws Exception{
-        String p=path==null?"/":path.trim(); if(p.isEmpty())p="/"; if(!p.startsWith("/"))p="/"+p;
-        // Keep all remote paths under the configured WebDAV base path.
-        URI u=base.resolve("."+p);
+        String p=path==null?"/":path.trim();
+        if(p.isEmpty())p="/";
+        p=p.replace('\\','/');
+        if(p.indexOf('\0')>=0) throw new IllegalArgumentException("NUL in WebDAV path");
+        if(!p.startsWith("/"))p="/"+p;
+        String[] parts=p.split("/");
+        StringBuilder safe=new StringBuilder();
+        for(String part:parts){
+            if(part.isEmpty()||".".equals(part)) continue;
+            if("..".equals(part)) throw new SecurityException("Parent traversal is not allowed");
+            safe.append('/').append(part);
+        }
+        if(safe.length()==0) safe.append('/');
+        // A relative URI keeps the configured WebDAV base path (e.g. /remote/dav/) intact.
+        URI u=base.resolve("."+safe.toString());
         return u.toASCIIString();
     }
     private static void ensure2xx(HttpURLConnection c,String message)throws Exception{int code=c.getResponseCode();if(code<200||code>=300){String detail="";try(InputStream e=c.getErrorStream()){if(e!=null)detail=new String(readAll(e),StandardCharsets.UTF_8);}throw new Exception(message+" (HTTP "+code+")"+(detail.isEmpty()?"":" "+detail.substring(0,Math.min(300,detail.length()))));}}

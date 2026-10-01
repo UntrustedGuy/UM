@@ -284,6 +284,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                 } else
                     context.setCurrentFolder(file.getParentFile(), getOldValues());
 
+                pruneSelection();
                 boolean multi = !selectedPositions.isEmpty();
                 String direction = pane1 ? "->" : "<-";
                 List<FileMenuOrder.MenuItem> visibleMenu = new ArrayList<>();
@@ -296,7 +297,9 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                 visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.SHARE, FileMenuOrder.labelFor(context, FileMenuOrder.SHARE, direction)));
                 visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.OPEN_WITH, FileMenuOrder.labelFor(context, FileMenuOrder.OPEN_WITH, direction)));
                 visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.BOOKMARK, FileMenuOrder.labelFor(context, FileMenuOrder.BOOKMARK, direction)));
+                if (!isInZip) visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.SHORTCUT, FileMenuOrder.labelFor(context, FileMenuOrder.SHORTCUT, direction)));
                 visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.CMD, FileMenuOrder.labelFor(context, FileMenuOrder.CMD, direction)));
+                visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.TERMINAL, FileMenuOrder.labelFor(context, FileMenuOrder.TERMINAL, direction)));
                 visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.CHECK, FileMenuOrder.labelFor(context, FileMenuOrder.CHECK, direction)));
 
                 if (multi && !isInZip) {
@@ -330,6 +333,12 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
 
                 if (!multi && !isInZip && !file.isDirectory() && ArchiveUtil.isSupportedArchive(fileName)) {
                     visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.EXTRACT, FileMenuOrder.labelFor(context, FileMenuOrder.EXTRACT, direction)));
+                }
+                if (!multi && !isInZip && file != null && file.isFile()) {
+                    String htmlName = fileName.toLowerCase(Locale.ROOT);
+                    if (htmlName.endsWith(".html") || htmlName.endsWith(".htm") || htmlName.endsWith(".xhtml")) {
+                        visibleMenu.add(new FileMenuOrder.MenuItem(FileMenuOrder.HTML_PREVIEW, FileMenuOrder.labelFor(context, FileMenuOrder.HTML_PREVIEW, direction)));
+                    }
                 }
                 if (!multi && !isInZip && file != null && file.isFile()) {
                     String lowerGameName = fileName.toLowerCase(Locale.ENGLISH);
@@ -441,6 +450,11 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                                 context.startActivity(new Intent(context, untrusted.manager.um.tools.DllEditorActivity.class)
                                         .putExtra("path", file.getAbsolutePath()));
                                 return;
+                            case FileMenuOrder.HTML_PREVIEW:
+                                withReadableCopy(file, readable -> context.startActivity(new Intent(context, untrusted.manager.um.ui.activities.HtmlPreviewActivity.class)
+                                        .putExtra(untrusted.manager.um.ui.activities.HtmlPreviewActivity.EXTRA_PATH, readable.getAbsolutePath())
+                                        .putExtra(untrusted.manager.um.ui.activities.HtmlPreviewActivity.EXTRA_CLEANUP, !readable.getAbsolutePath().equals(file.getAbsolutePath()))));
+                                return;
                             case FileMenuOrder.CMP_TEXT:
                                 context.startActivity(new Intent(context, CompareTextActivity.class)
                                         .putExtra("file1", finalCompareFile1 instanceof File ? ((File) finalCompareFile1).getAbsolutePath() : ((ZipEntryInfo) finalCompareFile1).getFullPath())
@@ -532,6 +546,22 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                                 confirmBatchStrip(images);
                                 return;
                             }
+                            case FileMenuOrder.TERMINAL:
+                                if (isInZip) {
+                                    Extensions.showMessage(context, R.string.terminal_not_supported_for_zip_entries);
+                                    return;
+                                }
+                                String terminalPath;
+                                if (multi) {
+                                    terminalPath = context.pane1Folder.getAbsolutePath();
+                                } else if (file != null && file.isDirectory()) {
+                                    terminalPath = file.getAbsolutePath();
+                                } else {
+                                    terminalPath = file == null || file.getParentFile() == null
+                                            ? context.pane1Folder.getAbsolutePath() : file.getParentFile().getAbsolutePath();
+                                }
+                                untrusted.manager.um.ui.activities.TerminalActivity.open(context, terminalPath);
+                                return;
                             case FileMenuOrder.CMD:
                                 if (isInZip) {
                                     Extensions.showMessage(context, R.string.command_helper_not_supported_for_zip_entries);
@@ -560,9 +590,14 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                                         break;
                                     case FileMenuOrder.MOVE:
                                         if (sameFolder(context.pane1Folder, context.pane2Folder)) {
+                                            Extensions.showMessage(context, "Source and destination folders are the same");
                                             break;
                                         }
-                                        fileOps.moveAsync(item);
+                                        if (multi) {
+                                            List<Object> itemsToMove = new ArrayList<>();
+                                            for (int f : selectedPositions) itemsToMove.add(values[f]);
+                                            fileOps.moveItemsAsync(itemsToMove);
+                                        } else fileOps.moveAsync(item);
                                         break;
                                     case FileMenuOrder.RENAME:
                                         showRenameDialog(finalPosition, file, entry, fileName, multi);
@@ -592,6 +627,13 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                                         break;
                                     case FileMenuOrder.BOOKMARK:
                                         if (!isInZip) context.addBookmark(file);
+                                        break;
+                                    case FileMenuOrder.SHORTCUT:
+                                        if (isInZip || file == null) {
+                                            Extensions.showMessage(context, R.string.file_shortcut_target_missing);
+                                            return;
+                                        }
+                                        untrusted.manager.um.utils.FileShortcutManager.pin(context, file);
                                         break;
                                 }
                                 break;
@@ -645,8 +687,9 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
     }
 
     private List<File> selectedImageFiles() {
+        pruneSelection();
         List<File> out = new ArrayList<>();
-        for (int p : selectedPositions) {
+        for (int p : new ArrayList<>(selectedPositions)) {
             Object o = values[p];
             if (o instanceof File f) {
                 if (f.isFile() && FileUtils.isImageFile(f.getName())) out.add(f);
@@ -1858,13 +1901,15 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
     private CharSequence getFilesToDisplay(boolean multi, int position) {
         if (multi) {
             StringBuilder sb = new StringBuilder();
-            for (int i : selectedPositions) sb.append(',').append(isInZip ? ((ZipEntryInfo) values[i]).getName() : ((File) values[i]).getName());
+            pruneSelection();
+            for (int i : new ArrayList<>(selectedPositions)) sb.append(',').append(isInZip ? ((ZipEntryInfo) values[i]).getName() : ((File) values[i]).getName());
             return sb.deleteCharAt(0);
         }
         return isInZip ? ((ZipEntryInfo) values[position]).getName() : ((File) values[position]).getName();
     }
 
     private void showRenameDialog(int position, File file, ZipEntryInfo entry, String fileName, boolean multi) {
+        if (multi) pruneSelection();
         if (multi) {
             RenameUtil.showMultiRenameDialog(context, selectedPositions, isInZip, values, pane1, currentZipPath);
             return;
@@ -1895,36 +1940,114 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                         renameInput.getText().insert(selectionStart, text);
                 })
                 .setPositiveButton(android.R.string.ok, (dialog3, which) -> {
-                    String s = renameInput.getText().toString();
+                    String s = renameInput.getText().toString().trim();
+                    if (s.isEmpty() || s.equals(".") || s.equals("..") || s.indexOf('\0') >= 0
+                            || s.indexOf('/') >= 0 || s.indexOf('\\') >= 0 || new File(s).isAbsolute()) {
+                        Extensions.showMessage(context, context.rss.getString(R.string.failed_to_renamex, fileName));
+                        return;
+                    }
                     if(isInZip) {
                         File zipFile = entry.getZipFile();
-                        try (ZipFile zf = new ZipFile(zipFile)) {
-                            String entryName = entry.getName();
+                        File backup = new File(zipFile.getParentFile(), zipFile.getName() + ".bak");
+                        boolean committed = false;
+                        try {
+                            FileUtils.copyFile(zipFile, backup);
+                            if (!backup.isFile() || backup.length() != zipFile.length())
+                                throw new IOException("Could not create a verified archive backup: " + backup);
+                            try (ZipFile zf = new ZipFile(zipFile)) {
+                            String entryPath = entry.getFullPath();
+                            if (entryPath == null || entryPath.isEmpty()) throw new IOException("Invalid ZIP entry path");
+                            String cleanEntryPath = entryPath.replace('\\', '/');
                             if (entry.isDirectory()) {
+                                String dirPrefix = cleanEntryPath.endsWith("/") ? cleanEntryPath : cleanEntryPath + "/";
+                                int slash = cleanEntryPath.lastIndexOf('/');
+                                String parentPrefix = slash >= 0 ? cleanEntryPath.substring(0, slash + 1) : "";
+                                String newPrefix = parentPrefix + s + "/";
                                 Map<String, String> map = new HashMap<>();
-
-                                for(FileHeader fh : zf.getFileHeaders()) {
-                                    String fhFileName = fh.getFileName();
-                                    if(fhFileName.startsWith(entryName)) map.put(fhFileName, fhFileName.replace(entryName, s));
+                                Set<String> moving = new HashSet<>();
+                                for (FileHeader fh : zf.getFileHeaders()) {
+                                    String fhFileName = fh.getFileName().replace('\\', '/');
+                                    if (fhFileName.equals(cleanEntryPath) || fhFileName.startsWith(dirPrefix)) {
+                                        moving.add(fhFileName);
+                                    }
                                 }
-                                if(!map.isEmpty()) zf.renameFiles(map);
-                            } else zf.renameFile((entryName), s);
+                                for (String oldName : moving) {
+                                    String targetName = oldName.equals(cleanEntryPath)
+                                            ? newPrefix
+                                            : newPrefix + oldName.substring(dirPrefix.length());
+                                    if (!oldName.equals(targetName) && !moving.contains(targetName)
+                                            && zf.getFileHeader(targetName) != null) {
+                                        throw new IOException("Destination already exists: " + targetName);
+                                    }
+                                    map.put(oldName, targetName);
+                                }
+                                if (!map.isEmpty()) zf.renameFiles(map);
+                            } else {
+                                int slash = cleanEntryPath.lastIndexOf('/');
+                                String parentPrefix = slash >= 0 ? cleanEntryPath.substring(0, slash + 1) : "";
+                                String targetPath = parentPrefix + s;
+                                if (!cleanEntryPath.equals(targetPath) && zf.getFileHeader(targetPath) != null)
+                                    throw new IOException("Destination already exists: " + targetPath);
+                                zf.renameFile(cleanEntryPath, targetPath);
+                            }
+                            }
+                            try (ZipFile verify = new ZipFile(zipFile)) {
+                                String verifyPath;
+                                if (entry.isDirectory()) {
+                                    int slash = cleanEntryPath.lastIndexOf('/');
+                                    String parentPrefix = slash >= 0 ? cleanEntryPath.substring(0, slash + 1) : "";
+                                    verifyPath = parentPrefix + s + "/";
+                                } else {
+                                    int slash = cleanEntryPath.lastIndexOf('/');
+                                    String parentPrefix = slash >= 0 ? cleanEntryPath.substring(0, slash + 1) : "";
+                                    verifyPath = parentPrefix + s;
+                                }
+                                if (entry.isDirectory()) {
+                                    boolean found = false;
+                                    for (FileHeader fh : verify.getFileHeaders()) {
+                                        if (fh.getFileName().startsWith(verifyPath)) { found = true; break; }
+                                    }
+                                    if (!found) throw new IOException("ZIP rename verification failed: " + verifyPath);
+                                } else if (verify.getFileHeader(verifyPath) == null) {
+                                    throw new IOException("ZIP rename verification failed: " + verifyPath);
+                                }
+                            }
+                            committed = true;
                             context.loadZipFolderInPane(zipFile, currentZipPath, pane1, false);
                         } catch (Exception e) {
+                            try {
+                                FileUtils.copyFile(backup, zipFile);
+                                if (!zipFile.isFile() || zipFile.length() != backup.length())
+                                    throw new IOException("Archive restore verification failed: " + zipFile);
+                            } catch (Exception restore) {
+                                e.addSuppressed(restore);
+                            }
                             new ErrorUtil(context).showError(e);
+                        } finally {
+                            if (committed || backup.exists() && zipFile.length() == backup.length()) {
+                                try { backup.delete(); } catch (Exception ignored) {}
+                            }
                         }
                     } else {
                         File ogFolder = file.getParentFile();
+                        File destination = new File(ogFolder, s);
+                        if (destination.exists() && !destination.equals(file)) {
+                            Extensions.showMessage(context, context.rss.getString(R.string.failed_to_renamex, fileName));
+                            return;
+                        }
                         if (AccessManager.fileOpsOn(context)) {
                             try {
-                                AccessManager.rename(context, file.getAbsolutePath(), new File(ogFolder, s).getAbsolutePath(), true);
+                                AccessManager.rename(context, file.getAbsolutePath(), destination.getAbsolutePath(), true);
+                                if (!destination.exists() || file.exists()) {
+                                    throw new IOException("Rename verification failed: " + destination);
+                                }
                                 context.loadFolderInPane(ogFolder, pane1);
                             } catch (Exception e) {
-                                if (file.renameTo(new File(ogFolder, s))) context.loadFolderInPane(ogFolder, pane1);
+                                if (file.renameTo(destination) && destination.exists() && !file.exists()) context.loadFolderInPane(ogFolder, pane1);
                                 else Extensions.showMessage(context, context.rss.getString(R.string.failed_to_renamex, fileName));
                             }
                         } else {
-                            if (file.renameTo(new File(ogFolder, s))) context.loadFolderInPane(ogFolder, pane1);
+                            if (file.renameTo(destination) && destination.exists() && !file.exists()) context.loadFolderInPane(ogFolder, pane1);
                             else Extensions.showMessage(context, context.rss.getString(R.string.failed_to_renamex, fileName));
                         }
                     }
@@ -1946,6 +2069,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
     }
 
     private void showDeleteDialog(int position, File file, ZipEntryInfo entry, boolean multi) {
+        if (multi) pruneSelection();
         ProgressManager pm = new ProgressManager(context, true);
         MaterialAlertDialogBuilder deleteDialog = dialogUtil.getDialogBuilder();
         CharSequence filesToDisplay = getFilesToDisplay(multi, position);
@@ -1981,13 +2105,16 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                                     if (useElevatedForDelete) {
                                         try {
                                             AccessManager.delete(context, selectedFile.getAbsolutePath(), true);
-                                            continue;
-                                        } catch (Exception ignored) {}
+                                        } catch (Exception ignored) {
+                                            // Fall through to the ordinary filesystem path.
+                                        }
                                     }
-                                    if (selectedFile.isDirectory())
-                                        Util.deleteDir(selectedFile);
-                                    else
-                                        selectedFile.delete();
+                                    if (selectedFile.exists()) {
+                                        if (selectedFile.isDirectory()) Util.deleteDir(selectedFile);
+                                        else if (!selectedFile.delete()) throw new IOException("Delete failed: " + selectedFile.getName());
+                                    }
+                                    if (selectedFile.exists() || (useElevatedForDelete && AccessManager.exists(context, selectedFile.getAbsolutePath())))
+                                        throw new IOException("Delete verification failed: " + selectedFile.getName());
                                 }
                                 if (selectedFile != null) {
                                     File finalSelectedFile = selectedFile;
@@ -2013,12 +2140,14 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                                     AccessManager.delete(context, file.getAbsolutePath(), true);
                                 } catch (Exception e) {
                                     if (file.isDirectory()) Util.deleteDir(file, pm, total);
-                                    else file.delete();
+                                    else if (!file.delete()) throw new IOException("Delete failed: " + file.getName(), e);
                                 }
                             } else {
                                 if (file.isDirectory()) Util.deleteDir(file, pm, total);
-                                else file.delete();
+                                else if (!file.delete()) throw new IOException("Delete failed: " + file.getName());
                             }
+                            if (file.exists() || (useElevatedForDelete && AccessManager.exists(context, file.getAbsolutePath())))
+                                throw new IOException("Delete verification failed: " + file.getName());
                             context.handler.post(() -> {
                                 clearSelection();
                                 context.loadFolderInPane(file.getParentFile(), pane1);
@@ -2232,17 +2361,47 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
     }
 
     private void updateFolderCountOnMainScreen(int position) {
+        int folders = 0;
+        int files = 0;
+        for (Integer selected : selectedPositions) {
+            if (selected == null || !isSelectablePosition(selected)) continue;
+            Object value = values[selected];
+            boolean directory = value instanceof ZipEntryInfo
+                    ? ((ZipEntryInfo) value).isDirectory()
+                    : value instanceof File && ((File) value).isDirectory();
+            if (directory) folders++; else files++;
+        }
+        context.handler.post(() -> context.<TextView>findViewById(R.id.folderCount)
+                .setText(context.rss.getString(R.string.folders_files_x, folders, files)));
+    }
+
+    private void pruneSelection() {
+        selectedPositions.removeIf(position -> position == null || !isSelectablePosition(position));
+        if (selectedPositions.isEmpty()) {
+            rangeStartPosition = null;
+            if (isMultiSelectMode) {
+                isMultiSelectMode = false;
+                context.setMultiSelectModeUI(false);
+            }
+        }
+    }
+
+    private int firstSelectablePosition() {
+        return isInZip ? 1 : 1;
+    }
+
+    private boolean isSelectablePosition(int position) {
+        return position >= firstSelectablePosition() && position < values.length;
     }
 
     public void handleSwipe(int position) {
         context.setCurrentPane(pane1 ? 1 : 2);
+        if (!isSelectablePosition(position)) return;
         if (isMultiSelectMode) {
             if (rangeStartPosition != null) {
-                int start = Math.min(rangeStartPosition, position);
-                int end = Math.max(rangeStartPosition, position);
-                for (int i = start; i <= end; i++) {
-                    selectedPositions.add(i);
-                }
+                int start = Math.max(firstSelectablePosition(), Math.min(rangeStartPosition, position));
+                int end = Math.min(values.length - 1, Math.max(rangeStartPosition, position));
+                for (int i = start; i <= end; i++) selectedPositions.add(i);
                 updateFolderCountOnMainScreen(position);
                 rangeStartPosition = null;
             } else {
@@ -2261,6 +2420,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
     }
 
     public void handleMultiSelect(int position) {
+        if (!isSelectablePosition(position)) return;
         if (selectedPositions.contains(position)) {
             selectedPositions.remove(position);
             if (selectedPositions.isEmpty()) {
@@ -2283,8 +2443,8 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
 
     public List<Object> getSelectedFiles() {
         List<Object> selectedFiles = new ArrayList<>();
-        for (Integer position : selectedPositions) {
-            selectedFiles.add(values[position]);
+        for (Integer position : new ArrayList<>(selectedPositions)) {
+            if (position != null && isSelectablePosition(position)) selectedFiles.add(values[position]);
         }
         return selectedFiles;
     }
@@ -2307,8 +2467,9 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
     }
 
     public void invertSelection() {
+        pruneSelection();
         isMultiSelectMode = true;
-        for (int i = (isInZip ? 0 : 1); i < values.length; i++) {
+        for (int i = firstSelectablePosition(); i < values.length; i++) {
             if (selectedPositions.contains(i)) selectedPositions.remove(i);
             else selectedPositions.add(i);
         }
@@ -2316,6 +2477,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
     }
 
     public void selectSameType() {
+        pruneSelection();
         if (selectedPositions.isEmpty() || values.length == 0) return;
         Object ref = values[selectedPositions.iterator().next()];
         boolean refIsFolder = isInZip ? ((ZipEntryInfo) ref).isDirectory() : ((File) ref).isDirectory();
@@ -2324,7 +2486,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
 
         isMultiSelectMode = true;
         selectedPositions.clear();
-        for (int i = (isInZip ? 0 : 1); i < values.length; i++) {
+        for (int i = firstSelectablePosition(); i < values.length; i++) {
             Object o = values[i];
             boolean isFolder = isInZip ? ((ZipEntryInfo) o).isDirectory() : ((File) o).isDirectory();
             if (refIsFolder) {
@@ -2339,8 +2501,9 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
     }
 
     public void selectAll() {
+        pruneSelection();
         isMultiSelectMode = true;
-        for (int i = (isInZip ? 0 : 1); i < values.length; i++) selectedPositions.add(i);
+        for (int i = firstSelectablePosition(); i < values.length; i++) selectedPositions.add(i);
         notifyDataSetChanged();
     }
 }

@@ -26,11 +26,14 @@ public final class HttpRemoteService extends Service {
     public static final String EXTRA_ROOT = "root";
     public static final String EXTRA_PORT = "port";
     public static final String EXTRA_TOKEN = "token";
+    public static final String EXTRA_AUTH_REQUIRED = "auth_required";
     private static final String PREFS = "http_remote";
     private static final String KEY_ROOT = "root";
     private static final String KEY_PORT = "port";
     private static final String KEY_TOKEN = "token";
+    private static final String KEY_AUTH_REQUIRED = "auth_required";
     private static final String KEY_MCP_PORT = "mcp_port";
+    public static final String KEY_AUTO_START = "auto_start";
     private static final int NOTIFICATION_ID = 2307;
     private static final String CHANNEL = "http_remote";
     private HttpRemoteServer server;
@@ -46,25 +49,32 @@ public final class HttpRemoteService extends Service {
             SecureNetworkPrefs.migrate(this, p, KEY_TOKEN);
             String root = value(intent, EXTRA_ROOT, p.getString(KEY_ROOT, "/storage/emulated/0"));
             int port = intValue(intent, EXTRA_PORT, p.getInt(KEY_PORT, 0));
+            boolean authRequired = intent != null && intent.hasExtra(EXTRA_AUTH_REQUIRED)
+                    ? intent.getBooleanExtra(EXTRA_AUTH_REQUIRED, false)
+                    : p.getBoolean(KEY_AUTH_REQUIRED, false);
             String token = value(intent, EXTRA_TOKEN, SecureNetworkPrefs.get(this, p, KEY_TOKEN, ""));
-            if (token.length() < 16) token = generateToken();
-            SharedPreferences.Editor pe = p.edit().putString(KEY_ROOT, root).putInt(KEY_PORT, port);
+            if (authRequired && token.length() < 16) token = generateToken();
+            if (!authRequired) token = "";
+            SharedPreferences.Editor pe = p.edit().putString(KEY_ROOT, root).putInt(KEY_PORT, port).putBoolean(KEY_AUTH_REQUIRED, authRequired);
             SecureNetworkPrefs.put(pe, KEY_TOKEN, token);
             pe.apply();
+            if (authRequired) McpTokenStore.ensureLegacyToken(this, token);
+            createChannel();
+            startForeground(NOTIFICATION_ID, notification(port));
             if (server != null && server.isRunning()) server.stop();
             if (mcpServer != null && mcpServer.isRunning()) mcpServer.stop();
             server = new HttpRemoteServer(new File(root), port, token, null);
             int mcpPort = p.getInt(KEY_MCP_PORT, 8787);
             if (mcpPort == server.getPort()) mcpPort = 0;
-            mcpServer = new McpRemoteServer(new File(root), mcpPort, token);
+            mcpServer = new McpRemoteServer(this, new File(root), mcpPort, token);
             p.edit().putInt(KEY_PORT, server.getPort()).putInt(KEY_MCP_PORT, mcpServer.getPort()).apply();
             server.start();
             mcpServer.start();
             sRunning = true;
             sPort = server.getPort();
             sMcpPort = mcpServer.getPort();
-            createChannel();
-            startForeground(NOTIFICATION_ID, notification(server.getPort()));
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            if (manager != null) manager.notify(NOTIFICATION_ID, notification(server.getPort()));
             return START_STICKY;
         } catch (Exception e) {
             if (server != null) { try { server.stop(); } catch (Exception ignored) {} }
@@ -92,6 +102,16 @@ public final class HttpRemoteService extends Service {
     }
     public static boolean isRunning(android.content.Context c) {
         return sRunning && sPort > 0;
+    }
+    public static boolean isAuthRequired(android.content.Context c) {
+        return c.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_AUTH_REQUIRED, false);
+    }
+
+    public static boolean isAutoStartEnabled(android.content.Context c) {
+        return c.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_AUTO_START, false);
+    }
+    public static void setAutoStartEnabled(android.content.Context c, boolean enabled) {
+        c.getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(KEY_AUTO_START, enabled).apply();
     }
     private static volatile boolean sRunning;
     private static volatile int sPort;

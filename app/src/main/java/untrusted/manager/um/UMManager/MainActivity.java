@@ -119,9 +119,7 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.lilincpp.github.libezftp.EZFtpClient;
 import com.lilincpp.github.libezftp.EZFtpFile;
-import com.lilincpp.github.libezftp.EZFtpServer;
 import com.lilincpp.github.libezftp.IEZFtpClient;
-import com.lilincpp.github.libezftp.IEZFtpServer;
 import com.lilincpp.github.libezftp.callback.OnEZFtpCallBack;
 import com.lilincpp.github.libezftp.callback.OnEZFtpDataTransferCallback;
 import com.lilincpp.github.libezftp.user.EZFtpUser;
@@ -142,7 +140,8 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
@@ -160,7 +159,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 import untrusted.manager.um.ApkExtractor.APKExtractorActivity;
 import untrusted.manager.um.UMManager.ftp.FTPFileWrapper;
@@ -331,6 +332,10 @@ public class MainActivity extends AppCompatActivity {
     private final Runnable filterApplyRunnable = this::applyFilterToCurrentPane;
     private int pane1LoadGeneration;
     private int pane2LoadGeneration;
+    private volatile Thread activeSearchThread;
+    private volatile ProgressManager activeSearchProgress;
+    private volatile Thread activeFindInFilesThread;
+    private volatile ProgressManager activeFindInFilesProgress;
 
     private MiniPlayerDialog miniPlayerDialog;
     private MaterialAutoCompleteTextView profileSpinner;
@@ -2070,6 +2075,8 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        restoreNavigationState(savedInstanceState);
+
         ListView bookmarksList = this.bookmarksList = new ListView(this);
         bookmarksList.setDivider(null);
         bookmarksList.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -2287,22 +2294,36 @@ public class MainActivity extends AppCompatActivity {
                         .setNegativeButton(rss.getString(R.string.folder), (dialog, which) -> {
                             boolean isPane1 = lastPaneSelected == 1;
                             File ogFolder = isPane1 ? pane1Folder : pane2Folder;
-                            String inputStr = input.getText().toString();
-                            if (new File(ogFolder, inputStr).mkdir()) loadFolderInPane(ogFolder, isPane1);
-                            else if (mkdirViaRoot(ogFolder, inputStr)) loadFolderInPane(ogFolder, isPane1);
+                            String inputStr = input.getText().toString().trim();
+                            if (!isSafeChildName(inputStr)) {
+                                Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_create_folder, inputStr));
+                                return;
+                            }
+                            File target = new File(ogFolder, inputStr);
+                            if (target.exists()) {
+                                Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_create_folder, inputStr));
+                            } else if (target.mkdir() && target.isDirectory()) loadFolderInPane(ogFolder, isPane1);
+                            else if (mkdirViaRoot(ogFolder, inputStr) && (target.isDirectory() || AccessManager.exists(MainActivity.this, target.getAbsolutePath()))) loadFolderInPane(ogFolder, isPane1);
                             else Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_create_folder, inputStr));
                         })
                         .setNeutralButton(android.R.string.paste, null) // Note: Need to set it after otherwise the dialog auto close
                         .setPositiveButton(rss.getString(R.string.file), (dialog, which) -> {
                             boolean isPane1 = lastPaneSelected == 1;
                             File ogFolder = isPane1 ? pane1Folder : pane2Folder;
-                            String inputStr = input.getText().toString();
+                            String inputStr = input.getText().toString().trim();
+                            if (!isSafeChildName(inputStr)) {
+                                Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_create_file, inputStr));
+                                return;
+                            }
+                            File target = new File(ogFolder, inputStr);
                             try {
-                                if (new File(ogFolder, inputStr).createNewFile()) loadFolderInPane(ogFolder, isPane1);
-                                else if (touchViaRoot(ogFolder, inputStr)) loadFolderInPane(ogFolder, isPane1);
+                                if (target.exists()) {
+                                    Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_create_file, inputStr));
+                                } else if (target.createNewFile() && target.isFile()) loadFolderInPane(ogFolder, isPane1);
+                                else if (touchViaRoot(ogFolder, inputStr) && (target.isFile() || AccessManager.exists(MainActivity.this, target.getAbsolutePath()))) loadFolderInPane(ogFolder, isPane1);
                                 else Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_create_file, inputStr));
                             } catch (IOException e) {
-                                if (touchViaRoot(ogFolder, inputStr)) loadFolderInPane(ogFolder, isPane1);
+                                if (touchViaRoot(ogFolder, inputStr) && (target.isFile() || AccessManager.exists(MainActivity.this, target.getAbsolutePath()))) loadFolderInPane(ogFolder, isPane1);
                                 else Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_create_file, inputStr));
                             }
                         }).show();
@@ -2366,6 +2387,7 @@ public class MainActivity extends AppCompatActivity {
                 menu.add(0, 11, 0, getString(R.string.set_as_home)).setIcon(R.drawable.baseline_home_24);
                 menu.add(0, 12, 0, getString(R.string.menu_swap_panes)).setIcon(R.drawable.baseline_swap_horiz_24);
                 menu.add(0, 13, 0, getString(R.string.preferences)).setIcon(R.drawable.baseline_settings_24);
+                menu.add(0, 16, 0, getString(R.string.cloud_backup)).setIcon(R.drawable.cloud_upload_24px);
                 menu.add(0, 14, 0, getString(R.string.exit)).setIcon(R.drawable.baseline_exit_to_app_24);
 
                 popup.setOnMenuItemClickListener(item -> {
@@ -2467,6 +2489,9 @@ public class MainActivity extends AppCompatActivity {
                         case 13:
                             showSettingsDialog();
                             break;
+                        case 16:
+                            startActivity(new Intent(MainActivity.this, untrusted.manager.um.ui.activities.CloudBackupActivity.class));
+                            break;
                         case 14:
                             finishAffinity();
                             break;
@@ -2523,8 +2548,9 @@ public class MainActivity extends AppCompatActivity {
                         new StringBuilder("Folders: ").append(foldersCount).append(" Files: ")
                                 .append(dir1Files.length - foldersCount));
             }
-            if(TextUtils.isEmpty(locate)) loadFolderInPane(resolveStartupFolder(true, homeDir1), true);
-            loadFolderInPane(resolveStartupFolder(false, homeDir2), false);
+            if(TextUtils.isEmpty(locate)) loadFolderInPane(resolveStartupFolder(true, homeDir1), true, savedInstanceState == null);
+            loadFolderInPane(resolveStartupFolder(false, homeDir2), false, savedInstanceState == null);
+            if (savedInstanceState != null) handler.post(this::restoreVisiblePanesFromHistory);
             new Thread(() -> AccessManager.warmUp(MainActivity.this)).start();
             new Thread(() -> {
                 try {
@@ -2709,11 +2735,15 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void loadFolderInPane(File folder, boolean pane1, boolean addToHistory) {
+        if (folder == null) {
+            Extensions.showMessage(this, getString(R.string.open_folder_failed, "?") );
+            return;
+        }
         if (folder instanceof FTPFileWrapper) {
             loadFtpFolderInPane((FTPFileWrapper) folder, pane1);
             return;
         }
-        if (folder.getName().endsWith(".zip")) {
+        if (folder.isFile() && folder.getName().toLowerCase(Locale.ROOT).endsWith(".zip")) {
             loadZipFolderInPane(folder, "", pane1, addToHistory);
             return;
         }
@@ -2883,26 +2913,41 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void loadZipFolderInPane(File zipFile, String path, boolean pane1, boolean addToHistory) {
+        if (zipFile == null || !zipFile.isFile()) {
+            Extensions.showMessage(this, getString(R.string.open_folder_failed, zipFile == null ? "?" : zipFile.getName()));
+            return;
+        }
+        String safeZipPath = path == null ? "" : path.replace('\\', '/');
+        while (safeZipPath.startsWith("/")) safeZipPath = safeZipPath.substring(1);
+        while (safeZipPath.endsWith("/") && !safeZipPath.isEmpty()) safeZipPath = safeZipPath.substring(0, safeZipPath.length() - 1);
+        for (String part : safeZipPath.split("/")) {
+            if (part.equals(".") || part.equals("..") || part.indexOf('\0') >= 0) {
+                Extensions.showMessage(this, getString(R.string.open_folder_failed, zipFile.getName()));
+                return;
+            }
+        }
+        final String normalizedZipPath = safeZipPath;
         final int requestId = pane1 ? ++pane1LoadGeneration : ++pane2LoadGeneration;
         new Thread(() -> {
             try {
                 List<ZipEntryInfo> entries = new ArrayList<>();
                 ZipEntryInfo parent = null;
                 HashSet<String> seenDirs = new HashSet<>();
+                List<FileHeader> fhs;
                 try (ZipFile zf = new ZipFile(zipFile)) {
-                    String parentPath = TextUtils.isEmpty(path) ? "" : path;
+                    String parentPath = TextUtils.isEmpty(normalizedZipPath) ? "" : normalizedZipPath;
                     if (!TextUtils.isEmpty(parentPath) && !parentPath.endsWith("/")) parentPath += "/";
-                    if (TextUtils.isEmpty(path)) {
+                    if (TextUtils.isEmpty(normalizedZipPath)) {
                         entries.add(new ZipEntryInfo("..", null, true, 0L, 0L, zipFile));
                     } else {
-                        String parentDir = new File(path).getParent();
+                        String parentDir = new File(normalizedZipPath).getParent();
                         if (parentDir == null) parentDir = "";
                         String parentFull = parentDir.isEmpty() ? "" : parentDir.replaceAll("/+$", "") + "/";
                         parent = new ZipEntryInfo("..", parentFull, true, 0L, 0L, zipFile);
                         entries.add(parent);
                     }
 
-                    List<FileHeader> fhs = zf.getFileHeaders();
+                    fhs = zf.getFileHeaders();
                     String prefix = parentPath;
                     for (FileHeader fh : fhs) {
                         String entryPath = fh.getFileName().replace('\\','/');
@@ -2910,7 +2955,7 @@ public class MainActivity extends AppCompatActivity {
                         String rest = entryPath.substring(prefix.length());
                         int nextSlash = rest.indexOf('/');
                         if (nextSlash == -1) {
-                            ZipEntryInfo info = new ZipEntryInfo(fh, zipFile, path);
+                            ZipEntryInfo info = new ZipEntryInfo(fh, zipFile, normalizedZipPath);
                             if (isNotHidden(info)) entries.add(info);
                         } else {
                             String childDirName = rest.substring(0, nextSlash + 1);
@@ -2918,13 +2963,22 @@ public class MainActivity extends AppCompatActivity {
                             if (seenDirs.add(childFullPath)) {
                                 FileHeader syntheticDir = new FileHeader();
                                 syntheticDir.setFileName(childFullPath);
-                                ZipEntryInfo info = new ZipEntryInfo(syntheticDir, zipFile, path);
+                                ZipEntryInfo info = new ZipEntryInfo(syntheticDir, zipFile, normalizedZipPath);
                                 if (isNotHidden(info)) entries.add(info);
                             }
                         }
                     }
                 }
-                sortZipEntries(entries, zipFile.getPath() + "!" + path);
+                if (!normalizedZipPath.isEmpty()) {
+                    boolean hasDirectory = false;
+                    String wanted = normalizedZipPath + "/";
+                    for (FileHeader fh : fhs) {
+                        String n = fh.getFileName().replace('\\', '/');
+                        if (n.equals(normalizedZipPath) || n.startsWith(wanted)) { hasDirectory = true; break; }
+                    }
+                    if (!hasDirectory) throw new IOException("ZIP directory not found: " + normalizedZipPath);
+                }
+                sortZipEntries(entries, zipFile.getPath() + "!" + normalizedZipPath);
                 final ZipEntryInfo finalParent = parent;
                 final List<ZipEntryInfo> finalEntries = entries;
                 handler.post(() -> {
@@ -2932,16 +2986,16 @@ public class MainActivity extends AppCompatActivity {
                     if (pane1) {
                         currentPane1ZipEntries = finalEntries;
                         pane1Folder = zipFile;
-                        if (addToHistory) pushNavigationHistory(true, new NavigationHistoryEntry(zipFile, true, path));
+                        if (addToHistory) pushNavigationHistory(true, new NavigationHistoryEntry(zipFile, true, normalizedZipPath));
                     } else {
                         currentPane2ZipEntries = finalEntries;
                         pane2Folder = zipFile;
-                        if (addToHistory) pushNavigationHistory(false, new NavigationHistoryEntry(zipFile, true, path));
+                        if (addToHistory) pushNavigationHistory(false, new NavigationHistoryEntry(zipFile, true, normalizedZipPath));
                     }
-                    setCurrentFolder(zipFile.getPath() + "!" + path, finalEntries);
+                    setCurrentFolder(zipFile.getPath() + "!" + normalizedZipPath, finalEntries);
                     RecyclerView pane = findViewById(pane1 ? R.id.listViewPane1 : R.id.listViewPane2);
                     boolean isCurrentPane = pane1 ? lastPaneSelected == 1 : lastPaneSelected == 2;
-                    pane.setAdapter(new MainFilesArrayAdapter(this, finalEntries.toArray(new ZipEntryInfo[0]), finalParent, pane1, true, path));
+                    pane.setAdapter(new MainFilesArrayAdapter(this, finalEntries.toArray(new ZipEntryInfo[0]), finalParent, pane1, true, normalizedZipPath));
                     if (isCurrentPane) setMultiSelectModeUI(false);
                     updateNavigationButtons();
                 });
@@ -2973,6 +3027,19 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * File-manager create/rename dialogs accept a single path component only.
+     * Reject separators, dot components, NUL and absolute-path forms so user
+     * input cannot escape the currently selected directory.
+     */
+    private static boolean isSafeChildName(String name) {
+        if (name == null) return false;
+        String value = name.trim();
+        if (value.isEmpty() || value.equals(".") || value.equals("..")) return false;
+        if (value.indexOf('\0') >= 0 || value.indexOf('/') >= 0 || value.indexOf('\\') >= 0) return false;
+        return !new File(value).isAbsolute();
     }
 
     private boolean mkdirViaRoot(File parent, String name) {
@@ -3034,6 +3101,69 @@ public class MainActivity extends AppCompatActivity {
         CharSequence contentDescription = v.getContentDescription();
         if(!TextUtils.isEmpty(contentDescription)) Extensions.showMessage(this, contentDescription);
         return false;
+    }
+
+    private void restoreVisiblePanesFromHistory() {
+        try {
+            if (!pane1History.isEmpty() && pane1HistoryIndex >= 0 && pane1HistoryIndex < pane1History.size()) {
+                NavigationHistoryEntry e = pane1History.get(pane1HistoryIndex);
+                if (e.isZip()) loadZipFolderInPane(e.file(), e.zipPath(), true, false);
+                else loadFolderInPane(e.file(), true, false);
+            }
+            if (!pane2History.isEmpty() && pane2HistoryIndex >= 0 && pane2HistoryIndex < pane2History.size()) {
+                NavigationHistoryEntry e = pane2History.get(pane2HistoryIndex);
+                if (e.isZip()) loadZipFolderInPane(e.file(), e.zipPath(), false, false);
+                else loadFolderInPane(e.file(), false, false);
+            }
+            updateNavigationButtons();
+        } catch (Exception ignored) {}
+    }
+
+    private void restoreNavigationState(Bundle state) {
+        if (state == null) return;
+        restoreHistoryList(state.getStringArrayList("um_pane1_history"), pane1History);
+        restoreHistoryList(state.getStringArrayList("um_pane2_history"), pane2History);
+        pane1HistoryIndex = clampHistoryIndex(state.getInt("um_pane1_history_index", -1), pane1History.size());
+        pane2HistoryIndex = clampHistoryIndex(state.getInt("um_pane2_history_index", -1), pane2History.size());
+    }
+
+    private static void restoreHistoryList(List<String> encoded, List<NavigationHistoryEntry> target) {
+        if (encoded == null) return;
+        for (String value : encoded) {
+            if (value == null) continue;
+            String[] parts = value.split("\\t", -1);
+            if (parts.length < 2 || TextUtils.isEmpty(parts[0])) continue;
+            try {
+                File file = new File(parts[0]);
+                boolean zip = "1".equals(parts[1]);
+                String zipPath = parts.length >= 3 && !parts[2].isEmpty() ? parts[2] : null;
+                if (file.exists()) target.add(new NavigationHistoryEntry(file, zip, zipPath));
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private static int clampHistoryIndex(int index, int size) {
+        if (size == 0) return -1;
+        return Math.max(0, Math.min(index, size - 1));
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putStringArrayList("um_pane1_history", encodeHistory(pane1History));
+        outState.putStringArrayList("um_pane2_history", encodeHistory(pane2History));
+        outState.putInt("um_pane1_history_index", pane1HistoryIndex);
+        outState.putInt("um_pane2_history_index", pane2HistoryIndex);
+    }
+
+    private static ArrayList<String> encodeHistory(List<NavigationHistoryEntry> history) {
+        ArrayList<String> out = new ArrayList<>();
+        for (NavigationHistoryEntry entry : history) {
+            if (entry == null || entry.file() == null) continue;
+            String zip = entry.zipPath() == null ? "" : entry.zipPath().replace("\t", " ");
+            out.add(entry.file().getAbsolutePath() + "\t" + (entry.isZip() ? "1" : "0") + "\t" + zip);
+        }
+        return out;
     }
 
     public record NavigationHistoryEntry(File file, boolean isZip, String zipPath) {
@@ -3244,6 +3374,8 @@ public class MainActivity extends AppCompatActivity {
             ftpStopReceiver = null;
         }
 
+        cancelActiveSearch();
+        cancelActiveFindInFiles();
         try {
             File cache = getCacheDir();
             File[] kids = cache.listFiles();
@@ -3347,6 +3479,20 @@ public class MainActivity extends AppCompatActivity {
                     if (!TextUtils.isEmpty(maxFileSize.getText()))
                         maxSize = Long.parseLong(maxFileSize.getText().toString());
                 } catch (NumberFormatException ignored) {
+                    Extensions.showMessage(this, "Invalid file size filter");
+                    return;
+                }
+                if (minSize < -1 || maxSize < -1 || (minSize >= 0 && maxSize >= 0 && minSize > maxSize)) {
+                    Extensions.showMessage(this, "Invalid file size range");
+                    return;
+                }
+                if (regex) {
+                    try {
+                        Pattern.compile(query, mCase ? 0 : Pattern.CASE_INSENSITIVE);
+                    } catch (PatternSyntaxException e) {
+                        Extensions.showMessage(this, R.string.invalid_regex);
+                        return;
+                    }
                 }
 
                 dialog.dismiss();
@@ -3361,6 +3507,10 @@ public class MainActivity extends AppCompatActivity {
             long minSize, long maxSize) {
         boolean isPane1 = lastPaneSelected == 1;
         File startDir = isPane1 ? pane1Folder : pane2Folder;
+        if (startDir == null || !startDir.isDirectory()) {
+            Extensions.showMessage(this, R.string.find_needs_folder);
+            return;
+        }
 
         RecyclerView.Adapter a = getCurrentPane().getAdapter();
         if (!(a instanceof MainFilesArrayAdapter adapter)) {
@@ -3372,17 +3522,23 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        cancelActiveSearch();
+        cancelActiveFindInFiles();
         ProgressManager pm = new ProgressManager(this, true).show();
         pm.setText(rss.getString(R.string.searching));
+        activeSearchProgress = pm;
         final String finalQuery = query;
 
-        new Thread(() -> {
+        final Thread[] workerRef = new Thread[1];
+        Thread worker = new Thread(() -> {
             List<File> results = new ArrayList<>();
             Pattern pattern = null;
             if (regex) try {
                 pattern = Pattern.compile(finalQuery, mCase ? 0 : Pattern.CASE_INSENSITIVE);
             } catch (Exception e) {
                 handler.post(() -> {
+                    if (activeSearchThread == workerRef[0]) activeSearchThread = null;
+                    if (activeSearchProgress == pm) activeSearchProgress = null;
                     pm.dismiss();
                     Extensions.showMessage(this, R.string.invalid_regex);
                 });
@@ -3392,11 +3548,14 @@ public class MainActivity extends AppCompatActivity {
             final Pattern finalPattern = pattern;
 
             searchRecursive(startDir, results, mCase ? finalQuery : finalQuery.toLowerCase(), subfolders, mCase, regex,
-                    finalPattern, textInside, minSize,
-                    maxSize);
+                    finalPattern, textInside, minSize, maxSize);
 
-            pm.dismiss();
+            boolean cancelled = Thread.currentThread().isInterrupted();
             handler.post(() -> {
+                if (activeSearchThread == workerRef[0]) activeSearchThread = null;
+                if (activeSearchProgress == pm) activeSearchProgress = null;
+                pm.dismiss();
+                if (cancelled) return;
                 if (results.isEmpty()) Extensions.showMessage(this, R.string.no_files_found);
                 else {
                     File[] resArray = results.toArray(new File[0]);
@@ -3405,11 +3564,32 @@ public class MainActivity extends AppCompatActivity {
                     pane.setAdapter(new MainFilesArrayAdapter(this, resArray, startDir, isPane1, false, null));
                 }
             });
-        }).start();
+        });
+        workerRef[0] = worker;
+        activeSearchThread = worker;
+        worker.start();
+    }
+
+    private void cancelActiveSearch() {
+        Thread t = activeSearchThread;
+        if (t != null && t.isAlive()) t.interrupt();
+        ProgressManager pm = activeSearchProgress;
+        if (pm != null) {
+            try { pm.dismiss(); } catch (Exception ignored) {}
+        }
+        activeSearchThread = null;
+        activeSearchProgress = null;
     }
 
     private void searchRecursive(File dir, List<File> results, String query, boolean subfolders, boolean mCase,
             boolean regex, Pattern pattern, String textInside, long minSize, long maxSize) {
+        searchRecursive(dir, results, query, subfolders, mCase, regex, pattern, textInside, minSize, maxSize, new HashSet<>());
+    }
+
+    private void searchRecursive(File dir, List<File> results, String query, boolean subfolders, boolean mCase,
+            boolean regex, Pattern pattern, String textInside, long minSize, long maxSize, Set<String> visitedDirectories) {
+        if (Thread.currentThread().isInterrupted() || dir == null || results.size() >= 5000
+                || !visitedDirectories.add(safeCanonicalPath(dir))) return;
         File[] files = dir.listFiles();
         if (files == null) {
             try {
@@ -3426,6 +3606,7 @@ public class MainActivity extends AppCompatActivity {
                 return;
         }
         for (File f : files) {
+            if (Thread.currentThread().isInterrupted()) return;
             boolean matchName;
             String name = f.getName();
             if (regex && pattern != null) {
@@ -3447,11 +3628,12 @@ public class MainActivity extends AppCompatActivity {
             if (f.isFile() && !TextUtils.isEmpty(textInside)) {
                 matchText = false;
                 if (f.length() < 10485760) { // Limit to 10MB files to prevent OOM
-                    try (BufferedReader br = new BufferedReader(new FileReader(f))) {
+                    try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
                         String line;
-                        while ((line = br.readLine()) != null) {
-                            if (mCase ? line.contains(textInside)
-                                    : line.toLowerCase().contains(textInside.toLowerCase())) {
+                        String needle = mCase ? textInside : textInside.toLowerCase();
+                        while (!Thread.currentThread().isInterrupted() && (line = br.readLine()) != null) {
+                            if (mCase ? line.contains(needle)
+                                    : line.toLowerCase().contains(needle)) {
                                 matchText = true;
                                 break;
                             }
@@ -3463,12 +3645,17 @@ public class MainActivity extends AppCompatActivity {
 
             if (matchName && matchSize && matchText) {
                 results.add(f);
+                if (results.size() >= 5000) return;
             }
 
-            if (subfolders && f.isDirectory()) {
-                searchRecursive(f, results, query, subfolders, mCase, regex, pattern, textInside, minSize, maxSize);
+            if (subfolders && f.isDirectory() && !Files.isSymbolicLink(f.toPath())) {
+                searchRecursive(f, results, query, subfolders, mCase, regex, pattern, textInside, minSize, maxSize, visitedDirectories);
             }
         }
+    }
+
+    private static String safeCanonicalPath(File file) {
+        try { return file.getCanonicalPath(); } catch (IOException e) { return file.getAbsolutePath(); }
     }
 
     private record ContentHit(File file, int line, String snippet) {
@@ -3530,37 +3717,62 @@ public class MainActivity extends AppCompatActivity {
         }
         final Pattern finalPattern = pattern;
         final String needle = matchCase ? query : query.toLowerCase();
+        cancelActiveFindInFiles();
         ProgressManager pm = new ProgressManager(this, true).show();
         pm.setText(rss.getString(R.string.searching));
-        new Thread(() -> {
+        final Thread[] workerRef = new Thread[1];
+        activeFindInFilesProgress = pm;
+        Thread worker = new Thread(() -> {
             List<ContentHit> hits = new ArrayList<>();
             int[] scanned = {0};
-            findInFilesRecursive(startDir, needle, matchCase, regex, finalPattern, hits, scanned, pm);
-            pm.dismiss();
+            findInFilesRecursive(startDir, needle, matchCase, regex, finalPattern, hits, scanned, pm, new HashSet<>());
+            boolean cancelled = Thread.currentThread().isInterrupted();
             handler.post(() -> {
+                if (activeFindInFilesThread == workerRef[0]) activeFindInFilesThread = null;
+                if (activeFindInFilesProgress == pm) activeFindInFilesProgress = null;
+                try { pm.dismiss(); } catch (Exception ignored) {}
+                if (cancelled) return;
                 if (hits.isEmpty()) {
                     Extensions.showMessage(this, R.string.no_files_found);
                     return;
                 }
                 showContentHitsDialog(hits, query, regex, matchCase);
             });
-        }).start();
+        }, "UM-FindInFiles");
+        workerRef[0] = worker;
+        activeFindInFilesThread = worker;
+        worker.start();
+    }
+
+    private void cancelActiveFindInFiles() {
+        Thread t = activeFindInFilesThread;
+        if (t != null && t.isAlive()) t.interrupt();
+        ProgressManager pm = activeFindInFilesProgress;
+        if (pm != null) { try { pm.dismiss(); } catch (Exception ignored) {} }
+        activeFindInFilesThread = null;
+        activeFindInFilesProgress = null;
     }
 
     private void findInFilesRecursive(File dir, String needle, boolean matchCase, boolean regex,
-                                      Pattern pattern, List<ContentHit> hits, int[] scanned, ProgressManager pm) {
+                                      Pattern pattern, List<ContentHit> hits, int[] scanned, ProgressManager pm,
+                                      Set<String> visitedDirectories) {
+        if (Thread.currentThread().isInterrupted() || dir == null || hits.size() >= 500) return;
+        final String canonical;
+        try { canonical = dir.getCanonicalPath(); } catch (IOException e) { return; }
+        if (!visitedDirectories.add(canonical)) return;
         File[] files = dir.listFiles();
         if (files == null) return;
         for (File f : files) {
-            if (hits.size() >= 500) return;
-            if (f.isDirectory()) {
-                findInFilesRecursive(f, needle, matchCase, regex, pattern, hits, scanned, pm);
+            if (Thread.currentThread().isInterrupted() || hits.size() >= 500) return;
+            if (f.isDirectory() && !Files.isSymbolicLink(f.toPath())) {
+                findInFilesRecursive(f, needle, matchCase, regex, pattern, hits, scanned, pm, visitedDirectories);
             } else if (f.isFile() && f.length() < 2097152) {
                 scanned[0]++;
                 if (scanned[0] % 50 == 0 && pm.dialog != null && pm.dialog.isShowing()) {
                     pm.setText(scanned[0] + " files…");
                 }
-                try (BufferedReader br = new BufferedReader(new FileReader(f))) {
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(
+                        new FileInputStream(f), StandardCharsets.UTF_8))) {
                     String line;
                     int lineNo = 0;
                     while ((line = br.readLine()) != null) {
@@ -3743,6 +3955,16 @@ public class MainActivity extends AppCompatActivity {
             settings.edit().putBoolean("sidebar_show_bookmark_groups", isChecked).apply();
             refreshSidebar(getSidebarSectionOrder());
         });
+
+        CompoundButton autoStartRemoteToggle = settingsDialog.findViewById(R.id.autoStartRemoteToggle);
+        autoStartRemoteToggle.setChecked(untrusted.manager.um.remote.HttpRemoteService.isAutoStartEnabled(this));
+        autoStartRemoteToggle.setOnCheckedChangeListener((buttonView, isChecked) ->
+                untrusted.manager.um.remote.HttpRemoteService.setAutoStartEnabled(this, isChecked));
+
+        CompoundButton autoStartFtpToggle = settingsDialog.findViewById(R.id.autoStartFtpToggle);
+        autoStartFtpToggle.setChecked(untrusted.manager.um.UMManager.ftp.FtpForegroundService.isAutoStartEnabled(this));
+        autoStartFtpToggle.setOnCheckedChangeListener((buttonView, isChecked) ->
+                untrusted.manager.um.UMManager.ftp.FtpForegroundService.setAutoStartEnabled(this, isChecked));
 
         EditText searchHistoryLimitEt = settingsDialog.findViewById(R.id.searchHistoryLimitEt);
         if (searchHistoryLimitEt != null) {
@@ -4673,7 +4895,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public static IEZFtpServer ftpServer;
     private BroadcastReceiver ftpStopReceiver;
 
     public interface ImagePickCallback {
@@ -4718,7 +4939,7 @@ public class MainActivity extends AppCompatActivity {
         profileManageButton = header.findViewById(R.id.manage_profiles);
         new ProfileHelper(this, null, portInput, userInput, passInput, securityInput, profileSpinner, profileManageButton).setupProfileSpinner(true);
 
-        boolean serverNotStarted = ftpServer == null;
+        boolean serverNotStarted = !FtpForegroundService.isRunning(this);
         portInput.setEnabled(serverNotStarted);
         userInput.setEnabled(serverNotStarted);
         passInput.setEnabled(serverNotStarted);
@@ -4730,10 +4951,7 @@ public class MainActivity extends AppCompatActivity {
             requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
         }
 
-        // This is very important to have notification so user remember that the FTP server is running and can stop it easily and should be shown always not just if dialog or app closed
         Intent serviceIntent = new Intent(this, FtpForegroundService.class);
-        serviceIntent.putExtra("untrusted.manager.um.UMManager.ip", ipString);
-
         String start = rss.getString(R.string.start);
         String stop = rss.getString(R.string.stop);
         AlertDialog ad = dialogUtil.getDialogBuilder()
@@ -4742,77 +4960,53 @@ public class MainActivity extends AppCompatActivity {
                 .setOnDismissListener(null)
                 .setPositiveButton(serverNotStarted ? start : stop, null)
                 .show();
-                ad.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> {
-                    TextView tv = (TextView) v;
-                    boolean wasStarted = stop.equals(tv.getText().toString());
-                    tv.setText(wasStarted ? start : stop);
-                    portInput.setEnabled(wasStarted);
-                    userInput.setEnabled(wasStarted);
-                    passInput.setEnabled(wasStarted);
-                    pl.setEnabled(serverNotStarted);
-                    if(wasStarted) {
-                        if(ftpServer != null) ftpServer.stop();
-                        ftpServer = null;
-                        if (ftpStopReceiver != null) {
-                            try { unregisterReceiver(ftpStopReceiver); } catch (Exception ignored) {}
-                            ftpStopReceiver = null;
-                        }
-                        stopService(serviceIntent);
-                        Extensions.showMessage(MainActivity.this, rss.getString(R.string.ftp_server_stopped));
-                    } else {
-                        int port = Integer.parseInt(portInput.getText().toString());
-                        String user = userInput.getText().toString();
-                        String pass = passInput.getText().toString();
-                        int securityType = getSecurityTypeIndex(securityInput.getText().toString());
-
-                        try {
-                            EZFtpServer.Builder builder = new EZFtpServer.Builder()
-                                    .setListenPort(port)
-                                    .addUser(new EZFtpUser(user, pass, Environment.getExternalStorageDirectory().getPath(), EZFtpUserPermission.WRITE));
-                            if (securityType > 0) {
-                                boolean implicit = securityType == 2;
-                                File keystoreFile = FtpsCertificateUtil.ensureKeystore(new File(getCacheDir(), "ftps-keystore.jks"));
-                                builder.setFtps(keystoreFile, FtpsCertificateUtil.getPasswordString(), implicit);
-                            }
-                            ftpServer = builder.create();
-                            ftpServer.start();
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                startForegroundService(serviceIntent);
-                            } else {
-                                startService(serviceIntent);
-                            }
-                            Extensions.showMessage(MainActivity.this, rss.getString(R.string.ftp_server_started, port));
-                        } catch (Exception e) {
-                            stopService(serviceIntent);
-                            portInput.setEnabled(true);
-                            userInput.setEnabled(true);
-                            passInput.setEnabled(true);
-                            pl.setEnabled(true);
-                            if(ftpServer != null) ftpServer.stop();
-                            tv.setText(rss.getString(R.string.start));
-                            e.printStackTrace();
-                            Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_start_ftp_server, e.getMessage()));
-                        }
-                        ftpStopReceiver = new BroadcastReceiver() {
-                            @Override
-                            public void onReceive(Context context, Intent intent) {
-                                if (ad.isShowing()) {
-                                    tv.setText(rss.getString(R.string.start));
-                                    portInput.setEnabled(true);
-                                    userInput.setEnabled(true);
-                                    passInput.setEnabled(true);
-                                    header.setEnabled(true);
-                                }
-                                try { unregisterReceiver(this); } catch (Exception ignored) {}
-                                if (ftpStopReceiver == this) ftpStopReceiver = null;
-                            }
-                        };
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            registerReceiver(ftpStopReceiver, new IntentFilter("untrusted.manager.um.FTP_STOPPED"), Context.RECEIVER_NOT_EXPORTED);
-                        } else registerReceiver(ftpStopReceiver, new IntentFilter("untrusted.manager.um.FTP_STOPPED"));
-                    }
-                });
+        ad.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener(v -> {
+            TextView tv = (TextView) v;
+            boolean wasStarted = stop.equals(tv.getText().toString());
+            if (wasStarted) {
+                FtpForegroundService.stopRunning(MainActivity.this);
+                tv.setText(start);
+                portInput.setEnabled(true);
+                userInput.setEnabled(true);
+                passInput.setEnabled(true);
+                pl.setEnabled(true);
+                Extensions.showMessage(MainActivity.this, rss.getString(R.string.ftp_server_stopped));
+            } else {
+                try {
+                    int port = Integer.parseInt(portInput.getText().toString().trim());
+                    String user = userInput.getText().toString();
+                    String pass = passInput.getText().toString();
+                    int securityType = getSecurityTypeIndex(securityInput.getText().toString());
+                    if (port < 1 || port > 65535) throw new IllegalArgumentException("Invalid port");
+                    if (user.trim().isEmpty()) throw new IllegalArgumentException("Username cannot be empty");
+                    if (pass.isEmpty()) throw new IllegalArgumentException("Password cannot be empty");
+                    Intent startIntent = new Intent(MainActivity.this, FtpForegroundService.class)
+                            .setAction(FtpForegroundService.ACTION_START)
+                            .putExtra(FtpForegroundService.EXTRA_PORT, port)
+                            .putExtra(FtpForegroundService.EXTRA_USER, user)
+                            .putExtra(FtpForegroundService.EXTRA_PASSWORD, pass)
+                            .putExtra(FtpForegroundService.EXTRA_SECURITY, securityType)
+                            .putExtra(FtpForegroundService.EXTRA_IP, ipString);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ContextCompat.startForegroundService(MainActivity.this, startIntent);
+                    else startService(startIntent);
+                    tv.setText(stop);
+                    portInput.setEnabled(false);
+                    userInput.setEnabled(false);
+                    passInput.setEnabled(false);
+                    pl.setEnabled(false);
+                    Extensions.showMessage(MainActivity.this, rss.getString(R.string.ftp_server_started, port));
+                } catch (Exception e) {
+                    tv.setText(start);
+                    portInput.setEnabled(true);
+                    userInput.setEnabled(true);
+                    passInput.setEnabled(true);
+                    pl.setEnabled(true);
+                    Extensions.showMessage(MainActivity.this, rss.getString(R.string.failed_to_start_ftp_server, e.getMessage()));
+                }
+            }
+        });
     }
+
 
     private void showFtpClientDialog() {
         ensureLocalNetworkPermission(() -> showFtpClientDialogInternal());

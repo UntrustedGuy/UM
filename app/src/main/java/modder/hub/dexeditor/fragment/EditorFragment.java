@@ -104,7 +104,7 @@ import modder.hub.dexeditor.views.TextActionWindow;
 // and I tried my best to make it possible
 
 // This support for opening and listing both java and smali ( no extention for .smali class)
-// Not implemented the smali method body to java and smali flow chart fragment (it still uses the activity) in the recent drawer list
+// Smali method-body Java conversion and flow-chart views are hosted by their existing activity implementations.
 
 public class EditorFragment extends Fragment implements SmaliMethodFieldListFragment.DialogLineNumberListener {
 

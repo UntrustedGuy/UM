@@ -87,6 +87,8 @@ public class ProfileHelper {
             FtpProfile profile;
             if(toLoad == null) {
                 int lastSelectedProfile = settings.getInt(isServer ? "lastSelectedServerProfile" : "lastSelectedClientProfile", 0);
+                if (lastSelectedProfile < 0 || lastSelectedProfile >= profiles.size()) lastSelectedProfile = 0;
+                settings.edit().putInt(isServer ? "lastSelectedServerProfile" : "lastSelectedClientProfile", lastSelectedProfile).apply();
                 profileSpinner.setText(values[lastSelectedProfile]);
                 profileSpinner.setAdapter(adapter);
                 profile = profiles.get(lastSelectedProfile);
@@ -107,7 +109,10 @@ public class ProfileHelper {
         userInput.setText(profile.getUsername());
         passInput.setText(profile.getPassword());
         if(securityInput != null) {
-            securityInput.setText(getSecurityOptions()[profile.getSecurityType()], false);
+            String[] options = getSecurityOptions();
+            int idx = profile.getSecurityType();
+            if (idx < 0 || idx >= options.length) idx = 0;
+            securityInput.setText(options[idx], false);
         }
     }
 
@@ -198,11 +203,29 @@ public class ProfileHelper {
                 .setPositiveButton(context.rss.getString(R.string.save), (dialog, which) -> {
                     String name = nameInput.getText().toString().trim();
                     String ip = ipInput.getText().toString().trim();
-                    int port = Integer.parseInt(portInput.getText().toString());
+                    int port;
+                    try {
+                        port = Integer.parseInt(portInput.getText().toString().trim());
+                    } catch (NumberFormatException e) {
+                        portInput.setError(context.getString(android.R.string.dialog_alert_title));
+                        return;
+                    }
+                    if (port < 1 || port > 65535) {
+                        portInput.setError("Port must be between 1 and 65535");
+                        return;
+                    }
                     String user = userInput.getText().toString().trim();
                     String pass = passInput.getText().toString();
                     int securityType = getSecurityTypeFromText(profileSecurity.getText().toString());
 
+                    if (name.isEmpty()) {
+                        nameInput.setError("Profile name is required");
+                        return;
+                    }
+                    if (!isServer && ip.isEmpty()) {
+                        ipInput.setError("Host is required");
+                        return;
+                    }
                     FtpProfile newProfile = new FtpProfile(name, ip, port, user, pass, isServer, securityType);
 
                     if (isEdit) {
@@ -219,12 +242,10 @@ public class ProfileHelper {
         if (isEdit) {
             builder.setNeutralButton(context.rss.getString(R.string.delete), allowDelete ? (dialog, which) ->  {
                 int i = profileManager.getProfiles().indexOf(profile);
-                profileManager.deleteProfile(i);
+                if (i >= 0) profileManager.deleteProfile(i);
                 SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(context);
                 String key = isServer ? "lastSelectedServerProfile" : "lastSelectedClientProfile";
-                if(settings.getInt(key, 0) == i) {
-                    settings.edit().putInt(key, 0).apply();
-                }
+                settings.edit().putInt(key, 0).apply();
                 setupProfileSpinner(profile.isServerProfile());
             } : null);
         }

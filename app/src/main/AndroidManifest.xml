@@ -5,6 +5,13 @@
    >
     <uses-sdk tools:overrideLibrary="io.github.rosemoe.sora.langs.java, androidx.window, androidx.window.core, rikka.shizuku.provider, rikka.shizuku.api, rikka.shizuku.shared, rikka.shizuku.aidl" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <queries>
+        <intent>
+            <action android:name="untrusted.manager.um.plugin.ACTION_ENTRY" />
+        </intent>
+    </queries>
 
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -61,6 +68,8 @@
            android:icon="@mipmap/ic_launcher"
            android:label="Untrusted Manager">
         <activity android:name="untrusted.manager.um.network.NetworkTransferActivity" android:exported="false" android:label="Network Transfers" />
+        <activity android:name="untrusted.manager.um.tools.PluginManagerActivity" android:exported="false" android:label="Plugins" />
+        <activity android:name="untrusted.manager.um.ui.activities.CloudBackupActivity" android:exported="false" android:label="@string/cloud_backup" />
         <activity
             android:theme="@style/Theme.Material3.DayNight.NoActionBar"
             android:name="untrusted.manager.um.UMManager.MainActivity"
@@ -90,7 +99,20 @@
         <service
             android:name="untrusted.manager.um.remote.HttpRemoteService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Persistent user-enabled local HTTP and MCP remote-management server" />
+        </service>
+        <receiver
+            android:name="untrusted.manager.um.remote.HttpRemoteBootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <activity
             android:theme="@style/Theme.Material3.DayNight.NoActionBar"
             android:name="untrusted.manager.um.tools.ToolsHubActivity"
@@ -141,6 +163,12 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/cache_cleaner_service" />
         </service>
+        <activity
+            android:theme="@style/Theme.Material3.DayNight.NoActionBar"
+            android:name="untrusted.manager.um.ui.activities.TerminalActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize" />
        <activity
            android:name="untrusted.manager.um.ui.activities.TextEditorActivity"
            android:windowSoftInputMode="adjustResize|stateHidden"
@@ -237,7 +265,20 @@
            <service
                 android:name="untrusted.manager.um.UMManager.ftp.FtpForegroundService"
                 android:foregroundServiceType="specialUse"
-                android:exported="false" />
+                android:exported="false">
+               <property
+                   android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                   android:value="Persistent user-enabled local FTP or FTPS server" />
+           </service>
+           <receiver
+               android:name="untrusted.manager.um.UMManager.ftp.FtpBootReceiver"
+               android:enabled="true"
+               android:exported="false">
+               <intent-filter>
+                   <action android:name="android.intent.action.BOOT_COMPLETED" />
+                   <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+               </intent-filter>
+           </receiver>
            <service
                android:name="io.github.codehasan.colorpicker.services.ColorPickerService"
                android:enabled="true"

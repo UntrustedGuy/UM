@@ -848,10 +848,7 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
         } else {
             popup.getMenu().add("Copy");
         }
-        popup.getMenu().add("Add");
-        popup.getMenu().add("Import");
         popup.getMenu().add("Delete");
-        popup.getMenu().add("Rename");
         popup.getMenu().add("Batch operations");
 
         popup.setOnMenuItemClickListener(item -> {
@@ -875,8 +872,7 @@ public class TreeAdapter extends RecyclerView.Adapter<TreeAdapter.ViewHolder> {
                     }
                     break;
                 default:
-                    Toast.makeText(context, title + " not implemented yet", Toast.LENGTH_SHORT).show();
-                    break;
+                    return false;
             }
             return true;
         });

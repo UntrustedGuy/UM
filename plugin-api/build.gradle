@@ -1,0 +1,11 @@
+plugins {
+    id 'com.android.library'
+}
+
+android {
+    namespace 'untrusted.manager.um.plugin.api'
+    compileSdk 36
+    defaultConfig {
+        minSdk 19
+    }
+}

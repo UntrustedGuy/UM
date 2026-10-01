@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "Untrusted Manager"
-include ':app'
+include ':app', ':plugin-api'

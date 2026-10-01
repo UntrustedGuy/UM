@@ -1420,4 +1420,37 @@ Layout Inspector
         <item>Markdown</item>
     </string-array>
     <string name="sidebar_network_storage">Network Storage</string>
+    <string name="streaming_headers">Streaming headers</string>
+    <string name="streaming_headers_network_only">Custom HTTP headers apply only to HTTP/HTTPS media streams.</string>
+    <string name="streaming_header_url_hint">URL or prefix pattern (use * for a prefix)</string>
+    <string name="streaming_header_lines_hint">One header per line, for example: Referer: https://example.com</string>
+    <string name="streaming_headers_format">Headers are sent with network media requests. Use one Header-Name: value per line.</string>
+    <string name="streaming_headers_remove">Remove rule</string>
+    <string name="terminal">Terminal</string>
+    <string name="send">Send</string>
+    <string name="terminal_not_supported_for_zip_entries">Terminal is not available inside archive entries.</string>
+    <string name="comparing">Comparing…</string>
+
+    <string name="create_shortcut">Create shortcut</string>
+    <string name="file_shortcuts_android_o">Pinned file shortcuts require Android 8.0 or newer</string>
+    <string name="file_shortcuts_unsupported">Pinned shortcuts are not supported by this launcher</string>
+    <string name="file_shortcut_target_missing">The shortcut target no longer exists</string>
+    <string name="file_shortcut_failed">Could not create the pinned shortcut</string>
+    <string name="cloud_backup">Cloud backup</string>
+    <string name="cloud_backup_description">Back up UM settings, bookmarks and search history to a folder provided by Android storage providers such as cloud drives.</string>
+    <string name="cloud_backup_export">Back up to cloud</string>
+    <string name="cloud_backup_import">Restore from cloud</string>
+    <string name="cloud_backup_select_folder">Select a cloud or storage folder</string>
+    <string name="cloud_backup_select_file">Select a UM backup file</string>
+    <string name="cloud_backup_success">Backup completed: %1$s</string>
+    <string name="cloud_restore_success">Restore completed: %1$s settings restored</string>
+    <string name="cloud_backup_failed">Cloud backup failed: %1$s</string>
+    <string name="cloud_restore_failed">Cloud restore failed: %1$s</string>
+    <string name="cloud_backup_invalid">This file is not a valid Untrusted Manager backup</string>
+
+    <string name="auto_start_remote_services">Auto-start HTTP/MCP remote service</string>
+    <string name="auto_start_remote_services_summary">Restore the enabled remote service after boot and app updates</string>
+    <string name="auto_start_ftp_service">Auto-start FTP/FTPS server</string>
+    <string name="auto_start_ftp_service_summary">Restore the configured FTP/FTPS server after boot and app updates</string>
+    <string name="html_preview">HTML Preview</string>
 </resources>

@@ -50,6 +50,7 @@ public final class HttpRemoteServer {
         }
         this.root = canonical;
         this.token = token == null ? "" : token.trim();
+        if (!this.token.isEmpty() && this.token.length() < 16) throw new IllegalArgumentException("HTTP remote token must contain at least 16 characters");
         this.listener = listener;
         this.serverSocket = new ServerSocket();
         this.serverSocket.setReuseAddress(true);
@@ -235,6 +236,7 @@ public final class HttpRemoteServer {
             File dst = resolve(req.query.get("to"), true);
             if (!src.exists() || src.equals(root)) { json(out, 404, "{\"error\":\"Source not found\"}"); return; }
             if (src.isDirectory() && isDescendant(dst, src)) { json(out, 409, "{\"error\":\"Destination is inside source\"}"); return; }
+            if (dst.exists()) { json(out, 409, "{\"error\":\"Destination already exists\"}"); return; }
             if ("move".equals(action)) {
                 if (!src.renameTo(dst)) {
                     copyTree(src, dst);
@@ -246,13 +248,26 @@ public final class HttpRemoteServer {
         if ("rename".equals(action)) {
             File src = resolve(req.query.get("from"), false);
             File dst = resolve(req.query.get("to"), true);
-            if (!src.exists() || src.equals(root) || !src.renameTo(dst)) { json(out, 409, "{\"error\":\"Rename failed\"}"); return; }
+            if (!src.exists() || src.equals(root) || dst.exists() || !src.renameTo(dst)) { json(out, 409, "{\"error\":\"Rename failed\"}"); return; }
+            if (!dst.exists() || src.exists()) { json(out, 500, "{\"error\":\"Rename verification failed\"}"); return; }
             json(out, 200, "{\"ok\":true}"); return;
         }
         if ("write-text".equals(action)) {
             File target = resolve(req.query.get("path"), true);
             byte[] body = readBody(in, parseLength(req.headers.get("content-length")), 16 * 1024 * 1024);
-            Files.write(target.toPath(), body);
+            File parent = target.getParentFile();
+            if (parent == null || !parent.isDirectory()) { json(out, 409, "{\"error\":\"Parent does not exist\"}"); return; }
+            File temp = File.createTempFile(".um-text-", ".part", parent);
+            boolean promoted = false;
+            try {
+                Files.write(temp.toPath(), body);
+                if (!temp.isFile() || temp.length() != body.length) throw new IOException("Text write verification failed");
+                if (!temp.renameTo(target)) {
+                    if (target.exists() && !target.delete()) throw new IOException("Cannot replace target");
+                    if (!temp.renameTo(target)) throw new IOException("Cannot finalize text write");
+                }
+                promoted = true;
+            } finally { if (!promoted && temp.exists()) temp.delete(); }
             json(out, 200, "{\"ok\":true}"); return;
         }
         json(out, 404, "{\"error\":\"Unknown endpoint\"}");
@@ -266,6 +281,7 @@ public final class HttpRemoteServer {
         String base = root.getCanonicalPath();
         String cp = candidate.getCanonicalPath();
         if (!cp.equals(base) && !cp.startsWith(base + File.separator)) throw new SecurityException("Path escapes server root");
+        rejectSymlinkAncestors(candidate);
         if (!allowMissing && !candidate.exists()) return candidate;
         return candidate;
     }
@@ -428,6 +444,7 @@ public final class HttpRemoteServer {
 
     private static void copyTree(File src, File dst) throws IOException {
         if (Files.isSymbolicLink(src.toPath())) throw new IOException("Symbolic links are not supported");
+        if (dst.exists()) throw new IOException("Destination already exists");
         if (src.isDirectory()) {
             if (!dst.exists() && !dst.mkdirs()) throw new IOException("Cannot create destination");
             File[] children = src.listFiles();
@@ -435,7 +452,16 @@ public final class HttpRemoteServer {
         } else {
             File parent = dst.getParentFile();
             if (parent != null && !parent.exists() && !parent.mkdirs()) throw new IOException("Cannot create destination parent");
-            Files.copy(src.toPath(), dst.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(src.toPath(), dst.toPath());
+        }
+    }
+
+    private void rejectSymlinkAncestors(File candidate) throws IOException {
+        File current = candidate;
+        while (current != null) {
+            if (Files.isSymbolicLink(current.toPath())) throw new SecurityException("Symbolic links are not allowed");
+            if (current.equals(root)) return;
+            current = current.getParentFile();
         }
     }
 

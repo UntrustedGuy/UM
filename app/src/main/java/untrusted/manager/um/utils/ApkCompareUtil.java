@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipEntry;
 
 public class ApkCompareUtil {
 
@@ -75,41 +77,50 @@ public class ApkCompareUtil {
     }
 
     private static void compareEntries(File apk1, File apk2, StringBuilder sb) {
-        Map<String, long[]> entries1 = getEntries(apk1);
-        Map<String, long[]> entries2 = getEntries(apk2);
-        if (entries1 == null || entries2 == null) return;
-
+        Map<String, EntryInfo> entries1 = getEntries(apk1);
+        Map<String, EntryInfo> entries2 = getEntries(apk2);
+        if (entries1 == null || entries2 == null) {
+            sb.append("Entries: failed to read one or both archives\n\n");
+            return;
+        }
         int same = 0;
         List<String> modified = new ArrayList<>();
         List<String> added = new ArrayList<>();
         List<String> removed = new ArrayList<>();
-        for (Map.Entry<String, long[]> e : entries2.entrySet()) {
-            String name = e.getKey();
-            long[] v2 = e.getValue();
-            long[] v1 = entries1.get(name);
-            if (v1 == null) added.add(name);
-            else if (v1[1] != v2[1] || v1[0] != v2[0]) modified.add(name);
-            else same++;
+        try (ZipFile zf1 = new ZipFile(apk1); ZipFile zf2 = new ZipFile(apk2)) {
+            for (Map.Entry<String, EntryInfo> e : entries2.entrySet()) {
+                String name = e.getKey();
+                EntryInfo v2 = e.getValue();
+                EntryInfo v1 = entries1.get(name);
+                if (v1 == null) added.add(name);
+                else {
+                    boolean equal = v1.size == v2.size && v1.crc == v2.crc;
+                    ZipEntry z1 = zf1.getEntry(name);
+                    ZipEntry z2 = zf2.getEntry(name);
+                    if (equal && z1 != null && z2 != null && !z1.isDirectory()) {
+                        equal = ComparisonDigest.sha256(zf1, z1).equals(ComparisonDigest.sha256(zf2, z2));
+                    }
+                    if (equal) same++; else modified.add(name);
+                }
+            }
+        } catch (Exception e) {
+            sb.append("Entries: hash verification failed: ").append(e.getMessage()).append('\n');
         }
         for (String name : entries1.keySet()) if (!entries2.containsKey(name)) removed.add(name);
-
         sb.append("Entries:\n");
         sb.append("  Identical: ").append(same).append('\n');
         sb.append("  Modified: ").append(modified.size()).append('\n');
         sb.append("  Added: ").append(added.size()).append('\n');
         sb.append("  Removed: ").append(removed.size()).append('\n');
-        if (!modified.isEmpty()) {
-            sb.append("\nModified entries:\n");
-            appendCapped(sb, modified, 20);
-        }
-        if (!added.isEmpty()) {
-            sb.append("\nAdded entries:\n");
-            appendCapped(sb, added, 20);
-        }
-        if (!removed.isEmpty()) {
-            sb.append("\nRemoved entries:\n");
-            appendCapped(sb, removed, 20);
-        }
+        appendList(sb, "Modified entries", modified);
+        appendList(sb, "Added entries", added);
+        appendList(sb, "Removed entries", removed);
+    }
+
+    private static void appendList(StringBuilder sb, String title, List<String> list) {
+        if (list.isEmpty()) return;
+        sb.append('\n').append(title).append(':').append('\n');
+        appendCapped(sb, list, 100);
     }
 
     private static void appendCapped(StringBuilder sb, List<String> list, int cap) {
@@ -117,19 +128,23 @@ public class ApkCompareUtil {
         if (list.size() > cap) sb.append("  … and ").append(list.size() - cap).append(" more\n");
     }
 
-    private static Map<String, long[]> getEntries(File apk) {
-        Map<String, long[]> map = new HashMap<>();
+    private static Map<String, EntryInfo> getEntries(File apk) {
+        Map<String, EntryInfo> map = new HashMap<>();
         try (ZipFile zf = new ZipFile(apk)) {
             List<FileHeader> headers = zf.getFileHeaders();
             if (headers == null) return null;
             for (FileHeader h : headers) {
                 if (h.isDirectory()) continue;
-                map.put(h.getFileName(), new long[]{h.getUncompressedSize(), h.getCrc()});
+                map.put(h.getFileName(), new EntryInfo(h.getUncompressedSize(), h.getCrc()));
             }
             return map;
-        } catch (Exception e) {
-            return null;
-        }
+        } catch (Exception e) { return null; }
+    }
+
+    private static final class EntryInfo {
+        final long size;
+        final long crc;
+        EntryInfo(long size, long crc) { this.size = size; this.crc = crc; }
     }
 
     private static void comparePermissions(PackageInfo p1, PackageInfo p2, StringBuilder sb) {

@@ -21,7 +21,7 @@ public final class SmbClient implements Closeable {
         Properties p=new Properties();
         p.setProperty("jcifs.client.minVersion","SMB202");
         p.setProperty("jcifs.client.maxVersion","SMB311");
-        p.setProperty("jcifs.client.signingEnforced","false");
+        p.setProperty("jcifs.client.signingEnforced","true");
         p.setProperty("jcifs.resolveOrder","DNS,BCAST");
         BaseContext baseContext=new BaseContext(new PropertyConfiguration(p));
         NtlmPasswordAuthenticator auth;
@@ -48,13 +48,13 @@ public final class SmbClient implements Closeable {
     }
     public void download(String remote,File out) throws Exception {
         SmbFile src=resource(remote); File parent=out.getParentFile();if(parent!=null&&!parent.exists()&&!parent.mkdirs())throw new IOException("Cannot create destination");
-        File tmp=new File(parent,out.getName()+".part"); try(SmbFile f=src;InputStream in=f.openInputStream();OutputStream os=new BufferedOutputStream(new FileOutputStream(tmp))){copy(in,os);} if(out.exists()&&!out.delete())throw new IOException("Cannot replace destination");if(!tmp.renameTo(out)){tmp.delete();throw new IOException("Cannot promote download");}
+        File tmp=new File(parent,out.getName()+".part-"+System.nanoTime()); long expected; try(SmbFile f=src){expected=f.length(); try(InputStream in=f.openInputStream();OutputStream os=new BufferedOutputStream(new FileOutputStream(tmp))){copy(in,os);}} if(!tmp.isFile()||tmp.length()!=expected){tmp.delete();throw new IOException("SMB download size verification failed");} if(out.exists()&&!out.delete()){tmp.delete();throw new IOException("Cannot replace destination");}if(!tmp.renameTo(out)){tmp.delete();throw new IOException("Cannot promote download");} if(out.length()!=expected)throw new IOException("SMB destination verification failed");
     }
     public void upload(File local,String remote) throws Exception {
-        if(local==null||!local.isFile())throw new FileNotFoundException(String.valueOf(local)); SmbFile dst=resource(remote); try(SmbFile f=dst;InputStream in=new BufferedInputStream(new FileInputStream(local));OutputStream os=new BufferedOutputStream(f.openOutputStream())){copy(in,os);}
+        if(local==null||!local.isFile())throw new FileNotFoundException(String.valueOf(local)); SmbFile dst=resource(remote); try(SmbFile f=dst;InputStream in=new BufferedInputStream(new FileInputStream(local));OutputStream os=new BufferedOutputStream(f.openOutputStream())){copy(in,os);} try(SmbFile f=dst){if(f.length()!=local.length())throw new IOException("SMB upload size verification failed");}
     }
-    public void mkdir(String remote) throws Exception {try(SmbFile f=resource(remote)){f.mkdirs();}}
-    public void delete(String remote) throws Exception {try(SmbFile f=resource(remote)){if(isRoot(f))throw new IOException("Refusing to delete SMB root");f.delete();}}
+    public void mkdir(String remote) throws Exception {try(SmbFile f=resource(remote)){if(f.exists()){if(!f.isDirectory())throw new IOException("SMB target exists and is not a directory");return;}f.mkdirs();if(!f.exists()||!f.isDirectory())throw new IOException("SMB directory creation failed");}}
+    public void delete(String remote) throws Exception {try(SmbFile f=resource(remote)){if(isRoot(f))throw new IOException("Refusing to delete SMB root");f.delete();if(f.exists())throw new IOException("SMB delete verification failed");}}
     public void rename(String remote,String target) throws Exception {try(SmbFile a=resource(remote);SmbFile b=resource(target)){if(isRoot(a)||isRoot(b))throw new IOException("Cannot rename SMB root");if(b.exists())throw new IOException("Destination already exists");a.renameTo(b);}}
     public void copy(String remote,String target) throws Exception {try(SmbFile a=resource(remote);SmbFile b=resource(target)){if(isRoot(a)||isRoot(b))throw new IOException("Cannot copy SMB root");if(b.exists())throw new IOException("Destination already exists");a.copyTo(b);}}
     public void close(){try{root.close();}catch(Exception ignored){}}

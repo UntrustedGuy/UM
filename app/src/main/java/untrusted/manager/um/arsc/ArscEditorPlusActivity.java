@@ -51,6 +51,7 @@ import com.reandroid.arsc.chunk.TypeBlock;
 import com.reandroid.arsc.container.SpecTypePair;
 import com.reandroid.arsc.model.ResourceEntry;
 import com.reandroid.arsc.value.Entry;
+import com.reandroid.arsc.value.ResValueMap;
 import com.reandroid.arsc.value.ValueType;
 
 import net.lingala.zip4j.ZipFile;
@@ -859,7 +860,7 @@ public class ArscEditorPlusActivity extends AppCompatActivity {
         }
         try {
             if (e.isComplex()) {
-                Extensions.showMessage(this, R.string.complex_value_open_its_config_in_the_text_tab);
+                showComplexEditDialog(re, e);
                 return;
             }
         } catch (Exception ignored) {
@@ -926,6 +927,72 @@ public class ArscEditorPlusActivity extends AppCompatActivity {
                         Extensions.showMessage(this, getString(R.string.invalid_value_forx, type.name()));
                     }
                 }).show();
+    }
+
+    private void showComplexEditDialog(ResourceEntry re, Entry entry) {
+        List<ResValueMap> maps = data.complexValues(entry);
+        if (maps.isEmpty()) {
+            Extensions.showMessage(this, R.string.no_editable_value);
+            return;
+        }
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        int pad = dp(12);
+        root.setPadding(pad, pad, pad, 0);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(root);
+        List<EditText> fields = new ArrayList<>();
+        for (ResValueMap map : maps) {
+            TextInputLayout box = UiFields.box(this, complexKeyLabel(map));
+            EditText field = UiFields.field(box, InputType.TYPE_CLASS_TEXT);
+            String value;
+            try { value = map.decodeValue(); } catch (Exception ex) { value = ""; }
+            if (value == null) value = "";
+            field.setText(value);
+            fields.add(field);
+            root.addView(box);
+        }
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.edit_X, re.getName()))
+                .setView(scroll)
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (d, w) -> {
+                    int[] oldTypes = new int[maps.size()];
+                    int[] oldData = new int[maps.size()];
+                    for (int i = 0; i < maps.size(); i++) {
+                        oldTypes[i] = maps.get(i).getValueType() == null ? 0 : maps.get(i).getValueType().getByte() & 0xFF;
+                        oldData[i] = maps.get(i).getData();
+                    }
+                    boolean ok = true;
+                    int changed = 0;
+                    for (int i = 0; i < maps.size(); i++) {
+                        String value = fields.get(i).getText() == null ? "" : fields.get(i).getText().toString();
+                        if (!data.setComplexValue(entry, maps.get(i).getNameId(), value)) ok = false;
+                        else changed++;
+                    }
+                    if (ok) {
+                        data.pushHistory(getString(R.string.edit_X, re.getName()), () -> {
+                            for (int i = 0; i < maps.size(); i++) {
+                                try { maps.get(i).setValueAsRaw(com.reandroid.arsc.value.ValueType.valueOf(oldTypes[i]), oldData[i]); } catch (Exception ignored) { }
+                            }
+                        });
+                        markDirty();
+                        rebuildTree();
+                        refreshStrings();
+                        historyAdapter.refresh();
+                        Extensions.showMessage(this, changed + " value(s) updated");
+                    } else {
+                        Extensions.showMessage(this, R.string.some_values_invalid);
+                    }
+                }).show();
+    }
+
+    private String complexKeyLabel(ResValueMap map) {
+        try {
+            String name = map.decodeName(false);
+            if (name != null && !name.isEmpty()) return name + "  (0x" + Integer.toHexString(map.getNameId()) + ")";
+        } catch (Exception ignored) { }
+        return "0x" + Integer.toHexString(map.getNameId());
     }
 
     private static String describeValue(Entry e) {

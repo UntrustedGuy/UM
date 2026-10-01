@@ -19,7 +19,9 @@ import java.io.InputStream;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -44,7 +46,7 @@ public class aXMLDecoder {
 
     public List<XMLEntry> decode() throws XmlPullParserException, IOException {
 		byte[] bytes = Utils.toByteArray(inputStream);
-		Set<String> usedPrefixes = collectUsedPrefixes(bytes);
+		Map<String, String> namespaceUris = collectNamespaceUris(bytes);
 		List<XMLEntry> result = new ArrayList<>();
 		Deque<OpenElem> stack = new ArrayDeque<>();
 
@@ -66,13 +68,12 @@ public class aXMLDecoder {
 				result.add(new XMLEntry(indent + "<" + tag, "", "", ""));
 
 				if (!rootEmitted) {
-					if (usedPrefixes.contains("android"))
-						result.add(new XMLEntry(indent + "    xmlns:android","=\"","http://schemas.android.com/apk/res/android","\""));
-					if (usedPrefixes.contains("tools"))
-						result.add(new XMLEntry(indent + "    xmlns:tools","=\"","http://schemas.android.com/tools","\""));
-					for (String p : usedPrefixes)
-						if (!p.equals("android") && !p.equals("tools"))
-							result.add(new XMLEntry(indent + "    xmlns:" + p,"=\"","http://schemas.android.com/apk/res-auto","\""));
+					for (Map.Entry<String, String> ns : namespaceUris.entrySet()) {
+						String prefix = ns.getKey();
+						String uri = ns.getValue();
+						if (prefix == null || prefix.isEmpty() || uri == null || uri.isEmpty()) continue;
+						result.add(new XMLEntry(indent + "    xmlns:" + prefix,"=\"",escapeAttr(uri),"\""));
+					}
 					rootEmitted = true;
 				}
 
@@ -182,23 +183,27 @@ public class aXMLDecoder {
 	}
 
 	@RequiresApi(api = Build.VERSION_CODES.KITKAT)
-    private static Set<String> collectUsedPrefixes(byte[] bytes) throws XmlPullParserException, IOException {
-		Set<String> prefixes = new LinkedHashSet<>();
+    private static Map<String, String> collectNamespaceUris(byte[] bytes) throws XmlPullParserException, IOException {
+		Map<String, String> namespaces = new LinkedHashMap<>();
 		AXmlResourceParser p = new AXmlResourceParser();
 		p.open(new ByteArrayInputStream(bytes));
 		while (true) {
 			int t = p.next();
 			if (t == XmlPullParser.END_DOCUMENT) break;
 			if (t == XmlPullParser.START_TAG) {
-				int ac = p.getAttributeCount();
-				for (int i=0;i<ac;i++) {
-					String pr = p.getAttributePrefix(i);
-					if (pr != null && !pr.isEmpty()) prefixes.add(pr);
+				int count = p.getNamespaceCount(p.getDepth());
+				int previous = p.getNamespaceCount(p.getDepth() - 1);
+				for (int i = previous; i < count; i++) {
+					try {
+						String prefix = p.getNamespacePrefix(i);
+						String uri = p.getNamespaceUri(i);
+						if (prefix != null && !prefix.isEmpty() && uri != null && !uri.isEmpty()) namespaces.putIfAbsent(prefix, uri);
+					} catch (Exception ignored) { }
 				}
 			}
 		}
 		p.close();
-		return prefixes;
+		return namespaces;
 	}
 
 	private static String indent(int depth) {

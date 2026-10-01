@@ -69,7 +69,13 @@ public final class ShizukuFileOps {
         if (srcPath == null || dstPath == null || RootManager.isPathBlocked(srcPath) || RootManager.isPathBlocked(dstPath)) return false;
         if (src.isDirectory() && sameOrDescendant(dstPath, srcPath)) return false;
         String cmd = "mv -- " + RootManager.escapeShellArg(srcPath) + " " + RootManager.escapeShellArg(dstPath);
-        return ShizukuShell.exec(cmd).success && existsViaShell(dstPath);
+        if (!ShizukuShell.exec(cmd).success || !existsViaShell(dstPath)) return false;
+        if (existsViaShell(srcPath)) return false;
+        if (src.isFile() && src.length() >= 0) {
+            String sizeCheck = "[ $(stat -c %s -- " + RootManager.escapeShellArg(dstPath) + " 2>/dev/null) -eq " + src.length() + " ]";
+            if (!ShizukuShell.exec(sizeCheck).success) return false;
+        }
+        return true;
     }
 
     private static String canonicalPath(File file) {

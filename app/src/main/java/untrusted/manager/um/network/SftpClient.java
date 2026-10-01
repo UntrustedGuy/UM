@@ -10,6 +10,7 @@ import net.schmizz.sshj.sftp.RemoteResourceInfo;
 import net.schmizz.sshj.sftp.SFTPClient;
 import net.schmizz.sshj.sftp.FileAttributes;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -27,12 +28,25 @@ public final class SftpClient implements AutoCloseable {
     private final String root;
 
     public SftpClient(String host, int port, String user, String password, String privateKey, String keyPassphrase, boolean acceptAnyHostKey, String initialPath) throws Exception {
+        this(host, port, user, password, privateKey, keyPassphrase, acceptAnyHostKey, null, initialPath);
+    }
+
+    /** Creates an SFTP connection with optional pinned host-key fingerprint.
+     * Fingerprints use SSHJ's accepted MD5/SHA-1/SHA-256 formats. */
+    public SftpClient(String host, int port, String user, String password, String privateKey, String keyPassphrase,
+                      boolean acceptAnyHostKey, String hostKeyFingerprint, String initialPath) throws Exception {
         if (host == null || host.trim().isEmpty()) throw new IllegalArgumentException("Host required");
         if (port < 1 || port > 65535) throw new IllegalArgumentException("Invalid port");
         if (user == null || user.trim().isEmpty()) throw new IllegalArgumentException("Username required");
         ssh = new SSHClient();
-        if (acceptAnyHostKey) ssh.addHostKeyVerifier(new PromiscuousVerifier());
-        else throw new IllegalArgumentException("A host-key verifier is required; enable explicit trust for first connection");
+        String fp = hostKeyFingerprint == null ? "" : hostKeyFingerprint.trim();
+        if (!fp.isEmpty()) {
+            ssh.addHostKeyVerifier(fp);
+        } else if (acceptAnyHostKey) {
+            ssh.addHostKeyVerifier(new PromiscuousVerifier());
+        } else {
+            throw new IllegalArgumentException("Host-key fingerprint required, or explicitly enable trust-any for first connection");
+        }
         ssh.setConnectTimeout(15000);
         ssh.setTimeout(30000);
         ssh.connect(host, port);
@@ -66,15 +80,27 @@ public final class SftpClient implements AutoCloseable {
 
     public void download(String remote, File local) throws Exception {
         if (local == null) throw new IllegalArgumentException("Local file required");
-        File parent = local.getParentFile(); if (parent != null && !parent.exists() && !parent.mkdirs()) throw new IllegalStateException("Cannot create local directory");
+        String rp = normalize(remote);
+        FileAttributes attrs = sftp.stat(rp);
+        File parent = local.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) throw new IllegalStateException("Cannot create local directory");
         File tmp = new File(local.getAbsolutePath() + ".umtmp-" + System.nanoTime());
-        try { sftp.get(normalize(remote), tmp.getAbsolutePath()); if (!tmp.renameTo(local)) { if (local.exists() && !local.delete()) throw new IllegalStateException("Cannot replace local file"); if (!tmp.renameTo(local)) throw new IllegalStateException("Cannot finalize download"); } }
-        finally { if (tmp.exists()) tmp.delete(); }
+        boolean promoted = false;
+        try {
+            sftp.get(rp, tmp.getAbsolutePath());
+            if (!tmp.isFile() || tmp.length() != attrs.getSize()) throw new IOException("SFTP download size verification failed");
+            if (local.exists() && !local.delete()) throw new IllegalStateException("Cannot replace local file");
+            if (!tmp.renameTo(local)) throw new IllegalStateException("Cannot finalize download");
+            promoted = true;
+        } finally { if (!promoted && tmp.exists()) tmp.delete(); }
     }
 
     public void upload(File local, String remote) throws Exception {
         if (local == null || !local.isFile()) throw new IllegalArgumentException("Local file required");
-        sftp.put(local.getAbsolutePath(), normalize(remote));
+        String rp = normalize(remote);
+        sftp.put(local.getAbsolutePath(), rp);
+        FileAttributes attrs = sftp.stat(rp);
+        if (attrs.getSize() != local.length()) throw new IOException("SFTP upload size verification failed");
     }
 
     public void mkdir(String remote) throws Exception { sftp.mkdirs(normalize(remote)); }
@@ -83,7 +109,51 @@ public final class SftpClient implements AutoCloseable {
         FileAttributes a = sftp.stat(p); if (a.getType().toString().contains("DIRECTORY")) sftp.rmdir(p); else sftp.rm(p);
     }
     public void rename(String from, String to) throws Exception { String a=normalize(from), b=normalize(to); if (a.equals(root)) throw new IllegalArgumentException("Cannot rename connection root"); sftp.rename(a,b); }
-    public void copy(String from, String to) throws Exception { throw new UnsupportedOperationException("SFTP server-side copy is not portable; use download/upload"); }
+    public void copy(String from, String to) throws Exception {
+        String src = normalize(from), dst = normalize(to);
+        if (src.equals(root)) throw new IllegalArgumentException("Cannot copy connection root");
+        if (src.equals(dst) || dst.startsWith(src + "/")) throw new IllegalArgumentException("Destination is inside source");
+        FileAttributes attrs = sftp.stat(src);
+        File staging = File.createTempFile(".um-sftp-copy-", ".part");
+        try {
+            if (attrs.getType().toString().contains("DIRECTORY")) {
+                if (!staging.delete()) throw new IOException("Cannot prepare SFTP staging directory");
+                if (!staging.mkdirs()) throw new IOException("Cannot create SFTP staging directory");
+                downloadTree(src, staging);
+                uploadTree(staging, dst);
+            } else {
+                sftp.get(src, staging.getAbsolutePath());
+                if (staging.length() != attrs.getSize()) throw new IOException("SFTP copy download verification failed");
+                sftp.put(staging.getAbsolutePath(), dst);
+                FileAttributes copied = sftp.stat(dst);
+                if (copied.getSize() != attrs.getSize()) throw new IOException("SFTP copy upload verification failed");
+            }
+        } finally { deleteLocalTree(staging); }
+    }
+
+    private void downloadTree(String remoteDir, File localDir) throws Exception {
+        for (Entry e : list(remoteDir)) {
+            File child = new File(localDir, e.name);
+            if (e.directory) { if (!child.mkdirs() && !child.isDirectory()) throw new IOException("Cannot create staging directory"); downloadTree(e.path, child); }
+            else if (!e.symlink) { sftp.get(e.path, child.getAbsolutePath()); if (child.length() != e.size) throw new IOException("SFTP staging verification failed: " + e.path); }
+        }
+    }
+
+    private void uploadTree(File localDir, String remoteDir) throws Exception {
+        sftp.mkdirs(remoteDir);
+        File[] files = localDir.listFiles(); if (files == null) return;
+        for (File f : files) {
+            String remote = remoteDir.endsWith("/") ? remoteDir + f.getName() : remoteDir + "/" + f.getName();
+            if (f.isDirectory()) uploadTree(f, remote);
+            else { sftp.put(f.getAbsolutePath(), remote); if (sftp.stat(remote).getSize() != f.length()) throw new IOException("SFTP staging upload verification failed: " + remote); }
+        }
+    }
+
+    private static void deleteLocalTree(File f) {
+        if (f == null || !f.exists()) return;
+        if (f.isDirectory()) { File[] c = f.listFiles(); if (c != null) for (File x : c) deleteLocalTree(x); }
+        f.delete();
+    }
     public String getRoot() { return root; }
     private String normalize(String p) { if (p == null || p.isEmpty()) return "/"; if (p.indexOf('\0') >= 0) throw new IllegalArgumentException("NUL path"); String x=p.replace('\\','/'); while(x.contains("//")) x=x.replace("//","/"); if(!x.startsWith("/")) x="/"+x; String[] parts=x.split("/"); StringBuilder b=new StringBuilder(); for(String part:parts){ if(part.isEmpty()||part.equals("."))continue; if(part.equals("..")) throw new IllegalArgumentException("Parent traversal is not allowed"); b.append('/').append(part); } return b.length()==0?"/":b.toString(); }
     @Override public void close(){ try{sftp.close();}catch(Exception ignored){} try{ssh.disconnect();}catch(Exception ignored){} try{ssh.close();}catch(Exception ignored){} }

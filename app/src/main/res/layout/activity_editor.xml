@@ -47,6 +47,15 @@
                         android:contentDescription="@string/redo"/>
 
                     <ImageButton
+                        android:id="@+id/btn_preview"
+                        android:visibility="gone"
+                        android:layout_width="48dp"
+                        android:layout_height="match_parent"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/code_24px"
+                        android:contentDescription="@string/html_preview"/>
+
+                    <ImageButton
                         android:id="@+id/btn_save"
                         android:layout_width="48dp"
                         android:layout_height="match_parent"

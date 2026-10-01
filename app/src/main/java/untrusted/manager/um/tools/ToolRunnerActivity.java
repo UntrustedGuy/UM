@@ -334,6 +334,17 @@ public class ToolRunnerActivity extends AppCompatActivity {
         if ("dlleditor".equals(id)) {
             startActivity(new Intent(this, DllEditorActivity.class)); finish(); return;
         }
+        if ("il2cpp".equals(id)) {
+            startActivity(new Intent(this, untrusted.manager.um.gameanalysis.GameAnalysisActivity.class)
+                    .putExtra("mode", "il2cpp")); finish(); return;
+        }
+        if ("terminal".equals(id)) {
+            startActivity(new Intent(this, untrusted.manager.um.ui.activities.TerminalActivity.class)); finish(); return;
+        }
+        if ("mcp".equals(id)) {
+            startActivity(new Intent(this, untrusted.manager.um.remote.HttpRemoteActivity.class)
+                    .putExtra("mode", "mcp")); finish(); return;
+        }
         if ("smb".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.SmbActivity.class)); finish(); return; }
         if ("sftp".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.SftpActivity.class)); finish(); return; }
         if ("webdav".equals(id)) { startActivity(new Intent(this, untrusted.manager.um.network.WebDavActivity.class)); finish(); return; }

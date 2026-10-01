@@ -23,12 +23,10 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.SocketException;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import javax.net.ssl.X509TrustManager;
 
 /**
  * implement {@link IEZFtpClient}
@@ -77,26 +75,22 @@ final class EZFtpClientImpl implements IEZFtpClient {
      * create the underlying ftp client based on the security type
      */
     private FTPClient createFtpClient(int securityType) {
+        final FTPClient client;
         if (securityType == IEZFtpClient.SECURITY_FTPS_EXPLICIT || securityType == IEZFtpClient.SECURITY_FTPS_IMPLICIT) {
+            // Use Apache Commons Net's normal JSSE trust chain and hostname verification.
+            // The previous implementation accepted every certificate and every hostname,
+            // which made FTPS vulnerable to active MITM attacks.
             FTPSClient ftpsClient = new FTPSClient(securityType == IEZFtpClient.SECURITY_FTPS_IMPLICIT);
-            ftpsClient.setTrustManager(new X509TrustManager() {
-                @Override
-                public void checkClientTrusted(X509Certificate[] chain, String authType) {
-                }
-
-                @Override
-                public void checkServerTrusted(X509Certificate[] chain, String authType) {
-                }
-
-                @Override
-                public X509Certificate[] getAcceptedIssuers() {
-                    return new X509Certificate[0];
-                }
-            });
-            ftpsClient.setHostnameVerifier((hostname, session) -> true);
-            return ftpsClient;
+            ftpsClient.setEndpointCheckingEnabled(true);
+            client = ftpsClient;
+        } else {
+            client = new FTPClient();
         }
-        return new FTPClient();
+        client.setConnectTimeout(15_000);
+        client.setDefaultTimeout(15_000);
+        client.setDataTimeout(30_000);
+        client.enterLocalPassiveMode();
+        return client;
     }
 
     /**
@@ -185,19 +179,24 @@ final class EZFtpClientImpl implements IEZFtpClient {
         checkInit();
         this.securityType = securityType;
         Log.d(TAG, "connect ftp server : serverIp = " + serverIp + ",port = " + port
-                + ",user = " + userName + ",pw = " + password + ",securityType = " + securityType);
+                + ",user = " + userName + ",securityType = " + securityType);
         taskHandler.post(() -> {
             try {
                 ftpClient = createFtpClient(securityType);
                 ftpClient.connect(serverIp, port);
                 if (!ftpClient.login(userName, password)) {
-                    callbackNormalFail(callBack, EZFtpResultCode.RESULT_FAIL, "Login failed!");
+                    try {
+                        if (ftpClient.isConnected()) ftpClient.disconnect();
+                    } catch (IOException ignored) {
+                    }
+                    callbackNormalFail(callBack, EZFtpResultCode.RESULT_FAIL, "Login failed");
                     return;
                 }
                 if (securityType == IEZFtpClient.SECURITY_FTPS_EXPLICIT && ftpClient instanceof FTPSClient) {
                     ((FTPSClient) ftpClient).execPBSZ(0);
                     ((FTPSClient) ftpClient).execPROT("P");
                 }
+                ftpClient.setFileType(org.apache.commons.net.ftp.FTP.BINARY_FILE_TYPE);
                 getCurDirPath(null);
                 callbackNormalSuccess(callBack, null);
             } catch (SocketException e) {
@@ -337,15 +336,22 @@ final class EZFtpClientImpl implements IEZFtpClient {
                         callbackWrapper.onTransferred(streamSize, (int) totalBytesTransferred);
                     }
                 });
+                if (localFile.exists() && !localFile.delete()) {
+                    throw new IOException("Cannot replace local destination");
+                }
+                File tempFile = new File(localFile.getAbsolutePath() + ".umtmp-" + System.nanoTime());
                 boolean ok;
-                try (FileOutputStream fos = new FileOutputStream(localFile)) {
+                try (FileOutputStream fos = new FileOutputStream(tempFile)) {
                     ok = ftpClient.retrieveFile(remoteFile.getName(), fos);
                 }
-                if (ok) {
+                if (ok && tempFile.isFile() && (remoteFile.getSize() < 0 || tempFile.length() == remoteFile.getSize())) {
+                    if (!tempFile.renameTo(localFile)) throw new IOException("Cannot finalize downloaded file");
+
                     callbackWrapper.onStateChanged(OnEZFtpDataTransferCallback.COMPLETED);
                 } else {
+                    if (tempFile.exists()) tempFile.delete();
                     callbackWrapper.onStateChanged(OnEZFtpDataTransferCallback.ERROR);
-                    callbackWrapper.onErr(EZFtpResultCode.RESULT_FAIL, "Download file fail!");
+                    callbackWrapper.onErr(EZFtpResultCode.RESULT_FAIL, "Download file failed or size verification failed");
                 }
             } catch (Exception e) {
                 callbackWrapper.onStateChanged(OnEZFtpDataTransferCallback.ERROR);
@@ -380,6 +386,12 @@ final class EZFtpClientImpl implements IEZFtpClient {
                     ok = ftpClient.storeFile(localFile.getName(), fis);
                 }
                 if (ok) {
+                    FTPFile uploaded = ftpClient.mlistFile(localFile.getName());
+                    if (uploaded == null || !uploaded.isFile() || uploaded.getSize() != localFile.length()) {
+                        callbackWrapper.onStateChanged(OnEZFtpDataTransferCallback.ERROR);
+                        callbackWrapper.onErr(EZFtpResultCode.RESULT_FAIL, "Upload size verification failed");
+                        return;
+                    }
                     callbackWrapper.onStateChanged(OnEZFtpDataTransferCallback.COMPLETED);
                 } else {
                     callbackWrapper.onStateChanged(OnEZFtpDataTransferCallback.ERROR);
@@ -403,7 +415,9 @@ final class EZFtpClientImpl implements IEZFtpClient {
         final EZFtpSampleCallbackWrapper<Void> callbackWrapper = new EZFtpSampleCallbackWrapper<>(callBack);
         taskHandler.post(() -> {
             try {
-                ftpClient.deleteFile(path);
+                if (!ftpClient.deleteFile(path)) throw new IOException("FTP delete failed");
+                FTPFile[] after = ftpClient.listFiles(path);
+                if (after != null && after.length > 0) throw new IOException("FTP delete verification failed");
                 callbackWrapper.onSuccess(null);
             } catch (Exception e) {
                 callbackWrapper.onFail(EZFtpResultCode.RESULT_EXCEPTION, e.getMessage());
@@ -417,7 +431,9 @@ final class EZFtpClientImpl implements IEZFtpClient {
         final EZFtpSampleCallbackWrapper<Void> callbackWrapper = new EZFtpSampleCallbackWrapper<>(callBack);
         taskHandler.post(() -> {
             try {
-                ftpClient.removeDirectory(path);
+                if (!ftpClient.removeDirectory(path)) throw new IOException("FTP directory delete failed");
+                FTPFile[] after = ftpClient.listFiles(path);
+                if (after != null && after.length > 0) throw new IOException("FTP directory delete verification failed");
                 callbackWrapper.onSuccess(null);
             } catch (Exception e) {
                 callbackWrapper.onFail(EZFtpResultCode.RESULT_EXCEPTION, e.getMessage());
@@ -431,7 +447,10 @@ final class EZFtpClientImpl implements IEZFtpClient {
         final EZFtpSampleCallbackWrapper<Void> callbackWrapper = new EZFtpSampleCallbackWrapper<>(callBack);
         taskHandler.post(() -> {
             try {
-                ftpClient.rename(oldPath, newPath);
+                if (!ftpClient.rename(oldPath, newPath)) throw new IOException("FTP rename failed");
+                FTPFile destination = ftpClient.mlistFile(newPath);
+                FTPFile source = ftpClient.mlistFile(oldPath);
+                if (destination == null || source != null) throw new IOException("FTP rename verification failed");
                 callbackWrapper.onSuccess(null);
             } catch (Exception e) {
                 callbackWrapper.onFail(EZFtpResultCode.RESULT_EXCEPTION, e.getMessage());
@@ -445,7 +464,12 @@ final class EZFtpClientImpl implements IEZFtpClient {
         final EZFtpSampleCallbackWrapper<Void> callbackWrapper = new EZFtpSampleCallbackWrapper<>(callBack);
         taskHandler.post(() -> {
             try {
-                ftpClient.makeDirectory(path);
+                if (!ftpClient.makeDirectory(path)) {
+                    FTPFile existing = ftpClient.mlistFile(path);
+                    if (existing == null || !existing.isDirectory()) throw new IOException("FTP directory creation failed");
+                }
+                FTPFile created = ftpClient.mlistFile(path);
+                if (created == null || !created.isDirectory()) throw new IOException("FTP directory verification failed");
                 callbackWrapper.onSuccess(null);
             } catch (Exception e) {
                 callbackWrapper.onFail(EZFtpResultCode.RESULT_EXCEPTION, e.getMessage());

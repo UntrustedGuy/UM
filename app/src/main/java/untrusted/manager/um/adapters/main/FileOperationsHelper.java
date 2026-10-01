@@ -94,6 +94,7 @@ public class FileOperationsHelper {
     private final MainFilesArrayAdapter adapter;
 
     private volatile ProgressManager activeProgress;
+    private volatile Thread activeOperationThread;
 
     private interface IoOperation {
         void run() throws Exception;
@@ -146,16 +147,31 @@ public class FileOperationsHelper {
     }
 
     private void runWithProgress(String text, IoOperation op) {
-        showActiveProgress(text);
-        new Thread(() -> {
-            try {
-                op.run();
-            } catch (Exception e) {
-                showErrorOnUi(e);
-            } finally {
-                dismissActiveProgress();
+        synchronized (this) {
+            Thread current = activeOperationThread;
+            if (current != null && current.isAlive()) {
+                context.handler.post(() -> Extensions.showMessage(context,
+                        context.rss.getString(R.string.progress_working)));
+                return;
             }
-        }).start();
+            showActiveProgress(text);
+            Thread worker = new Thread(() -> {
+                try {
+                    op.run();
+                } catch (Exception e) {
+                    showErrorOnUi(e);
+                } finally {
+                    synchronized (FileOperationsHelper.this) {
+                        if (activeOperationThread == Thread.currentThread()) {
+                            activeOperationThread = null;
+                        }
+                    }
+                    dismissActiveProgress();
+                }
+            }, "UM-FileOperation");
+            activeOperationThread = worker;
+            worker.start();
+        }
     }
 
     public void copyItemsAsync(List<Object> items) {
@@ -169,6 +185,23 @@ public class FileOperationsHelper {
 
     public void moveAsync(Object item) {
         runWithProgress(context.rss.getString(R.string.copying, item), () -> move(item));
+    }
+
+    public void moveItemsAsync(List<Object> items) {
+        if (items == null || items.isEmpty()) return;
+        runWithProgress(context.rss.getString(R.string.copying, summarizeItems(items)), () -> moveMultiple(items));
+    }
+
+    private void moveMultiple(List<Object> items) throws IOException {
+        if (items == null || items.isEmpty()) return;
+        if (adapter.isInZip) {
+            if (!copyFromZip(items)) return;
+            for (Object o : items) if (o instanceof ZipEntryInfo z) deleteZipEntry(z);
+            context.handler.post(adapter::clearSelection);
+        } else {
+            moveToDestination(items);
+            context.handler.post(adapter::clearSelection);
+        }
     }
 
     public void copy(Object item) throws IOException {
@@ -215,6 +248,9 @@ public class FileOperationsHelper {
         }
         MainFilesArrayAdapter otherPaneAdapter = (MainFilesArrayAdapter) rvAdapter;
         boolean destIsZip = otherPaneAdapter != null && otherPaneAdapter.isInZip;
+        if (!destIsZip && (destinationFolder == null || !destinationFolder.isDirectory())) {
+            throw new IOException("Destination folder is not available: " + destinationFolder);
+        }
         if (destIsZip) {
             if (!copyToZip(items, destinationFolder, otherPaneAdapter.currentZipPath)) return false;
             for (Object item : items) {
@@ -254,6 +290,9 @@ public class FileOperationsHelper {
                         AccessManager.preserveTime(context, f.getAbsolutePath(), dest.getAbsolutePath());
                         try {
                             AccessManager.delete(context, f.getAbsolutePath(), true);
+                            if (f.exists() || AccessManager.exists(context, f.getAbsolutePath())) {
+                                throw new IOException("Move copied " + f.getName() + " but source deletion was not verified; source was kept");
+                            }
                         } catch (Exception deleteError) {
                             throw new IOException("Move copied " + f.getName() + " but source deletion failed; source was kept", deleteError);
                         }
@@ -267,29 +306,43 @@ public class FileOperationsHelper {
                 }
                 if (ShizukuFileOps.involvesShizukuPath(f, destinationFolder) && ShizukuFileOps.shellMove(f, destinationFolder, dest.getName()))
                     continue;
-                if (f.renameTo(dest)) continue;
-                if (f.isDirectory()) {
-                    if (useElevated) {
-                        try {
-                            AccessManager.mkdir(context, dest.getAbsolutePath(), true);
-                        } catch (Exception e) {
-                            if (AccessManager.needsElevated(context, dest.getAbsolutePath())) {
-                                throw new IOException("Elevated directory creation failed: " + dest, e);
+                if (f.renameTo(dest)) {
+                    if (dest.exists() && !f.exists()) continue;
+                    throw new IOException("Move rename verification failed: " + f.getName());
+                }
+                try {
+                    if (f.isDirectory()) {
+                        boolean created = false;
+                        if (useElevated) {
+                            try {
+                                AccessManager.mkdir(context, dest.getAbsolutePath(), true);
+                                created = dest.isDirectory() || AccessManager.exists(context, dest.getAbsolutePath());
+                            } catch (Exception e) {
+                                if (AccessManager.needsElevated(context, dest.getAbsolutePath())) {
+                                    throw new IOException("Elevated directory creation failed: " + dest, e);
+                                }
                             }
-                            //noinspection ResultOfMethodCallIgnored
-                            dest.mkdir();
                         }
+                        if (!created) created = dest.mkdir();
+                        if (!created && !dest.isDirectory()) throw new IOException("Cannot create destination directory: " + dest);
+                        FileUtils.copyFolder(f, dest);
+                        syncDirTimes(f, dest);
                     } else {
-                        //noinspection ResultOfMethodCallIgnored
-                        dest.mkdir();
+                        FileUtils.copyFile(f, dest);
+                        if (!dest.exists() || dest.length() != f.length()) {
+                            throw new IOException("Copied file verification failed: " + dest);
+                        }
+                        AccessManager.preserveTime(context, f.getAbsolutePath(), dest.getAbsolutePath());
                     }
-                    FileUtils.copyFolder(f, dest);
-                    syncDirTimes(f, dest);
-                } else {
-                    FileUtils.copyFile(f, dest);
-                    AccessManager.preserveTime(context, f.getAbsolutePath(), dest.getAbsolutePath());
+                } catch (Exception copyError) {
+                    try { deleteRecursive(dest); } catch (Exception cleanupIgnored) { }
+                    if (copyError instanceof IOException) throw (IOException) copyError;
+                    throw new IOException("Copy failed for " + f.getName(), copyError);
                 }
                 if (copySize(f) != copySize(dest)) {
+                    try { deleteRecursive(dest); } catch (Exception cleanup) {
+                        throw new IOException("Move failed, copy mismatch, and destination cleanup failed: " + f.getName(), cleanup);
+                    }
                     throw new IOException("Move failed, copy mismatch: " + f.getName());
                 }
                 deleteRecursive(f);
@@ -364,8 +417,12 @@ public class FileOperationsHelper {
 
     private static void validateLocalTransfer(File source, File destination) throws IOException {
         if (source == null || destination == null) throw new IOException("Source and destination are required");
+        if (!source.exists()) throw new IOException("Source does not exist: " + source);
         if (Files.isSymbolicLink(source.toPath())) throw new IOException("Refusing to copy symbolic link: " + source);
         if (Files.isSymbolicLink(destination.toPath())) throw new IOException("Refusing to overwrite symbolic link: " + destination);
+        File destinationParent = destination.getParentFile();
+        if (destinationParent == null) throw new IOException("Destination has no parent: " + destination);
+        validateNoSymlinkParents(destinationParent);
         if (!source.isDirectory()) return;
         String sourceReal = source.getCanonicalPath();
         String destinationPath = destination.getCanonicalPath();
@@ -373,6 +430,16 @@ public class FileOperationsHelper {
             throw new IOException("Destination cannot be inside source: " + destination);
         }
         validateNoSymlinks(source);
+    }
+
+    private static void validateNoSymlinkParents(File directory) throws IOException {
+        File current = directory;
+        while (current != null) {
+            if (Files.isSymbolicLink(current.toPath())) {
+                throw new IOException("Refusing to write through symbolic-link directory: " + current);
+            }
+            current = current.getParentFile();
+        }
     }
 
     private static void validateNoSymlinks(File directory) throws IOException {
@@ -425,6 +492,9 @@ public class FileOperationsHelper {
         }
         MainFilesArrayAdapter otherPaneAdapter = (MainFilesArrayAdapter) rvAdapter;
         boolean destIsZip = otherPaneAdapter != null && otherPaneAdapter.isInZip;
+        if (!destIsZip && (destinationFolder == null || !destinationFolder.isDirectory())) {
+            throw new IOException("Destination folder is not available: " + destinationFolder);
+        }
         if (destIsZip) {
             return copyToZip(items, destinationFolder, otherPaneAdapter.currentZipPath);
         } else {
@@ -452,30 +522,74 @@ public class FileOperationsHelper {
                                 || AccessManager.needsElevated(context, destinationFolder.getAbsolutePath())) {
                             throw new IOException("Elevated copy failed for " + f.getName(), e);
                         }
+                        // Do not leave an unverified elevated-copy residue behind before
+                        // falling back to the ordinary filesystem implementation.
+                        if (dest.exists()) {
+                            try { deleteRecursive(dest); } catch (Exception cleanup) {
+                                e.addSuppressed(cleanup);
+                                throw new IOException("Elevated copy failed and partial destination could not be removed: " + dest, e);
+                            }
+                        }
                     }
                 }
-                if (ShizukuFileOps.involvesShizukuPath(f, destinationFolder) && ShizukuFileOps.shellCopy(f, destinationFolder, dest.getName()) != null)
-                    continue;
+                if (ShizukuFileOps.involvesShizukuPath(f, destinationFolder)) {
+                    File shellResult = ShizukuFileOps.shellCopy(f, destinationFolder, dest.getName());
+                    if (shellResult != null) {
+                        boolean verified = dest.exists();
+                        if (verified && f.isFile()) verified = dest.isFile() && dest.length() == f.length();
+                        if (verified && f.isDirectory()) verified = dest.isDirectory() && copySize(f) == copySize(dest);
+                        if (!verified) {
+                            try { if (dest.exists()) deleteRecursive(dest); } catch (Exception cleanup) {
+                                throw new IOException("Shell copy verification failed and partial destination could not be removed: " + dest, cleanup);
+                            }
+                            throw new IOException("Shell copy verification failed: " + dest);
+                        }
+                        continue;
+                    }
+                }
                 if (f.isDirectory()) {
+                    boolean created = false;
+                    boolean completed = false;
                     if (useElevated) {
                         try {
                             AccessManager.mkdir(context, dest.getAbsolutePath(), true);
+                            created = dest.isDirectory() || AccessManager.exists(context, dest.getAbsolutePath());
                         } catch (Exception e) {
                             if (AccessManager.needsElevated(context, dest.getAbsolutePath())) {
                                 throw new IOException("Elevated directory creation failed: " + dest, e);
                             }
-                            //noinspection ResultOfMethodCallIgnored
-                            dest.mkdir();
                         }
-                    } else {
-                        //noinspection ResultOfMethodCallIgnored
-                        dest.mkdir();
                     }
-                    FileUtils.copyFolder(f, dest);
-                    syncDirTimes(f, dest);
+                    if (!created) created = dest.mkdir() && dest.isDirectory();
+                    if (!created && !dest.isDirectory()) throw new IOException("Cannot create destination directory: " + dest);
+                    try {
+                        FileUtils.copyFolder(f, dest);
+                        if (!dest.isDirectory() || copySize(f) != copySize(dest)) {
+                            throw new IOException("Directory copy verification failed: " + dest);
+                        }
+                        syncDirTimes(f, dest);
+                        completed = true;
+                    } finally {
+                        if (!completed && dest.exists()) {
+                            try { deleteRecursive(dest); } catch (Exception cleanup) {
+                                // Preserve the original copy failure; cleanup is best-effort.
+                            }
+                        }
+                    }
                 } else {
-                    FileUtils.copyFile(f, dest);
-                    AccessManager.preserveTime(context, f.getAbsolutePath(), dest.getAbsolutePath());
+                    boolean completed = false;
+                    try {
+                        FileUtils.copyFile(f, dest);
+                        if (!dest.isFile() || dest.length() != f.length()) {
+                            throw new IOException("File copy verification failed: " + dest);
+                        }
+                        AccessManager.preserveTime(context, f.getAbsolutePath(), dest.getAbsolutePath());
+                        completed = true;
+                    } finally {
+                        if (!completed && dest.exists() && !Files.isSymbolicLink(dest.toPath())) {
+                            try { dest.delete(); } catch (Exception ignored) { }
+                        }
+                    }
                 }
             } else if (item instanceof ZipEntryInfo) {
                 extractZipEntry((ZipEntryInfo) item, destinationFolder);
@@ -513,6 +627,14 @@ public class FileOperationsHelper {
         return candidate;
     }
 
+    private static boolean isSafeSingleFileName(String name) {
+        if (name == null) return false;
+        String s = name.trim();
+        return !s.isEmpty() && !s.equals(".") && !s.equals("..")
+                && s.indexOf('/') < 0 && s.indexOf('\\') < 0 && s.indexOf('\0') < 0
+                && !new File(s).isAbsolute();
+    }
+
     private File promptForDuplicateName(File sourceFile, File destinationFolder) throws IOException {
         final CountDownLatch latch = new CountDownLatch(1);
         final File[] result = new File[1];
@@ -529,7 +651,24 @@ public class FileOperationsHelper {
                     .setView(view)
                     .setPositiveButton(android.R.string.ok, (d, w) -> {
                         String name = input.getText().toString().trim();
-                        result[0] = new File(destinationFolder, name.isEmpty() ? defaultName : name);
+                        String candidateName = name.isEmpty() ? defaultName : name;
+                        if (!isSafeSingleFileName(candidateName)) {
+                            Extensions.showMessage(context, context.rss.getString(R.string.failed_to_renamex, candidateName));
+                            return;
+                        }
+                        File candidate = new File(destinationFolder, candidateName);
+                        try {
+                            String parent = destinationFolder.getCanonicalPath();
+                            String candidateParent = candidate.getCanonicalFile().getParentFile().getCanonicalPath();
+                            if (!parent.equals(candidateParent)) {
+                                Extensions.showMessage(context, context.rss.getString(R.string.failed_to_renamex, candidateName));
+                                return;
+                            }
+                        } catch (IOException e) {
+                            Extensions.showMessage(context, context.rss.getString(R.string.failed_to_renamex, candidateName));
+                            return;
+                        }
+                        result[0] = candidate;
                         latch.countDown();
                     })
                     .setNegativeButton(android.R.string.cancel, (d, w) -> latch.countDown());
@@ -651,6 +790,10 @@ public class FileOperationsHelper {
 
         File bak = new File(zipFile.getParent(), zipFile.getName() + ".bak");
         FileUtils.copyFile(zipFile, bak);
+        if (!bak.isFile() || bak.length() != zipFile.length()) {
+            try { bak.delete(); } catch (Exception ignored) { }
+            throw new IOException("Could not create a verified archive backup: " + bak);
+        }
         File tempFileDir = null;
         boolean committed = false;
         try (ZipFile sourceZip = new ZipFile(zipFile)) {
@@ -710,6 +853,9 @@ public class FileOperationsHelper {
         } catch (Exception e) {
             try {
                 FileUtils.copyFile(bak, zipFile);
+                if (!zipFile.isFile() || zipFile.length() != bak.length()) {
+                    throw new IOException("Archive restore verification failed: " + zipFile);
+                }
             } catch (Exception restoreError) {
                 e.addSuppressed(restoreError);
             }
@@ -775,20 +921,71 @@ public class FileOperationsHelper {
     }
 
     public void extractZipEntry(ZipEntryInfo zipEntry, File destinationFolder) throws IOException {
-        String destinationPath = destinationFolder.getPath();
+        if (zipEntry == null || destinationFolder == null) throw new IOException("ZIP entry and destination are required");
+        if (!destinationFolder.exists() || !destinationFolder.isDirectory()) throw new IOException("Destination folder does not exist: " + destinationFolder);
         String zipEntryPath = zipEntry.getFullPath();
-        if (zipEntryPath == null) return;
+        if (zipEntryPath == null || zipEntryPath.isEmpty()) throw new IOException("Invalid ZIP entry path");
+        String safeName = zipEntry.getName();
+        validateZipRelativePath(safeName);
+        final String destinationPath = destinationFolder.getCanonicalPath();
         try (ZipFile zf = new ZipFile(zipEntry.getZipFile())) {
-            // zip4j preserves the entry's internal path when extracting, so a file inside
-            // "docs/" would land in destination/docs/. Pass an explicit name to avoid that.
-            if(zipEntry.isDirectory()) {
+            FileHeader header = zf.getFileHeader(zipEntryPath);
+            if (!zipEntry.isDirectory() && header == null) throw new IOException("ZIP entry not found: " + zipEntryPath);
+
+            // Extraction must never silently overwrite an existing filesystem entry.
+            // Resolve the top-level destination once so a directory's entire subtree
+            // remains together under the same collision-free name.
+            String targetRoot = uniqueExtractionName(destinationFolder, safeName);
+            if (zipEntry.isDirectory()) {
                 String prefix = zipEntryPath.endsWith("/") ? zipEntryPath : zipEntryPath + "/";
-                for(FileHeader fh : zf.getFileHeaders()) {
+                for (FileHeader fh : zf.getFileHeaders()) {
                     String name = fh.getFileName().replace('\\', '/');
-                    if(!name.startsWith(prefix) || fh.isDirectory()) continue;
-                    zf.extractFile(fh, destinationPath, zipEntry.getName() + "/" + name.substring(prefix.length()));
+                    if (!name.startsWith(prefix)) continue;
+                    String relative = name.substring(prefix.length());
+                    if (relative.isEmpty()) continue;
+                    validateZipRelativePath(relative);
+                    String targetName = targetRoot + "/" + relative;
+                    validateZipRelativePath(targetName);
+                    if (fh.isDirectory()) {
+                        File targetDir = new File(destinationFolder, targetName);
+                        if (!targetDir.exists() && !targetDir.mkdirs() && !targetDir.isDirectory())
+                            throw new IOException("Cannot create extraction directory: " + targetDir);
+                    } else {
+                        zf.extractFile(fh, destinationPath, targetName);
+                    }
                 }
-            } else zf.extractFile(zf.getFileHeader(zipEntryPath), destinationPath, zipEntry.getName());
+                File root = new File(destinationFolder, targetRoot);
+                if (!root.isDirectory()) throw new IOException("ZIP directory extraction verification failed: " + root);
+            } else {
+                zf.extractFile(header, destinationPath, targetRoot);
+                File output = new File(destinationFolder, targetRoot);
+                if (!output.isFile()) throw new IOException("ZIP file extraction verification failed: " + output);
+            }
+        }
+    }
+
+    private static String uniqueExtractionName(File destinationFolder, String requestedName) throws IOException {
+        validateZipRelativePath(requestedName);
+        File first = new File(destinationFolder, requestedName);
+        String parent = destinationFolder.getCanonicalPath();
+        if (!first.getCanonicalFile().getParentFile().getCanonicalPath().equals(parent))
+            throw new IOException("Unsafe extraction destination: " + requestedName);
+        if (!first.exists()) return requestedName;
+        String base = FilenameUtils.getBaseName(requestedName);
+        String ext = FilenameUtils.getExtension(requestedName);
+        for (int i = 1; i < 100000; i++) {
+            String candidate = ext.isEmpty() ? base + " (" + i + ")" : base + " (" + i + ")." + ext;
+            if (!new File(destinationFolder, candidate).exists()) return candidate;
+        }
+        throw new IOException("Could not find an unused extraction name for: " + requestedName);
+    }
+
+    private static void validateZipRelativePath(String path) throws IOException {
+        if (path == null || path.isEmpty()) throw new IOException("Unsafe ZIP entry path");
+        String normalized = path.replace('\\', '/');
+        if (normalized.startsWith("/") || normalized.indexOf('\0') >= 0) throw new IOException("Unsafe ZIP entry path: " + path);
+        for (String part : normalized.split("/")) {
+            if (part.equals("..") || part.equals(".")) throw new IOException("Unsafe ZIP entry path: " + path);
         }
     }
 
@@ -798,22 +995,60 @@ public class FileOperationsHelper {
     }
 
     public void deleteZipEntry(ZipEntryInfo... entryToDelete) throws IOException {
-        File f = entryToDelete[0].getZipFile();
+        if (entryToDelete == null || entryToDelete.length == 0) return;
+        File f = entryToDelete[0] == null ? null : entryToDelete[0].getZipFile();
+        if (f == null || !f.isFile()) throw new IOException("Archive does not exist: " + f);
+        File backup = new File(f.getParentFile(), f.getName() + ".bak");
+        FileUtils.copyFile(f, backup);
+        if (!backup.isFile() || backup.length() != f.length()) {
+            try { backup.delete(); } catch (Exception ignored) {}
+            throw new IOException("Could not create a verified archive backup: " + backup);
+        }
         List<String> toDelete = new ArrayList<>();
-        try(ZipFile zf = new ZipFile(f)) {
-            for(FileHeader fh : zf.getFileHeaders()) {
+        boolean committed = false;
+        try (ZipFile zf = new ZipFile(f)) {
+            Set<String> requested = new LinkedHashSet<>();
+            for (ZipEntryInfo info : entryToDelete) {
+                if (info == null || info.getFullPath() == null) continue;
+                String target = info.getFullPath().replace('\\', '/');
+                if (info.isDirectory() && !target.endsWith("/")) target += "/";
+                validateZipRelativePath(target.endsWith("/") ? target.substring(0, target.length() - 1) : target);
+                requested.add(target);
+            }
+            for (FileHeader fh : zf.getFileHeaders()) {
                 String name = fh.getFileName().replace('\\', '/');
-                for (ZipEntryInfo info : entryToDelete) {
-                    String target = info.getFullPath();
-                    if (target == null) continue;
-                    if (info.isDirectory() && !target.endsWith("/")) target += "/";
-                    if (name.equals(target) || (info.isDirectory() && name.startsWith(target))) {
-                        toDelete.add(name);
+                for (String target : requested) {
+                    if (name.equals(target) || (target.endsWith("/") && name.startsWith(target))) {
+                        toDelete.add(fh.getFileName());
                         break;
                     }
                 }
             }
+            if (toDelete.isEmpty()) throw new IOException("No matching archive entries were found");
             zf.removeFiles(toDelete);
+        } catch (Exception e) {
+            try {
+                FileUtils.copyFile(backup, f);
+                if (!f.isFile() || f.length() != backup.length())
+                    throw new IOException("Archive restore verification failed: " + f);
+            } catch (Exception restore) {
+                e.addSuppressed(restore);
+            }
+            if (e instanceof IOException) throw (IOException)e;
+            throw new IOException("Archive deletion failed", e);
+        }
+        try (ZipFile verify = new ZipFile(f)) {
+            for (String deleted : toDelete) {
+                if (verify.getFileHeader(deleted) != null)
+                    throw new IOException("Archive deletion verification failed: " + deleted);
+            }
+            committed = true;
+        } catch (Exception e) {
+            try { FileUtils.copyFile(backup, f); } catch (Exception restore) { e.addSuppressed(restore); }
+            if (e instanceof IOException) throw (IOException)e;
+            throw new IOException("Archive deletion verification failed", e);
+        } finally {
+            if (committed) { try { backup.delete(); } catch (Exception ignored) {} }
         }
         context.handler.post(() -> context.loadZipFolderInPane(
                 f, adapter.currentZipPath, adapter.pane1, false));

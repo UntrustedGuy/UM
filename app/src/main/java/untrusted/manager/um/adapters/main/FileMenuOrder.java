@@ -22,7 +22,9 @@ public final class FileMenuOrder {
     public static final String SHARE = "share";
     public static final String OPEN_WITH = "open_with";
     public static final String BOOKMARK = "bookmark";
+    public static final String SHORTCUT = "shortcut";
     public static final String CMD = "cmd";
+    public static final String TERMINAL = "terminal";
     public static final String CHECK = "check";
     public static final String BATCH_SIGN = "batch_sign";
     public static final String BATCH_OPT = "batch_opt";
@@ -42,12 +44,13 @@ public final class FileMenuOrder {
     public static final String GAME_ENCRYPTION = "game_encryption";
     public static final String GAME_MODDING = "game_modding";
     public static final String DLL_EDITOR = "dll_editor";
+    public static final String HTML_PREVIEW = "html_preview";
 
     public static final String[] DEFAULT_ORDER = {
             COPY, MOVE, RENAME, DELETE, COMPRESS, PROPERTIES, SHARE, OPEN_WITH,
-            BOOKMARK, CMD, CHECK, EXTRACT, BATCH_SIGN, BATCH_OPT, BATCH_INSTALL,
+            BOOKMARK, SHORTCUT, CMD, TERMINAL, CHECK, EXTRACT, BATCH_SIGN, BATCH_OPT, BATCH_INSTALL,
             CMP_ZIP, CMP_ARSC, CMP_TEXT, CMP_HASH, CMP_APK,
-            BATCH_CROP, BATCH_EXIF, BATCH_STRIP_META, GAME_ANALYZER, IL2CPP, METADATA, GAME_ENCRYPTION, GAME_MODDING, DLL_EDITOR
+            BATCH_CROP, BATCH_EXIF, BATCH_STRIP_META, GAME_ANALYZER, IL2CPP, METADATA, GAME_ENCRYPTION, GAME_MODDING, DLL_EDITOR, HTML_PREVIEW
     };
 
     private FileMenuOrder() {
@@ -125,7 +128,9 @@ public final class FileMenuOrder {
             case SHARE -> context.getString(R.string.share);
             case OPEN_WITH -> context.getString(R.string.open_with);
             case BOOKMARK -> context.getString(R.string.bookmark);
+            case SHORTCUT -> context.getString(R.string.create_shortcut);
             case CMD -> context.getString(R.string.command_helper);
+            case TERMINAL -> context.getString(R.string.terminal);
             case CHECK -> context.getString(R.string.checksums);
             case BATCH_SIGN -> context.getString(R.string.batch_sign);
             case BATCH_OPT -> context.getString(R.string.batch_optimize);
@@ -145,6 +150,7 @@ public final class FileMenuOrder {
             case GAME_ENCRYPTION -> "Game Encryption";
             case GAME_MODDING -> "Game Modding Toolkit";
             case DLL_EDITOR -> "DLL Editor";
+            case HTML_PREVIEW -> context.getString(R.string.html_preview);
             default -> id;
         };
     }
@@ -160,7 +166,8 @@ public final class FileMenuOrder {
             case SHARE -> R.drawable.baseline_share_24;
             case OPEN_WITH -> R.drawable.baseline_open_in_new_24;
             case BOOKMARK -> android.R.drawable.ic_input_get;
-            case CMD -> R.drawable.terminal_24px;
+            case SHORTCUT -> R.drawable.baseline_home_24;
+            case CMD, TERMINAL -> R.drawable.terminal_24px;
             case CHECK -> R.drawable.tag_24px;
             case BATCH_SIGN, BATCH_OPT, BATCH_INSTALL -> R.drawable.apk_document_24px;
             case EXTRACT -> R.drawable.baseline_compress_24;
@@ -174,6 +181,7 @@ public final class FileMenuOrder {
             case GAME_ENCRYPTION -> R.drawable.lock_24px;
             case GAME_MODDING -> R.drawable.ic_inspect;
             case DLL_EDITOR -> R.drawable.edit_24px;
+            case HTML_PREVIEW -> R.drawable.code_24px;
             default -> 0;
         };
     }

@@ -27,20 +27,34 @@ public final class DexMergeUtil {
         for (File f : inputs) {
             DexBackedDexFile dex = DexFileFactory.loadDexFile(f, null);
             for (ClassDef c : dex.getClasses()) {
-                if (seen.add(c.getType())) {
-                    pool.internClass(c);
+                if (!seen.add(c.getType())) {
+                    throw new IOException("Duplicate class while merging DEX files: " + c.getType());
                 }
+                pool.internClass(c);
             }
         }
         MemoryDataStore store = new MemoryDataStore();
         pool.writeTo(store);
         byte[] data = Arrays.copyOf(store.getData(), store.getSize());
         File parent = out.getParentFile();
-        if (parent != null) {
-            parent.mkdirs();
+        if (parent != null && !parent.exists() && !parent.mkdirs() && !parent.isDirectory()) {
+            throw new IOException("Cannot create DEX output directory: " + parent);
         }
-        try (OutputStream os = new FileOutputStream(out)) {
-            os.write(data);
+        File temp = File.createTempFile(".um-dex-merge-", ".tmp", parent);
+        boolean committed = false;
+        try {
+            try (OutputStream os = new FileOutputStream(temp)) {
+                os.write(data);
+                os.flush();
+            }
+            if (temp.length() != data.length || data.length < 112 || data[0] != 'd' || data[1] != 'e' || data[2] != 'x' || data[3] != '\n') {
+                throw new IOException("Merged DEX output failed validation");
+            }
+            if (out.exists() && !out.delete()) throw new IOException("Cannot replace existing merged DEX: " + out);
+            if (!temp.renameTo(out)) throw new IOException("Cannot commit merged DEX: " + out);
+            committed = true;
+        } finally {
+            if (!committed && temp.exists()) temp.delete();
         }
     }
 }

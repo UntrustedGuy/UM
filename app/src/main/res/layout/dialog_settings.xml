@@ -613,6 +613,38 @@
                     android:layout_marginTop="4dp"
                     android:text="@string/include_bookmark_groups_sidebar" />
 
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/autoStartRemoteToggle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/auto_start_remote_services" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/auto_start_remote_services_summary"
+                    android:textSize="12sp"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginStart="16dp" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/autoStartFtpToggle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textSize="14sp"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/auto_start_ftp_service" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/auto_start_ftp_service_summary"
+                    android:textSize="12sp"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginStart="16dp" />
+
                 <com.google.android.material.textfield.TextInputLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

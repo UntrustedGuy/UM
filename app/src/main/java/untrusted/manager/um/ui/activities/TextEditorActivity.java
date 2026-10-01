@@ -29,10 +29,10 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -49,6 +49,8 @@ import io.github.codehasan.colorpicker.extensions.Extensions;
 import modder.hub.dexeditor.views.FastScrollerRecyclerView;
 
 public class TextEditorActivity extends AppCompatActivity implements UnifiedEditorFragment.EditorCallback {
+
+    private static final long MAX_TEXT_FILE_BYTES = 64L * 1024L * 1024L;
 
     private static class EditorTab {
         String title;
@@ -73,7 +75,7 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
     private DrawerLayout drawerLayout;
     private FastScrollerRecyclerView tabsRecyclerView;
     private TabRowAdapter tabAdapter;
-    private ImageButton btnUndo, btnRedo, btnSave, btnEdit, btnFile;
+    private ImageButton btnUndo, btnRedo, btnSave, btnEdit, btnFile, btnPreview;
 
     private Uri currentFileUri;
     private File currentFile;
@@ -169,9 +171,22 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
             root.put("current", savedCurrent);
             File file = sessionFile();
             File parent = file.getParentFile();
-            if (parent != null && !parent.exists()) parent.mkdirs();
-            try (OutputStream os = FileUtils.getOutputStream(file)) {
+            if (parent != null && !parent.exists() && !parent.mkdirs() && !parent.isDirectory()) return;
+            File tmp = new File(file.getPath() + ".tmp");
+            try (OutputStream os = FileUtils.getOutputStream(tmp)) {
                 os.write(root.toString().getBytes(StandardCharsets.UTF_8));
+                os.flush();
+            }
+            if (!tmp.isFile() || tmp.length() == 0) {
+                try { tmp.delete(); } catch (Exception ignored) { }
+                return;
+            }
+            if (file.exists() && !file.delete()) {
+                try { tmp.delete(); } catch (Exception ignored) { }
+                return;
+            }
+            if (!tmp.renameTo(file)) {
+                try { tmp.delete(); } catch (Exception ignored) { }
             }
         } catch (Exception ignored) { }
     }
@@ -236,6 +251,7 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
         btnUndo = findViewById(R.id.btn_undo);
         btnRedo = findViewById(R.id.btn_redo);
         btnSave = findViewById(R.id.btn_save);
+        btnPreview = findViewById(R.id.btn_preview);
         btnEdit = findViewById(R.id.btn_edit);
         btnFile = findViewById(R.id.btn_file);
 
@@ -292,6 +308,7 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
         });
 
         btnSave.setOnClickListener(v -> saveFile());
+        btnPreview.setOnClickListener(v -> previewCurrentHtml());
 
         btnEdit.setOnClickListener(v -> {
             UnifiedEditorFragment f = getFragment();
@@ -361,6 +378,32 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
         EditorTab t = getCurrentTab();
         Toolbar toolbar = findViewById(R.id.toolbar);
         toolbar.setSubtitle(t != null ? t.title : null);
+        updatePreviewButton();
+    }
+
+    private void updatePreviewButton() {
+        if (btnPreview == null) return;
+        EditorTab t = getCurrentTab();
+        String name = t == null ? "" : t.title == null ? "" : t.title.toLowerCase(java.util.Locale.ROOT);
+        boolean html = name.endsWith(".html") || name.endsWith(".htm") || name.endsWith(".xhtml");
+        btnPreview.setVisibility(html ? View.VISIBLE : View.GONE);
+        btnPreview.setEnabled(html && t != null && (t.file != null || t.fileUri != null));
+    }
+
+    private void previewCurrentHtml() {
+        EditorTab t = getCurrentTab();
+        if (t == null || t.file == null) return;
+        Runnable open = () -> startActivity(new Intent(this, HtmlPreviewActivity.class)
+                .putExtra(HtmlPreviewActivity.EXTRA_PATH, t.file.getAbsolutePath()));
+        if (t.modified) {
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.html_preview)
+                    .setMessage(R.string.confirm_save)
+                    .setPositiveButton(R.string.save, (d,w) -> saveFile(open))
+                    .setNegativeButton(R.string.dont_save, (d,w) -> open.run())
+                    .setNeutralButton(android.R.string.cancel, null)
+                    .show();
+        } else open.run();
     }
 
     private void selectTab(int index) {
@@ -610,17 +653,25 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
             }
         }
         boolean isFromFile = tab.file != null;
-        try (InputStream is = isFromFile ? FileUtils.getInputStream(tab.file) : getContentResolver().openInputStream(tab.fileUri);
-             InputStreamReader isr = new InputStreamReader(is, StandardCharsets.UTF_8);
-             BufferedReader reader = new BufferedReader(isr)) {
-
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line).append('\n');
+        try (InputStream raw = isFromFile ? FileUtils.getInputStream(tab.file) : getContentResolver().openInputStream(tab.fileUri);
+             BufferedInputStream is = new BufferedInputStream(raw);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            if (raw == null) throw new java.io.IOException("Unable to open input stream");
+            byte[] buffer = new byte[8192];
+            long total = 0;
+            int read;
+            while ((read = is.read(buffer)) != -1) {
+                total += read;
+                if (total > MAX_TEXT_FILE_BYTES) {
+                    throw new java.io.IOException("Text file is larger than 64 MiB");
+                }
+                out.write(buffer, 0, read);
             }
+            String text = new String(out.toByteArray(), StandardCharsets.UTF_8);
+            // UTF-8 BOM is an encoding marker, not part of the editable document.
+            if (!text.isEmpty() && text.charAt(0) == '\uFEFF') text = text.substring(1);
             tab.loadFailed = false;
-            return sb.toString();
+            return text;
         } catch (Exception e) {
             tab.loadFailed = true;
             runOnUiThread(() -> new ErrorUtil(this).showError(e));

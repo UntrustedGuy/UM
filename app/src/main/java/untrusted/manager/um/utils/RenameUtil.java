@@ -176,7 +176,8 @@ public class RenameUtil {
         for (RenamePlan p : plans) {
             String name = p.newName;
             if (name == null || name.isEmpty() || name.equals(".") || name.equals("..")
-                    || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.indexOf('\0') >= 0) {
+                    || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.indexOf('\0') >= 0
+                    || new File(name).isAbsolute()) {
                 p.error = "Invalid file name";
                 continue;
             }
@@ -196,6 +197,30 @@ public class RenameUtil {
         }
     }
 
+    private static boolean renameWithVerification(MainActivity context, File from, File to) throws IOException {
+        if (from == null || to == null) throw new IOException("Invalid rename path");
+        if (from.equals(to)) return true;
+        boolean renamed = false;
+        if (AccessManager.fileOpsOn(context)) {
+            try {
+                AccessManager.rename(context, from.getAbsolutePath(), to.getAbsolutePath(), true);
+                renamed = to.exists() && !from.exists();
+            } catch (Exception ignored) {
+                renamed = false;
+            }
+        }
+        if (!renamed) renamed = from.renameTo(to) && to.exists() && !from.exists();
+        return renamed;
+    }
+
+    private static boolean restoreRename(MainActivity context, File from, File to) {
+        try {
+            return renameWithVerification(context, from, to);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private static void executeRenameFiles(MainActivity context, List<RenamePlan> plans, boolean pane1) {
         File parent = ((File) plans.get(0).item).getParentFile();
         if (parent == null) {
@@ -206,36 +231,30 @@ public class RenameUtil {
         Handler handler = context.handler;
         new Thread(() -> {
             Map<File, File> oldToTemp = new LinkedHashMap<>();
-            Map<File, File> tempToOld = new HashMap<>();
-            Map<File, File> tempToFinal = new HashMap<>();
-            Map<File, File> finalToTemp = new HashMap<>();
+            Map<File, File> tempToOld = new LinkedHashMap<>();
+            Map<File, File> tempToFinal = new LinkedHashMap<>();
             int t = 0;
-            for (RenamePlan p : plans) {
-                if (p.noop || p.error != null) continue;
-                File temp;
-                do {
-                    temp = new File(parent, "__MP_RENAME_TMP_" + (t++) + "_");
-                } while (temp.exists());
-                oldToTemp.put((File) p.item, temp);
-                tempToOld.put(temp, (File) p.item);
-                tempToFinal.put(temp, new File(parent, p.newName));
-                finalToTemp.put(new File(parent, p.newName), temp);
-            }
             try {
+                for (RenamePlan p : plans) {
+                    if (p.noop || p.error != null) continue;
+                    File temp;
+                    do {
+                        temp = new File(parent, "__UM_RENAME_TMP_" + (t++) + "_");
+                    } while (temp.exists() || oldToTemp.containsValue(temp));
+                    oldToTemp.put((File) p.item, temp);
+                    tempToOld.put(temp, (File) p.item);
+                    tempToFinal.put(temp, new File(parent, p.newName));
+                }
+
                 for (Map.Entry<File, File> e : oldToTemp.entrySet()) {
                     pm.setText(context.getString(R.string.renaming));
-                    if (!e.getKey().renameTo(e.getValue())) {
-                        for (Map.Entry<File, File> r : tempToOld.entrySet()) r.getKey().renameTo(r.getValue());
+                    if (!renameWithVerification(context, e.getKey(), e.getValue()))
                         throw new IOException(context.getString(R.string.rename_failed, e.getKey().getName()));
-                    }
                 }
                 for (Map.Entry<File, File> e : tempToFinal.entrySet()) {
                     pm.setText(context.getString(R.string.renaming));
-                    if (!e.getKey().renameTo(e.getValue())) {
-                        for (Map.Entry<File, File> r : finalToTemp.entrySet()) r.getKey().renameTo(r.getValue());
-                        for (Map.Entry<File, File> r : tempToOld.entrySet()) r.getKey().renameTo(r.getValue());
-                        throw new IOException(context.getString(R.string.rename_failed, e.getKey().getName()));
-                    }
+                    if (!renameWithVerification(context, e.getKey(), e.getValue()))
+                        throw new IOException(context.getString(R.string.rename_failed, e.getValue().getName()));
                 }
                 pm.dismiss();
                 handler.post(() -> {
@@ -243,63 +262,122 @@ public class RenameUtil {
                     context.loadFolderInPane(parent, pane1, false);
                 });
             } catch (Exception e) {
+                boolean restored = true;
+                for (Map.Entry<File, File> r : tempToOld.entrySet()) {
+                    if (r.getKey().exists() && !r.getValue().exists())
+                        restored &= restoreRename(context, r.getKey(), r.getValue());
+                }
+                if (!restored) e.addSuppressed(new IOException("Rename rollback was incomplete; inspect temporary rename entries in " + parent));
                 pm.dismiss();
                 new ErrorUtil(context).showError(e);
             }
-        }).start();
+        }, "UM-MultiRename").start();
     }
 
     private static void executeRenameZip(MainActivity context, List<RenamePlan> plans, String currentZipPath, boolean pane1) {
         File zipFile = ((ZipEntryInfo) plans.get(0).item).getZipFile();
+        File backup = new File(zipFile.getParentFile(), zipFile.getName() + ".bak");
         ProgressManager pm = new ProgressManager(context, true).show();
         Handler handler = context.handler;
         new Thread(() -> {
-            try (ZipFile zf = new ZipFile(zipFile)) {
-                Map<String, String> oldToTemp = new LinkedHashMap<>();
-                Map<String, String> tempToFinal = new LinkedHashMap<>();
-                int t = 0;
-                for (RenamePlan p : plans) {
-                    if (p.noop || p.error != null) continue;
-                    ZipEntryInfo ze = (ZipEntryInfo) p.item;
-                    String oldPath = ze.getFullPath();
-                    String cleanPath = oldPath.replaceAll("/+$", "");
-                    String parentPath = "";
-                    int slash = cleanPath.lastIndexOf('/');
-                    if (slash >= 0) parentPath = cleanPath.substring(0, slash + 1);
-                    String tempBase = parentPath + "__MP_RENAME_TMP_" + (t++) + "_";
-                    if (ze.isDirectory()) {
-                        String dirEntry = oldPath.endsWith("/") ? oldPath : oldPath + "/";
-                        oldToTemp.put(dirEntry, tempBase);
-                        tempToFinal.put(tempBase, parentPath + p.newName + "/");
-                        for (FileHeader fh : zf.getFileHeaders()) {
-                            String fhName = fh.getFileName();
-                            if (fhName.startsWith(dirEntry) && fhName.length() > dirEntry.length() && !oldToTemp.containsKey(fhName)) {
-                                String rest = fhName.substring(dirEntry.length());
-                                oldToTemp.put(fhName, tempBase + rest);
-                                tempToFinal.put(tempBase + rest, parentPath + p.newName + "/" + rest);
-                            }
+            boolean committed = false;
+            boolean restored = false;
+            try {
+                FileUtils.copyFile(zipFile, backup);
+                if (!backup.isFile() || backup.length() != zipFile.length())
+                    throw new IOException("Could not create a verified archive backup: " + backup);
+                try (ZipFile zf = new ZipFile(zipFile)) {
+                    Map<String, String> oldToTemp = new LinkedHashMap<>();
+                    Map<String, String> tempToFinal = new LinkedHashMap<>();
+                    int t = 0;
+                    Set<String> originalNames = new HashSet<>();
+                    for (FileHeader fh : zf.getFileHeaders()) originalNames.add(fh.getFileName());
+                    Set<String> finalNames = new HashSet<>();
+                    for (RenamePlan p : plans) {
+                        if (p.noop || p.error != null) continue;
+                        ZipEntryInfo ze = (ZipEntryInfo) p.item;
+                        String oldPath = ze.getFullPath();
+                        String cleanPath = oldPath.replaceAll("/+$", "");
+                        String parentPath = "";
+                        int slash = cleanPath.lastIndexOf('/');
+                        if (slash >= 0) parentPath = cleanPath.substring(0, slash + 1);
+                        String finalRoot = parentPath + p.newName + (ze.isDirectory() ? "/" : "");
+                        if (!finalNames.add(finalRoot)) throw new IOException("Duplicate rename target: " + finalRoot);
+                        for (String originalName : originalNames) {
+                            boolean subtreeCollision = ze.isDirectory()
+                                    ? (originalName.equals(finalRoot) || originalName.startsWith(finalRoot))
+                                    : originalName.equals(finalRoot);
+                            if (subtreeCollision && !originalName.equals(oldPath))
+                                throw new IOException("Rename target already exists: " + finalRoot);
                         }
-                    } else if (!oldToTemp.containsKey(oldPath)) {
-                        String tempName = tempBase + FilenameUtils.getBaseName(oldPath);
-                        oldToTemp.put(oldPath, tempName);
-                        tempToFinal.put(tempName, parentPath + p.newName);
+                        String tempBase = parentPath + "__UM_RENAME_TMP_" + (t++) + "_";
+                        if (ze.isDirectory()) {
+                            String dirEntry = oldPath.endsWith("/") ? oldPath : oldPath + "/";
+                            oldToTemp.put(dirEntry, tempBase);
+                            tempToFinal.put(tempBase, finalRoot);
+                            for (FileHeader fh : zf.getFileHeaders()) {
+                                String fhName = fh.getFileName();
+                                if (fhName.startsWith(dirEntry) && fhName.length() > dirEntry.length()) {
+                                    String rest = fhName.substring(dirEntry.length());
+                                    oldToTemp.put(fhName, tempBase + rest);
+                                    tempToFinal.put(tempBase + rest, parentPath + p.newName + "/" + rest);
+                                }
+                            }
+                        } else {
+                            oldToTemp.put(oldPath, tempBase + FilenameUtils.getBaseName(oldPath));
+                            tempToFinal.put(tempBase + FilenameUtils.getBaseName(oldPath), finalRoot);
+                        }
+                    }
+                    if (!oldToTemp.isEmpty()) {
+                        pm.setText(context.getString(R.string.renaming));
+                        zf.renameFiles(oldToTemp);
+                        zf.renameFiles(tempToFinal);
                     }
                 }
-                if (!oldToTemp.isEmpty()) {
-                    pm.setText(context.getString(R.string.renaming));
-                    zf.renameFiles(oldToTemp);
-                    zf.renameFiles(tempToFinal);
+                // Reopen the archive and verify that every requested final root exists.
+                try (ZipFile verify = new ZipFile(zipFile)) {
+                    for (RenamePlan p : plans) {
+                        if (p.noop || p.error != null) continue;
+                        ZipEntryInfo ze = (ZipEntryInfo)p.item;
+                        String oldPath = ze.getFullPath();
+                        String clean = oldPath.replaceAll("/+$", "");
+                        int slash = clean.lastIndexOf('/');
+                        String parentPath = slash >= 0 ? clean.substring(0, slash + 1) : "";
+                        String target = parentPath + p.newName + (ze.isDirectory() ? "/" : "");
+                        if (ze.isDirectory()) {
+                            boolean found = false;
+                            for (FileHeader fh : verify.getFileHeaders()) {
+                                if (fh.getFileName().startsWith(target)) { found = true; break; }
+                            }
+                            if (!found) throw new IOException("ZIP rename verification failed: " + target);
+                        } else if (verify.getFileHeader(target) == null) {
+                            throw new IOException("ZIP rename verification failed: " + target);
+                        }
+                    }
                 }
+                committed = true;
                 pm.dismiss();
                 handler.post(() -> {
                     context.clearPaneSelection(pane1);
                     context.loadZipFolderInPane(zipFile, currentZipPath, pane1, false);
                 });
             } catch (Exception e) {
+                try {
+                    FileUtils.copyFile(backup, zipFile);
+                    if (!zipFile.isFile() || zipFile.length() != backup.length())
+                        throw new IOException("Archive rename restore verification failed: " + zipFile);
+                    restored = true;
+                } catch (Exception restore) {
+                    e.addSuppressed(restore);
+                }
                 pm.dismiss();
                 new ErrorUtil(context).showError(e);
+            } finally {
+                if (committed || restored) {
+                    try { backup.delete(); } catch (Exception ignored) {}
+                }
             }
-        }).start();
+        }, "UM-MultiRenameZip").start();
     }
 
     private static String validateFind(String find, boolean regex) {

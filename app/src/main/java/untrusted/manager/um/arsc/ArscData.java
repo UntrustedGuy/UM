@@ -8,6 +8,8 @@ import com.reandroid.arsc.item.TableString;
 import com.reandroid.arsc.model.ResourceEntry;
 import com.reandroid.arsc.pool.TableStringPool;
 import com.reandroid.arsc.value.Entry;
+import com.reandroid.arsc.value.ResValueMap;
+import com.reandroid.arsc.value.ValueItem;
 import com.reandroid.arsc.value.ResValue;
 import com.reandroid.arsc.value.ValueType;
 import com.reandroid.graphics.AndroidColor;
@@ -343,6 +345,62 @@ public class ArscData {
             this.entry = entry;
             this.value = value;
         }
+    }
+
+    public boolean setValueItemValue(ValueItem item, String newText) {
+        if (item == null) return false;
+        String text = newText == null ? "" : newText.trim();
+        try {
+            ValueType type = item.getValueType();
+            if (type == null) return false;
+            if (type == ValueType.STRING) { item.setValueAsString(newText == null ? "" : newText); return true; }
+            if (type == ValueType.BOOLEAN) {
+                if (!"true".equalsIgnoreCase(text) && !"false".equalsIgnoreCase(text)) return false;
+                item.setValueAsBoolean(Boolean.parseBoolean(text)); return true;
+            }
+            if (type == ValueType.FLOAT) {
+                item.setValueAsRaw(type, Float.floatToRawIntBits(Float.parseFloat(text))); return true;
+            }
+            if (type.isReference()) {
+                item.setValueAsRaw(type, parseNumber(text.startsWith("@") || text.startsWith("?") ? text.substring(1) : text));
+                return true;
+            }
+            if (type.isColor()) {
+                try {
+                    AndroidColor color = AndroidColor.decode(text);
+                    if (color != null) {
+                        item.setValueAsRaw(type, color.intValue());
+                        return true;
+                    }
+                } catch (Exception ignored) { }
+            }
+            item.setValueAsRaw(type, parseNumber(text));
+            return true;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    public boolean setComplexValue(Entry entry, int nameId, String newText) {
+        if (entry == null || !entry.isComplex()) return false;
+        try {
+            com.reandroid.arsc.array.ResValueMapArray maps = entry.getResValueMapArray();
+            if (maps == null) return false;
+            for (ResValueMap map : maps) {
+                if (map != null && map.getNameId() == nameId) return setValueItemValue(map, newText);
+            }
+        } catch (Exception ignored) { }
+        return false;
+    }
+
+    public List<ResValueMap> complexValues(Entry entry) {
+        List<ResValueMap> out = new ArrayList<>();
+        if (entry == null || !entry.isComplex()) return out;
+        try {
+            com.reandroid.arsc.array.ResValueMapArray maps = entry.getResValueMapArray();
+            if (maps != null) for (ResValueMap map : maps) if (map != null) out.add(map);
+        } catch (Exception ignored) { }
+        return out;
     }
 
     public boolean setEntryValue(Entry e, String newText) {

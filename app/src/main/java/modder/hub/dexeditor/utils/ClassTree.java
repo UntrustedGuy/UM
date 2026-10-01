@@ -104,6 +104,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -558,10 +559,10 @@ public class ClassTree {
             AtomicInteger processed = new AtomicInteger(0);
             ExecutorService executor = Executors.newFixedThreadPool(numThreads);
             
-            final Exception[] threadException = {null};
+            final AtomicReference<Exception> threadException = new AtomicReference<>(null);
 
             for (String rawType : classNames) {
-                if (threadException[0] != null) break;
+                if (threadException.get() != null) break;
                 
                 executor.execute(() -> {
                     try {
@@ -583,7 +584,7 @@ public class ClassTree {
 
                             try {
                                 final ClassDef assembledDef = Smali.assemble(pendingSmaliMap.get(type), new SmaliOptions(), finalTargetDexVersion);
-                                synchronized (Collections.unmodifiableMap(classMap)) {
+                                synchronized (classMap) {
                                     classMap.put(type, assembledDef);
                                 }
                                 synchronized (pendingSmaliMap) {
@@ -601,14 +602,14 @@ public class ClassTree {
                                 }
                             } catch (final Exception e) {
                                 synchronized (threadException) {
-                                    threadException[0] = new Exception("COMPILE_ERROR:" + type + ":" + e.getMessage()); }
+                                    threadException.compareAndSet(null, new Exception("COMPILE_ERROR:" + type + ":" + e.getMessage())); }
                             }
                         }
 
-                        if (threadException[0] != null) return;
+                        if (threadException.get() != null) return;
 
                         final ClassDef classDef;
-                        synchronized (Collections.unmodifiableMap(classMap)) {
+                        synchronized (classMap) {
                             classDef = classMap.get(type);
                         }
 
@@ -621,7 +622,9 @@ public class ClassTree {
                                 strippedDef = new DebugInfoStripper(classDef, compilationOptions);
                             }
 
-                            dexBuilder.internClassDef(strippedDef);
+                            synchronized (dexBuilder) {
+                                dexBuilder.internClassDef(strippedDef);
+                            }
                         }
 
                         int p = processed.incrementAndGet();
@@ -630,7 +633,7 @@ public class ClassTree {
                             dexSaveProgress.onProgress(p, classCount);
                         }
                     } catch (final Exception e) {
-                        synchronized (threadException) { threadException[0] = e; }
+                        threadException.compareAndSet(null, e);
                     }
                 });
             }
@@ -638,39 +641,57 @@ public class ClassTree {
             executor.shutdown();
             executor.awaitTermination(1, TimeUnit.HOURS);
             
-            if (threadException[0] != null) {
-                throw threadException[0];
+            if (threadException.get() != null) {
+                throw threadException.get();
             }
 
             dexSaveProgress.onMessage("Writing file...");
+            File outFile = null;
+            File bakFile = null;
+            File tempFile = null;
+            boolean committed = false;
             try {
-                // Estimate size for buffer to avoid repeated allocations
-                MemoryDataStore memoryDataStore = new MemoryDataStore(classCount * 512); 
+                MemoryDataStore memoryDataStore = new MemoryDataStore();
                 dexBuilder.writeTo(memoryDataStore);
                 byte[] result = Arrays.copyOf(memoryDataStore.getBuffer(), memoryDataStore.getSize());
-
-                String outputDir;
-                if (paths != null && !paths.isEmpty()) {
-                    outputDir = new File(paths.get(0)).getParent();
-                } else {
-                    outputDir = "/sdcard";
+                if (result.length < 112 || result[0] != 'd' || result[1] != 'e' || result[2] != 'x' || result[3] != '\n') {
+                    throw new IOException("DEX writer produced invalid output for " + fileName);
                 }
-                File outFile = new File(outputDir, fileName);
-                File bakFile = new File(outFile.getAbsolutePath() + ".bak");
 
+                String outputDir = (paths != null && !paths.isEmpty()) ? new File(paths.get(0)).getParent() : "/sdcard";
+                if (outputDir == null) throw new IOException("Cannot determine DEX output directory");
+                File dir = new File(outputDir);
+                if (!dir.isDirectory()) throw new IOException("DEX output directory is unavailable: " + dir);
+                outFile = new File(dir, fileName);
+                bakFile = new File(outFile.getAbsolutePath() + ".bak");
+                tempFile = File.createTempFile(".um-dex-", ".tmp", dir);
+                try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                    fos.write(result);
+                    fos.flush();
+                }
+                if (tempFile.length() != result.length()) throw new IOException("Incomplete DEX output: " + fileName);
+                if (bakFile.exists() && !bakFile.delete()) throw new IOException("Cannot replace DEX backup: " + bakFile);
                 if (outFile.exists()) {
-                    // Fast backup using NIO or simple copy
                     FileUtil.copyFile(outFile.getAbsolutePath(), bakFile.getAbsolutePath());
-                    outFile.delete();
+                    if (!bakFile.isFile() || bakFile.length() != outFile.length()) {
+                    throw new IOException("Cannot verify backup of original DEX: " + outFile);
+                    }
                 }
-
-                // Fast write
-                FileOutputStream fos = new FileOutputStream(outFile);
-                fos.write(result);
-                fos.close();
+                if (outFile.exists() && !outFile.delete()) throw new IOException("Cannot replace original DEX: " + outFile);
+                if (!tempFile.renameTo(outFile)) {
+                    if (bakFile.exists()) FileUtil.copyFile(bakFile.getAbsolutePath(), outFile.getAbsolutePath());
+                    throw new IOException("Cannot commit modified DEX: " + outFile);
+                }
+                committed = true;
                 data = result;
+                if (bakFile.exists()) bakFile.delete();
             } catch (Exception e) {
-                e.printStackTrace();
+                if (bakFile != null && bakFile.exists() && outFile != null && !outFile.exists()) {
+                    try { FileUtil.copyFile(bakFile.getAbsolutePath(), outFile.getAbsolutePath()); } catch (Exception ignored) {}
+                }
+                throw e;
+            } finally {
+                if (!committed && tempFile != null && tempFile.exists()) tempFile.delete();
             }
 
             current++;

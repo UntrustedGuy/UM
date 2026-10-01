@@ -124,36 +124,59 @@ public class PlayerManager {
     public void decrementUIVisible() { if (uiVisibleCount > 0) uiVisibleCount--; }
     public boolean isUIVisible() { return uiVisibleCount > 0; }
 
-    public void registerCallback(PlaybackCallback cb) { if (!callbacks.contains(cb)) callbacks.add(cb); }
+    public void registerCallback(PlaybackCallback cb) { if (cb != null && !callbacks.contains(cb)) callbacks.add(cb); }
     public void unregisterCallback(PlaybackCallback cb) { callbacks.remove(cb); }
 
     private void notifyState(PlayState s) {
         state = s;
-        for (PlaybackCallback cb : callbacks) cb.onStateChanged(s);
+        for (PlaybackCallback cb : new ArrayList<>(callbacks)) {
+            try { cb.onStateChanged(s); } catch (Exception ignored) { }
+        }
     }
 
     private void notifyProgress(int pos, int dur) {
-        for (PlaybackCallback cb : callbacks) cb.onProgress(pos, dur);
+        for (PlaybackCallback cb : new ArrayList<>(callbacks)) {
+            try { cb.onProgress(pos, dur); } catch (Exception ignored) { }
+        }
     }
 
     private void notifyMediaItem(MediaItem item) {
-        for (PlaybackCallback cb : callbacks) cb.onMediaItemChanged(item);
+        for (PlaybackCallback cb : new ArrayList<>(callbacks)) {
+            try { cb.onMediaItemChanged(item); } catch (Exception ignored) { }
+        }
     }
 
     private void notifyError(String msg) {
-        for (PlaybackCallback cb : callbacks) cb.onError(msg);
+        for (PlaybackCallback cb : new ArrayList<>(callbacks)) {
+            try { cb.onError(msg); } catch (Exception ignored) { }
+        }
     }
 
     private void notifyBuffer(int pct) {
-        for (PlaybackCallback cb : callbacks) cb.onBufferUpdate(pct);
+        for (PlaybackCallback cb : new ArrayList<>(callbacks)) {
+            try { cb.onBufferUpdate(pct); } catch (Exception ignored) { }
+        }
     }
 
     public void play(List<MediaItem> items, int startIndex) {
         if (items == null || items.isEmpty()) return;
         queue = new ArrayList<>(items);
-        currentIndex = startIndex;
+        currentIndex = Math.max(0, Math.min(startIndex, queue.size() - 1));
         if (shuffle) buildShuffleOrder();
         playCurrent();
+    }
+
+    /** Re-resolves network headers and reloads the current URL without changing the queue selection. */
+    public void reloadCurrent() {
+        MediaItem current = getCurrentItem();
+        if (current == null) return;
+        if (current.uri != null && ("http".equalsIgnoreCase(current.uri.getScheme()) || "https".equalsIgnoreCase(current.uri.getScheme()))) {
+            MediaItem refreshed = buildMediaItem(appContext, current.uri.toString());
+            if (currentIndex >= 0 && currentIndex < queue.size()) queue.set(currentIndex, refreshed);
+            playCurrent();
+        } else {
+            playCurrent();
+        }
     }
 
     public void play(MediaItem item) {
@@ -227,7 +250,7 @@ public class PlayerManager {
     }
 
     private int getNextIndex() {
-        if (shuffle && shuffleOrder != null) {
+        if (shuffle && shuffleOrder != null && shuffleOrder.size() == queue.size()) {
             int idx = shuffleOrder.indexOf(currentIndex);
             if (idx >= 0 && idx + 1 < shuffleOrder.size()) return shuffleOrder.get(idx + 1);
             if (repeatMode == RepeatMode.ALL) { buildShuffleOrder(); return shuffleOrder.get(0); }
@@ -265,7 +288,7 @@ public class PlayerManager {
     }
 
     private int getPrevIndex() {
-        if (shuffle && shuffleOrder != null) {
+        if (shuffle && shuffleOrder != null && shuffleOrder.size() == queue.size()) {
             int idx = shuffleOrder.indexOf(currentIndex);
             if (idx > 0) return shuffleOrder.get(idx - 1);
             return currentIndex;
@@ -377,6 +400,7 @@ public class PlayerManager {
         if (currentIndex < 0 || currentIndex >= queue.size()) return;
         MediaItem item = queue.get(currentIndex);
         isVideo = item.isVideo;
+        resumePosition = loadResumePosition(item);
 
         stopProgressUpdater();
         abandonAudioFocus();
@@ -447,7 +471,11 @@ public class PlayerManager {
         try {
             notifyState(PlayState.PREPARING);
             notifyMediaItem(item);
-            newPlayer.setDataSource(appContext, item.uri);
+            if (item.uri != null && ("http".equalsIgnoreCase(item.uri.getScheme()) || "https".equalsIgnoreCase(item.uri.getScheme())) && !item.httpHeaders.isEmpty()) {
+                newPlayer.setDataSource(appContext, item.uri, item.httpHeaders);
+            } else {
+                newPlayer.setDataSource(appContext, item.uri);
+            }
             newPlayer.prepareAsync();
         } catch (IOException | IllegalStateException e) {
             if (newPlayer == mediaPlayer) {
@@ -518,11 +546,18 @@ public class PlayerManager {
 
     private void saveResumePosition() {
         MediaItem item = getCurrentItem();
-        if (item != null && state == PlayState.PAUSED) {
+        if (item != null && (state == PlayState.PAUSED || state == PlayState.ENDED)) {
             int pos = getCurrentPosition();
+            if (state == PlayState.ENDED || pos < 1000) pos = 0;
             PreferenceManager.getDefaultSharedPreferences(appContext)
                     .edit().putInt("resume_pos_" + item.path, pos).apply();
         }
+    }
+
+    private int loadResumePosition(MediaItem item) {
+        if (item == null || item.path == null) return 0;
+        return Math.max(0, PreferenceManager.getDefaultSharedPreferences(appContext)
+                .getInt("resume_pos_" + item.path, 0));
     }
 
     private void loadSettings() {
@@ -564,7 +599,9 @@ public class PlayerManager {
             if ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme())) {
                 // Network streams do not expose reliable metadata through MediaMetadataRetriever
                 // on every Android vendor implementation; MediaPlayer will prepare them directly.
-                mmr.setDataSource(context, uri);
+                java.util.Map<String, String> headers = StreamingHeaderStore.resolve(context, trimmed);
+                if (headers.isEmpty()) mmr.setDataSource(context, uri);
+                else mmr.setDataSource(context, uri, headers);
             } else mmr.setDataSource(context, uri);
             String t = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE);
             if (t != null) title = t;
@@ -582,6 +619,8 @@ public class PlayerManager {
             String name = filePath.substring(filePath.lastIndexOf('/') + 1);
             title = filePath.lastIndexOf('\\') >= 0 ? filePath.substring(filePath.lastIndexOf('\\') + 1) : name;
         }
-        return new MediaItem(uri, filePath, title, artist, album, duration, isVideo);
+        java.util.Map<String, String> headers = ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                ? StreamingHeaderStore.resolve(context, trimmed) : java.util.Collections.emptyMap();
+        return new MediaItem(uri, filePath, title, artist, album, duration, isVideo, headers);
     }
 }

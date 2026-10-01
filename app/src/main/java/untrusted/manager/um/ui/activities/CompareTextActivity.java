@@ -2,6 +2,10 @@ package untrusted.manager.um.ui.activities;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.widget.ProgressBar;
+import android.view.ViewGroup;
 import android.webkit.WebView;
 import io.github.codehasan.colorpicker.extensions.Extensions;
 
@@ -50,52 +54,72 @@ public class CompareTextActivity extends AppCompatActivity {
         if (title1 == null || title1.isEmpty()) title1 = "File 1";
         if (title2 == null || title2.isEmpty()) title2 = "File 2";
 
-        try {
-            List<String> lines1 = text1 != null ? splitLines(text1) : readLines(path1, isZip1, zip1);
-            List<String> lines2 = text2 != null ? splitLines(text2) : readLines(path2, isZip2, zip2);
+        final String finalTitle1 = title1;
+        final String finalTitle2 = title2;
+        final WebView finalWebView = webView;
+        final Handler mainHandler = new Handler(Looper.getMainLooper());
+        final ProgressBar progress = new ProgressBar(this);
+        progress.setIndeterminate(true);
+        addContentView(progress, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-            DiffRowGenerator generator = DiffRowGenerator.create()
-                    .showInlineDiffs(true)
-                    .inlineDiffByWord(true)
-                    .oldTag(f -> f ? "<span style=\"background-color:#ffcccc;text-decoration:line-through;\">" : "</span>")
-                    .newTag(f -> f ? "<span style=\"background-color:#ccffcc;\">" : "</span>")
-                    .build();
+        new Thread(() -> {
+            try {
+                List<String> lines1 = text1 != null ? splitLines(text1) : readLines(path1, isZip1, zip1);
+                List<String> lines2 = text2 != null ? splitLines(text2) : readLines(path2, isZip2, zip2);
+                final int maxLines = 100_000;
+                if (lines1.size() > maxLines || lines2.size() > maxLines) {
+                    throw new IOException("Files contain too many lines to compare safely");
+                }
 
-            List<DiffRow> rows = generator.generateDiffRows(lines1, lines2);
+                DiffRowGenerator generator = DiffRowGenerator.create()
+                        .showInlineDiffs(true)
+                        .inlineDiffByWord(true)
+                        .oldTag(f -> f ? "<span style=\"background-color:#ffcccc;text-decoration:line-through;\">" : "</span>")
+                        .newTag(f -> f ? "<span style=\"background-color:#ccffcc;\">" : "</span>")
+                        .build();
 
-            StringBuilder html = new StringBuilder();
-            html.append("<html><head><style>")
-                .append("body { font-family: monospace; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; } ")
-                .append("table { width: 100%; border-collapse: collapse; table-layout: fixed; } ")
-                .append("th, td { border: 1px solid #ddd; padding: 4px; vertical-align: top; overflow: hidden; } ")
-                .append("th { background-color: #f2f2f2; } ")
-                .append("</style></head><body>");
+                List<DiffRow> rows = generator.generateDiffRows(lines1, lines2);
+                final int maxRows = 100_000;
+                if (rows.size() > maxRows) throw new IOException("Comparison result is too large to render safely");
 
-            html.append("<table><tr><th style=\"width:50%\">").append(escapeDiffHtml(title1)).append("</th><th style=\"width:50%\">").append(escapeDiffHtml(title2)).append("</th></tr>");
+                StringBuilder html = new StringBuilder(Math.min(8 * 1024 * 1024, Math.max(4096, rows.size() * 80)));
+                html.append("<html><head><style>")
+                    .append("body { font-family: monospace; font-size: 14px; white-space: pre-wrap; word-wrap: break-word; } ")
+                    .append("table { width: 100%; border-collapse: collapse; table-layout: fixed; } ")
+                    .append("th, td { border: 1px solid #ddd; padding: 4px; vertical-align: top; overflow: hidden; } ")
+                    .append("th { background-color: #f2f2f2; }")
+                    .append("</style></head><body>");
 
-            for (DiffRow row : rows) {
-                html.append("<tr>");
-                
-                String oldLine = row.getOldLine();
-                String newLine = row.getNewLine();
-                
-                String oldBg = row.getTag() == DiffRow.Tag.DELETE ? "background-color:#ffe6e6;" : "";
-                String newBg = row.getTag() == DiffRow.Tag.INSERT ? "background-color:#e6ffe6;" : "";
+                html.append("<table><tr><th style=\"width:50%\">").append(escapeDiffHtml(finalTitle1)).append("</th><th style=\"width:50%\">").append(escapeDiffHtml(finalTitle2)).append("</th></tr>");
+                for (DiffRow row : rows) {
+                    html.append("<tr>");
+                    String oldLine = row.getOldLine();
+                    String newLine = row.getNewLine();
+                    String oldBg = row.getTag() == DiffRow.Tag.DELETE ? "background-color:#ffe6e6;" : "";
+                    String newBg = row.getTag() == DiffRow.Tag.INSERT ? "background-color:#e6ffe6;" : "";
+                    html.append("<td style=\"").append(oldBg).append("\">").append(escapeDiffHtml(oldLine)).append("</td>");
+                    html.append("<td style=\"").append(newBg).append("\">").append(escapeDiffHtml(newLine)).append("</td>");
+                    html.append("</tr>");
+                }
+                html.append("</table></body></html>");
 
-                html.append("<td style=\"").append(oldBg).append("\">").append(escapeDiffHtml(oldLine)).append("</td>");
-                html.append("<td style=\"").append(newBg).append("\">").append(escapeDiffHtml(newLine)).append("</td>");
-                
-                html.append("</tr>");
+                mainHandler.post(() -> {
+                    try {
+                        finalWebView.loadDataWithBaseURL(null, html.toString(), "text/html", "UTF-8", null);
+                    } finally {
+                        if (progress.getParent() instanceof ViewGroup parent) parent.removeView(progress);
+                    }
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> {
+                    if (progress.getParent() instanceof ViewGroup parent) parent.removeView(progress);
+                    Extensions.showMessage(this, "Error comparing text: " + e.getMessage());
+                    new ErrorUtil(this).showError(e);
+                });
             }
+        }, "text-compare").start();
 
-            html.append("</table></body></html>");
-
-            webView.loadDataWithBaseURL(null, html.toString(), "text/html", "UTF-8", null);
-
-        } catch (Exception e) {
-            Extensions.showMessage(this, "Error comparing text: " + e.getMessage());
-            new ErrorUtil(this).showError(e);
-        }
     }
 
     private static final long MAX_COMPARE_BYTES = 16L * 1024L * 1024L;
@@ -130,9 +154,14 @@ public class CompareTextActivity extends AppCompatActivity {
                 ZipEntry ze = zf.getEntry(path);
                 if (ze != null) {
                     if (ze.getSize() > MAX_COMPARE_BYTES) throw new IOException("File is too large to compare safely");
+                    long total = 0;
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(zf.getInputStream(ze), StandardCharsets.UTF_8))) {
                         String line;
-                        while ((line = reader.readLine()) != null) lines.add(line);
+                        while ((line = reader.readLine()) != null) {
+                            total += line.length() * 2L + 1L;
+                            if (total > MAX_COMPARE_BYTES) throw new IOException("File expands beyond the safe comparison limit");
+                            lines.add(line);
+                        }
                     }
                 }
             }

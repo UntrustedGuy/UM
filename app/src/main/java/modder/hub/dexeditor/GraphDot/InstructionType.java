@@ -46,8 +46,8 @@ public class InstructionType {
     public static final String CON_JUMP = "if-";
     public static final String CON_LABEL = ":cond";
     public static final String RETURN = "return";
+    public static final String TRY_CATCH = ".catch";
     public static final String UNKNOWN = "null";
-  // try_catch instruction type not implemented yet ..
     public static String getInsType(String ins) {
         if (ins.startsWith(GOTO)) {
             return GOTO;
@@ -60,6 +60,9 @@ public class InstructionType {
         }
         if (ins.startsWith(CON_LABEL)) {
             return CON_LABEL;
+        }
+        if (ins.startsWith(TRY_CATCH)) {
+            return TRY_CATCH;
         }
         return ins.startsWith(RETURN) ? RETURN : UNKNOWN;
     }

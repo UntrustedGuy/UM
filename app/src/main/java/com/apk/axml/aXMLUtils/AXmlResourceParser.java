@@ -407,14 +407,36 @@ public class AXmlResourceParser implements XmlResourceParser, AutoCloseable {
 		return attributeIndex == -1 ? defaultValue : getAttributeIntValue(attributeIndex, defaultValue);
 	}
 
+	@Override
 	public int getAttributeListValue(int index, String[] options, int defaultValue) {
-		// TODO implement
-		return 0;
+		if (options == null || index < 0 || index >= getAttributeCount()) return defaultValue;
+		String value = getAttributeValue(index);
+		if (value != null) {
+			for (int i = 0; i < options.length; i++) {
+				if (options[i] != null && options[i].equals(value)) return i;
+			}
+		}
+		int type = getAttributeValueType(index);
+		int data = getAttributeValueData(index);
+		if (type >= TypedValue.TYPE_FIRST_INT && type <= TypedValue.TYPE_LAST_INT) {
+			for (int i = 0; i < options.length; i++) {
+				if (options[i] == null) continue;
+				try {
+					String candidate = options[i].trim();
+					int parsed = candidate.startsWith("0x") || candidate.startsWith("0X")
+							? (int) Long.parseLong(candidate.substring(2), 16)
+							: Integer.parseInt(candidate);
+					if (parsed == data) return i;
+				} catch (NumberFormatException ignored) { }
+			}
+		}
+		return defaultValue;
 	}
 
+	@Override
 	public int getAttributeListValue(String namespace, String attribute, String[] options, int defaultValue) {
-		// TODO implement
-		return 0;
+		int index = findAttribute(namespace, attribute);
+		return index == -1 ? defaultValue : getAttributeListValue(index, options, defaultValue);
 	}
 
 	@Override

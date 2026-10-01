@@ -144,6 +144,15 @@ public class FileUtils {
         if (destinationParent.startsWith(sourceReal)) {
             throw new IOException("Destination cannot be inside the source directory: " + dest);
         }
+        if (Files.isSymbolicLink(destinationPath)) {
+            throw new IOException("Refusing to write through symbolic-link destination: " + dest);
+        }
+        File destinationParentFile = dest.getParentFile();
+        for (File current = destinationParentFile; current != null; current = current.getParentFile()) {
+            if (Files.isSymbolicLink(current.toPath())) {
+                throw new IOException("Refusing to write through symbolic-link directory: " + current);
+            }
+        }
         if (dest.exists() && !dest.isDirectory()) {
             throw new IOException("Destination is not a directory: " + dest);
         }
@@ -158,6 +167,9 @@ public class FileUtils {
                 throw new IOException("Refusing to follow symbolic link: " + child);
             }
             File target = new File(dest, child.getName());
+            if (Files.isSymbolicLink(target.toPath())) {
+                throw new IOException("Refusing to overwrite symbolic link: " + target);
+            }
             if (child.isDirectory()) copyFolder(child, target);
             else copyFile(child, target);
         }
@@ -174,9 +186,25 @@ public class FileUtils {
     }
 
     public static void copyFile(File sourceFile, File destinationFile) throws IOException {
+        if (sourceFile == null || destinationFile == null) throw new IOException("Source and destination are required");
+        if (!sourceFile.isFile() || Files.isSymbolicLink(sourceFile.toPath())) {
+            throw new IOException("Refusing to copy non-regular or symbolic-link source: " + sourceFile);
+        }
+        if (Files.isSymbolicLink(destinationFile.toPath())) {
+            throw new IOException("Refusing to overwrite symbolic-link destination: " + destinationFile);
+        }
+        File parent = destinationFile.getParentFile();
+        for (File current = parent; current != null; current = current.getParentFile()) {
+            if (Files.isSymbolicLink(current.toPath())) {
+                throw new IOException("Refusing to write through symbolic-link directory: " + current);
+            }
+        }
         try (InputStream is = getInputStream(sourceFile);
              OutputStream os = getOutputStream(destinationFile)) {
             copyFile(is, os);
+        }
+        if (!destinationFile.isFile() || destinationFile.length() != sourceFile.length()) {
+            throw new IOException("File copy verification failed: " + destinationFile);
         }
     }
 

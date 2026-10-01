@@ -4,18 +4,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 
-import untrusted.manager.um.UMManager.MainActivity;
-
+/** Stops the service-owned FTP listener from its notification action. */
 public class StopReceiver extends BroadcastReceiver {
-    @Override
-    public void onReceive(Context context, Intent intent) {
-        Intent stopIntent = new Intent(context, FtpForegroundService.class);
-        context.stopService(stopIntent);
-        if(MainActivity.ftpServer != null) {
-            MainActivity.ftpServer.stop();
-            MainActivity.ftpServer = null;
-        }
-        Intent uiIntent = new Intent("untrusted.manager.um.FTP_STOPPED");
-        context.sendBroadcast(uiIntent);
+    @Override public void onReceive(Context context, Intent intent) {
+        FtpForegroundService.stopRunning(context);
+        context.sendBroadcast(new Intent("untrusted.manager.um.FTP_STOPPED").setPackage(context.getPackageName()));
     }
 }

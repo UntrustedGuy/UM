@@ -22,6 +22,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.EditText;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -533,6 +534,7 @@ public class MediaPlayerActivity extends AppCompatActivity implements
     private void showPlayerSettings() {
         String[] items = {getString(R.string.keep_screen_on, (playerManager.isKeepScreenOn() ? "ON" : "OFF")),
                 getString(R.string.skip_duration_X, (playerManager.getSkipDuration() / 1000)),
+                getString(R.string.streaming_headers),
                 getString(R.string.close_player)};
         new AlertDialog.Builder(this)
                 .setTitle(R.string.player_settings)
@@ -554,7 +556,58 @@ public class MediaPlayerActivity extends AppCompatActivity implements
                                         }
                                     }).show();
                             break;
-                        case 2: finish(); break;
+                        case 2:
+                            showStreamingHeadersDialog();
+                            break;
+                        case 3: finish(); break;
+                    }
+                }).show();
+    }
+
+    private void showStreamingHeadersDialog() {
+        MediaItem current = playerManager.getCurrentItem();
+        String url = current == null || current.uri == null ? "" : current.uri.toString();
+        if (!(url.startsWith("http://") || url.startsWith("https://"))) {
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.streaming_headers)
+                    .setMessage(R.string.streaming_headers_network_only)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show();
+            return;
+        }
+        java.util.List<StreamingHeaderStore.Rule> rules = StreamingHeaderStore.getRules(this);
+        StreamingHeaderStore.Rule existing = null;
+        for (StreamingHeaderStore.Rule rule : rules) {
+            if (rule.pattern.equalsIgnoreCase(url)) { existing = rule; break; }
+        }
+        final EditText pattern = new EditText(this);
+        pattern.setSingleLine(true);
+        pattern.setHint(R.string.streaming_header_url_hint);
+        pattern.setText(existing == null ? url : existing.pattern);
+        final EditText headers = new EditText(this);
+        headers.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
+        headers.setMinLines(6);
+        headers.setMaxLines(12);
+        headers.setHint(R.string.streaming_header_lines_hint);
+        headers.setText(existing == null ? "" : StreamingHeaderStore.formatHeaders(existing.headers));
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (16 * getResources().getDisplayMetrics().density + 0.5f);
+        box.setPadding(pad, 0, pad, 0);
+        box.addView(pattern, new LinearLayout.LayoutParams(-1, -2));
+        box.addView(headers, new LinearLayout.LayoutParams(-1, -2));
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.streaming_headers)
+                .setMessage(R.string.streaming_headers_format)
+                .setView(box)
+                .setNeutralButton(R.string.streaming_headers_remove, (d, w) -> { StreamingHeaderStore.remove(this, pattern.getText().toString()); playerManager.reloadCurrent(); })
+                .setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(android.R.string.ok, (d, w) -> {
+                    try {
+                        StreamingHeaderStore.upsert(this, pattern.getText().toString(), StreamingHeaderStore.parseHeaders(headers.getText().toString()));
+                        playerManager.reloadCurrent();
+                    } catch (IllegalArgumentException e) {
+                        io.github.codehasan.colorpicker.extensions.Extensions.showMessage(this, e.getMessage());
                     }
                 }).show();
     }
@@ -600,7 +653,7 @@ public class MediaPlayerActivity extends AppCompatActivity implements
     protected void onDestroy() {
         playerManager.unregisterCallback(this);
         playerManager.setVideoSizeChangedListener(null);
-        autoHideHandler.removeCallbacks(autoHideRunnable);
+        autoHideHandler.removeCallbacksAndMessages(null);
         playerManager.setSurface(null);
         super.onDestroy();
     }
