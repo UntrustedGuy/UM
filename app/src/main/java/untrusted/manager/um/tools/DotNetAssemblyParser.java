@@ -193,7 +193,7 @@ final class DotNetAssemblyParser {
         int[] tablesStream=sm.get("#~"); if(tablesStream==null)tablesStream=sm.get("#-"); if(tablesStream==null)throw new IOException("No metadata tables stream");
         int[] strings=sm.get("#Strings"), blob=sm.get("#Blob"), us=sm.get("#US");
         if(strings==null)throw new IOException("No #Strings stream");
-        Tables t=Tables.read(b,tablesStream[0]);
+        Tables t=Tables.read(b,tablesStream[0], tablesStream[0]+tablesStream[1]);
         String assembly="ManagedAssembly";
         Row asm=t.row(32,0); if(asm!=null) assembly=t.str(strings[0], asm.u4(7));
         DotNetAssemblyParser out=new DotNetAssemblyParser(assembly,b,ss,off,t,strings[0],blob==null?0:blob[0],us==null?0:us[0]);
@@ -583,7 +583,27 @@ final class DotNetAssemblyParser {
     private static final class Tables {
         final byte[] b;final int base;final int[] rows=new int[64];final int[] rowSizes=new int[64];final int[] offsets=new int[64];final int heapFlags;final Map<String,int[]> coded=new HashMap<>();
         private Tables(byte[]b,int base){this.b=b;this.base=base;heapFlags=b[base+6]&255;}
-        static Tables read(byte[]b,int base)throws IOException{Tables t=new Tables(b,base);int validLo=u32(b,base+8),validHi=u32(b,base+12);int p=base+24;for(int i=0;i<64;i++){if(i<32&&((validLo>>>i)&1)!=0)t.rows[i]=u32(b,p++);else if(i>=32&&((validHi>>>(i-32))&1)!=0)t.rows[i]=u32(b,p++);}for(int id=0;id<64;id++){if(t.rows[id]==0)continue;t.offsets[id]=p;t.rowSizes[id]=t.rowSize(id);if(t.rowSizes[id]<=0)throw new IOException("Unsupported metadata table schema "+id);p+=t.rowSizes[id]*t.rows[id];if(p<0||p>b.length)throw new IOException("Metadata table exceeds file");}return t;}
+        static Tables read(byte[]b,int base,int streamEnd)throws IOException{
+            if(base<0||base+24>b.length||streamEnd<base+24||streamEnd>b.length)throw new IOException("Invalid metadata tables stream bounds");
+            Tables t=new Tables(b,base);
+            int validLo=u32(b,base+8),validHi=u32(b,base+12);
+            int p=base+24;
+            for(int i=0;i<64;i++){
+                if(i<32&&((validLo>>>i)&1)!=0){if(p+4>streamEnd)throw new IOException("Truncated metadata row-count header");t.rows[i]=u32(b,p);p+=4;}
+                else if(i>=32&&((validHi>>>(i-32))&1)!=0){if(p+4>streamEnd)throw new IOException("Truncated metadata row-count header");t.rows[i]=u32(b,p);p+=4;}
+            }
+            long cursor=p;
+            for(int id=0;id<64;id++){
+                if(t.rows[id]==0)continue;
+                t.offsets[id]=(int)cursor;
+                t.rowSizes[id]=t.rowSize(id);
+                if(t.rowSizes[id]<=0)throw new IOException("Unsupported metadata table schema "+id);
+                long end=cursor+(long)t.rowSizes[id]*(long)(t.rows[id]&0xffffffffL);
+                if(end<cursor||end>streamEnd)throw new IOException("Metadata table exceeds #~/#- stream (table="+id+", rows="+(t.rows[id]&0xffffffffL)+", rowSize="+t.rowSizes[id]+")");
+                cursor=end;
+            }
+            return t;
+        }
         int count(int id){return id>=0&&id<64?rows[id]:0;}
         Row row(int id,int index){if(id<0||id>=64||index<0||index>=rows[id])return null;return new Row(this,id,offsets[id]+index*rowSizes[id]);}
         int indexSize(int id){return rows[id]>65535?4:2;}int heapSize(int bit){return (heapFlags&bit)!=0?4:2;}
