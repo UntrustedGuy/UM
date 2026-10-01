@@ -14,15 +14,9 @@
   <img src="https://img.shields.io/badge/Android-Java%2017-green?style=for-the-badge" alt="Android Java 17">
 </p>
 
-<p align="center">
-  <img src="./images/Ss1.png" width="190" alt="Untrusted Manager main screen">
-  <img src="./images/Ss2.png" width="190" alt="Untrusted Manager file manager">
-  <img src="./images/sidebar.png" width="190" alt="Untrusted Manager sidebar">
-</p>
-
 ## About
 
-**Untrusted Manager (UM)** is a community-maintained fork of [MP Manager](https://github.com/AbdurazaaqMohammed/MP-Manager), the open-source Android file manager created by **Abdurazaaq Mohammed**.
+**Untrusted Manager (UM)** is a fork of [MP Manager](https://github.com/AbdurazaaqMohammed/MP-Manager), the open-source Android file manager created by **Abdurazaaq Mohammed**.
 
 MP Manager provides the foundation for the project. UM keeps that foundation while adding a much larger power-user layer aimed at Android developers, APK modders, reverse engineers, people working with remote files, and anyone who wants a toolbox that lives in one app.
 
