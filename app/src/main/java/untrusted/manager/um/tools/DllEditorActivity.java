@@ -14,6 +14,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.HorizontalScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -54,8 +55,11 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
     private FrameLayout editorContainer;
     private UnifiedEditorFragment editorFragment;
     private DotNetAssemblyParser parser;
+    private DotNetAssemblyParser.Probe probe;
     private File currentFile;
     private Node selectedNode;
+    private DotNetAssemblyParser.MethodDef editingIlMethod;
+    private boolean editingCSharp;
     private final ExecutorService dllExecutor = Executors.newSingleThreadExecutor();
 
     @Override protected void onCreate(Bundle state) {
@@ -98,6 +102,9 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
         bar.addView(titleRow, new MaterialToolbar.LayoutParams(-2, dp(48)));
         root.addView(bar, new LinearLayout.LayoutParams(-1, dp(56)));
 
+        HorizontalScrollView actionScroll = new HorizontalScrollView(this);
+        actionScroll.setHorizontalScrollBarEnabled(false);
+        actionScroll.setFillViewport(false);
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         actions.setPadding(dp(8), dp(4), dp(8), dp(4));
@@ -105,8 +112,11 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
         addAction(actions, "C#", v -> openSelectedSource());
         addAction(actions, "IL", v -> openSelectedIl());
         addAction(actions, "Hex", v -> openHex());
+        addAction(actions, "Save", v -> saveEditedIl());
+        addAction(actions, "Compile", v -> compileEditedCSharp());
         addAction(actions, "Export", v -> exportAll());
-        root.addView(actions, new LinearLayout.LayoutParams(-1, dp(52)));
+        actionScroll.addView(actions, new HorizontalScrollView.LayoutParams(-2, -1));
+        root.addView(actionScroll, new LinearLayout.LayoutParams(-1, dp(56)));
 
         search = new EditText(this);
         search.setSingleLine(true);
@@ -199,8 +209,13 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
     private void addAction(LinearLayout row, String title, View.OnClickListener click) {
         MaterialButton b = new MaterialButton(this);
         b.setText(title);
+        b.setTextSize(14);
+        b.setMinWidth(0);
+        b.setMinimumWidth(0);
         b.setOnClickListener(click);
-        row.addView(b, new LinearLayout.LayoutParams(0, -1, 1));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(108), -1);
+        lp.setMargins(dp(2), 0, dp(2), 0);
+        row.addView(b, lp);
     }
 
     private void pickDll() {
@@ -227,26 +242,46 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
         if (f == null || !f.isFile()) { Toast.makeText(this, "DLL file not found", Toast.LENGTH_SHORT).show(); return; }
         currentFile = f;
         selectedNode = null;
-        setEditorText("Loading managed assembly…", "loading.txt");
+        parser = null;
+        probe = null;
+        allNodes.clear(); visibleNodes.clear(); adapter.notifyDataSetChanged();
+        setEditorText("Loading assembly…", "loading.txt");
         dllExecutor.execute(() -> {
             DotNetAssemblyParser parsed = null;
+            DotNetAssemblyParser.Probe p = null;
             Throwable error = null;
-            try { parsed = DotNetAssemblyParser.parse(f); } catch (Throwable e) { error = e; }
+            try {
+                p = DotNetAssemblyParser.probe(f);
+                try { parsed = DotNetAssemblyParser.parse(f); } catch (Throwable e) { error = e; }
+            } catch (Throwable e) { error = e; }
             final DotNetAssemblyParser result = parsed;
+            final DotNetAssemblyParser.Probe resultProbe = p;
             final Throwable failure = error;
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
-                if (failure != null || result == null) {
-                    parser = null; allNodes.clear(); visibleNodes.clear(); adapter.notifyDataSetChanged();
-                    String detail = failure == null || failure.getMessage() == null ? "Invalid CLR metadata." : failure.getMessage();
-                    setEditorText("Unable to decompile this file as a managed .NET assembly.\n\n" + detail, "dll.txt");
-                    Toast.makeText(this, "This DLL cannot be decompiled as a managed .NET assembly", Toast.LENGTH_LONG).show();
+                probe = resultProbe;
+                if (result != null) {
+                    parser = result;
+                    rebuildTree();
+                    if (!visibleNodes.isEmpty()) select(visibleNodes.get(0));
+                    else setEditorText("// Assembly contains no user-defined types.\n\n" + result.summary(), "assembly.cs");
+                    Toast.makeText(this, "Managed assembly loaded", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                parser = result;
-                rebuildTree();
-                if (!visibleNodes.isEmpty()) select(visibleNodes.get(0));
-                else setEditorText("// Assembly contains no user-defined types.", "assembly.cs");
+                allNodes.clear(); visibleNodes.clear(); adapter.notifyDataSetChanged();
+                String detail = failure == null || failure.getMessage() == null ? "Unknown assembly parsing error." : failure.getMessage();
+                if (resultProbe != null && resultProbe.reason != null && !resultProbe.reason.isEmpty()) detail = resultProbe.reason + "\n\nParser: " + detail;
+                if (resultProbe != null && resultProbe.pe && resultProbe.clrRva == 0) {
+                    try {
+                        setEditorText(PeFileInspector.inspect(f), "native-pe.txt");
+                    } catch (Throwable inspectError) {
+                        setEditorText("// Native/unmanaged PE file\n\n" + detail, "native-pe.txt");
+                    }
+                    Toast.makeText(this, "Native/unmanaged PE opened; C# and IL are not available", Toast.LENGTH_LONG).show();
+                } else {
+                    setEditorText("// Managed .NET assembly detected, but its metadata could not be decoded.\n\n// " + detail + "\n\n// Hex remains available for protected or malformed files.", "dll-error.txt");
+                    Toast.makeText(this, "Managed assembly metadata could not be decoded", Toast.LENGTH_LONG).show();
+                }
             });
         });
     }
@@ -260,7 +295,7 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
         allNodes.clear();
         if (parser == null) return;
         for (DotNetAssemblyParser.TypeDef t : parser.types) {
-            if ("<Module>".equals(t.name)) continue;
+            if ("<Module>".equals(t.name) || t.enclosing != null) continue;
             addType(t, 0);
         }
         filter(search.getText() == null ? "" : search.getText().toString());
@@ -283,6 +318,8 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
 
     private void select(Node n) {
         selectedNode = n;
+        editingIlMethod = null;
+        editingCSharp = true;
         if (parser == null || n == null) return;
         if (n.type == Node.TYPE) setEditorText(parser.decompile(n.owner), n.owner.name + ".cs");
         else if (n.type == Node.METHOD) setEditorText(methodSource(n.method), n.method.name + ".cs");
@@ -308,21 +345,147 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
         editorFragment.setDocumentName(documentName == null ? "dll.cs" : documentName);
         editorFragment.setText(text == null ? "" : text);
         if (editorFragment.getEditor() != null) {
-            editorFragment.getEditor().setEditable(false);
+            editorFragment.getEditor().setEditable(editingCSharp);
             editorFragment.applyPreferences();
         }
     }
 
     private void openSelectedSource() {
-        if (parser == null || selectedNode == null) return;
-        select(selectedNode);
+        if (parser == null) {
+            Toast.makeText(this, probe != null && probe.pe && !probe.managed ? "C# is unavailable for native/unmanaged PE files" : "Open a valid managed .NET assembly first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (selectedNode != null) select(selectedNode);
+        else { editingIlMethod = null; editingCSharp = true; setEditorText(parser.decompileAll(), "assembly.cs"); }
     }
 
     private void openSelectedIl() {
-        if (parser == null || selectedNode == null || selectedNode.method == null) {
+        if (parser == null) {
+            Toast.makeText(this, probe != null && probe.pe && !probe.managed ? "IL is unavailable for native/unmanaged PE files" : "Open a valid managed .NET assembly first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (selectedNode == null || selectedNode.method == null) {
             Toast.makeText(this, "Select a method first", Toast.LENGTH_SHORT).show(); return;
         }
+        editingIlMethod = selectedNode.method;
+        editingCSharp = false;
         setEditorText(selectedNode.method.il == null ? "" : selectedNode.method.il, selectedNode.method.name + ".il");
+        if (editorFragment.getEditor() != null) editorFragment.getEditor().setEditable(true);
+    }
+
+    private void saveEditedIl() {
+        if (editingCSharp) { saveEditedCSharpSource(); return; }
+        if (parser == null || editingIlMethod == null || editorFragment == null || editorFragment.getEditor() == null) {
+            Toast.makeText(this, "Open a method with IL first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String edited = editorFragment.getEditor().getText().toString();
+        final DotNetAssemblyParser.MethodDef method = editingIlMethod;
+        File dir = new File(android.os.Environment.getExternalStorageDirectory(), "Untrusted Manager/DLL/Edited");
+        String base = stripExt(currentFile == null ? "assembly" : currentFile.getName());
+        final File out = new File(dir, base + "_edited.dll");
+        setEditorText("Writing edited CIL…", "saving.txt");
+        dllExecutor.execute(() -> {
+            try {
+                DotNetAssemblyWriter.Result result = DotNetAssemblyWriter.saveMethod(parser, method, edited, out);
+                DotNetAssemblyParser reparsed = DotNetAssemblyParser.parse(out);
+                runOnUiThread(() -> {
+                    parser = reparsed;
+                    currentFile = out;
+                    probe = null;
+                    editingIlMethod = null;
+                    rebuildTree();
+                    if (!visibleNodes.isEmpty()) select(visibleNodes.get(0));
+                    Toast.makeText(this, "Edited DLL saved: " + out.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                });
+            } catch (Throwable e) {
+                runOnUiThread(() -> {
+                    String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+                    setEditorText("// Save failed\n// " + msg, "save-error.txt");
+                    Toast.makeText(this, "CIL save failed: " + msg, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private void compileEditedCSharp() {
+        if (!editingCSharp || editorFragment == null || editorFragment.getEditor() == null) {
+            Toast.makeText(this, "Open C# source first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (currentFile == null || parser == null || probe == null || !probe.managed) {
+            Toast.makeText(this, "Open a managed .NET DLL first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String source = editorFragment.getEditor().getText().toString();
+        final File input = currentFile;
+        final File workDir = new File(getFilesDir(), "dll-editor/compiler-work");
+        final File sourceFile = new File(workDir, stripExt(input.getName()) + "_edited.cs");
+        final File outDir = new File(android.os.Environment.getExternalStorageDirectory(), "Untrusted Manager/DLL/Edited");
+        final File out = new File(outDir, stripExt(input.getName()) + "_csharp.dll");
+        setEditorText("Compiling C# to managed DLL…", "compile.txt");
+        dllExecutor.execute(() -> {
+            try {
+                String compilerError = ManagedCompilerBackend.ensureInstalled(this);
+                if (compilerError != null) throw new java.io.IOException(compilerError);
+                if (!workDir.isDirectory() && !workDir.mkdirs() && !workDir.isDirectory()) throw new java.io.IOException("Cannot create compiler work directory");
+                if (!outDir.isDirectory() && !outDir.mkdirs() && !outDir.isDirectory()) throw new java.io.IOException("Cannot create DLL output directory");
+                try (FileOutputStream stream = new FileOutputStream(sourceFile)) {
+                    stream.write(source.getBytes(StandardCharsets.UTF_8));
+                }
+                ArrayList<File> refs = new ArrayList<>();
+                File inputDir = input.getParentFile();
+                if (inputDir != null) refs.add(inputDir);
+                ManagedCompilerBackend.Result result = ManagedCompilerBackend.compile(
+                        this, sourceFile, out, stripExt(input.getName()), refs);
+                if (!result.success) throw new java.io.IOException(result.log);
+                DotNetAssemblyParser compiled = DotNetAssemblyParser.parse(out);
+                DotNetAssemblyParser.Probe compiledProbe = DotNetAssemblyParser.probe(out);
+                if (!compiledProbe.managed) throw new java.io.IOException("Compiler produced a file without a valid CLR directory: " + compiledProbe.reason);
+                runOnUiThread(() -> {
+                    parser = compiled;
+                    currentFile = out;
+                    probe = null;
+                    editingIlMethod = null;
+                    editingCSharp = false;
+                    rebuildTree();
+                    setEditorText(parser.decompileAll(), "assembly.cs");
+                    Toast.makeText(this, "C# compiled to DLL: " + out.getAbsolutePath(), Toast.LENGTH_LONG).show();
+                });
+            } catch (Throwable e) {
+                runOnUiThread(() -> {
+                    String msg = e.getMessage() == null ? e.toString() : e.getMessage();
+                    setEditorText("// C# compilation failed\n// " + msg.replace("\n", "\n// "), "compile-error.txt");
+                    Toast.makeText(this, "C# compilation failed: " + msg, Toast.LENGTH_LONG).show();
+                });
+            }
+        });
+    }
+
+    private void saveEditedCSharpSource() {
+        if (editorFragment == null || editorFragment.getEditor() == null) {
+            Toast.makeText(this, "Open C# source first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (currentFile == null) {
+            Toast.makeText(this, "Open a managed DLL first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String source = editorFragment.getEditor().getText().toString();
+        File dir = new File(android.os.Environment.getExternalStorageDirectory(), "Untrusted Manager/DLL/EditedSource");
+        String base = stripExt(currentFile.getName());
+        final File out = new File(dir, base + "_edited.cs");
+        dllExecutor.execute(() -> {
+            try {
+                if (!dir.isDirectory() && !dir.mkdirs() && !dir.isDirectory()) throw new java.io.IOException("Cannot create source output directory");
+                try (FileOutputStream stream = new FileOutputStream(out)) {
+                    stream.write(source.getBytes(StandardCharsets.UTF_8));
+                }
+                runOnUiThread(() -> Toast.makeText(this, "Edited C# source saved: " + out.getAbsolutePath() + "\nUse Compile to build a modified managed DLL.", Toast.LENGTH_LONG).show());
+            } catch (Throwable e) {
+                runOnUiThread(() -> Toast.makeText(this, "C# source save failed: " + (e.getMessage() == null ? e.toString() : e.getMessage()), Toast.LENGTH_LONG).show());
+            }
+        });
     }
 
     private void openHex() {
@@ -331,7 +494,10 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
     }
 
     private void exportAll() {
-        if (parser == null) { Toast.makeText(this, "Open a managed DLL first", Toast.LENGTH_SHORT).show(); return; }
+        if (parser == null) {
+            Toast.makeText(this, probe != null && probe.pe && !probe.managed ? "Native PE files can only be inspected with Hex" : "Open a managed DLL first", Toast.LENGTH_SHORT).show();
+            return;
+        }
         File out = writeExport(stripExt(currentFile.getName()) + ".cs", parser.decompileAll());
         if (out != null) Toast.makeText(this, "Exported C# to " + out.getAbsolutePath(), Toast.LENGTH_LONG).show();
     }

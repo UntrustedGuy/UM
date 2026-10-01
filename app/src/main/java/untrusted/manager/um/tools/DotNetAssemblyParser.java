@@ -14,6 +14,70 @@ import java.util.*;
  * the original IL as a comment instead of inventing semantics.
  */
 final class DotNetAssemblyParser {
+    /** Lightweight PE/CLR probe used by the UI to distinguish native PE files from
+     * managed assemblies before attempting the full metadata reader. */
+    static final class Probe {
+        final boolean pe;
+        final boolean managed;
+        final boolean pe32Plus;
+        final int machine;
+        final int sectionCount;
+        final long clrRva;
+        final long metadataRva;
+        final String reason;
+        Probe(boolean pe, boolean managed, boolean pe32Plus, int machine, int sectionCount,
+              long clrRva, long metadataRva, String reason) {
+            this.pe=pe; this.managed=managed; this.pe32Plus=pe32Plus; this.machine=machine;
+            this.sectionCount=sectionCount; this.clrRva=clrRva; this.metadataRva=metadataRva; this.reason=reason;
+        }
+        String architecture() {
+            switch (machine) {
+                case 0x8664: return "x64";
+                case 0x014c: return "x86";
+                case 0xAA64: return "ARM64";
+                case 0x01c4: return "ARM";
+                default: return String.format(Locale.ROOT, "0x%04X", machine);
+            }
+        }
+    }
+    static Probe probe(File f) throws IOException { return probe(read(f)); }
+    static Probe probe(byte[] b) throws IOException {
+        if (b == null || b.length < 0x40 || u16(b,0) != 0x5A4D)
+            return new Probe(false,false,false,0,0,0,0,"Missing DOS MZ header");
+        int pe=u32(b,0x3c);
+        if (pe < 0 || pe > b.length-24 || u32(b,pe) != 0x4550)
+            return new Probe(false,false,false,0,0,0,0,"Invalid PE signature");
+        int coff=pe+4, machine=u16(b,coff), sections=u16(b,coff+2), opt=coff+20;
+        if(sections<0||sections>96||opt<0||opt>b.length-2)return new Probe(true,false,false,machine,sections,0,0,"Invalid PE section/optional-header bounds");
+        if (opt+2 > b.length) return new Probe(true,false,false,machine,sections,0,0,"Truncated optional header");
+        int magic=u16(b,opt); boolean plus=magic==0x20b;
+        if (magic!=0x10b && magic!=0x20b)
+            return new Probe(true,false,plus,machine,sections,0,0,String.format(Locale.ROOT,"Unsupported PE optional-header magic 0x%04X",magic));
+        int dataDir=opt+(plus?112:96), cliDir=dataDir+14*8;
+        int sizeOpt=u16(b,coff+16);
+        if(sizeOpt<0||opt+sizeOpt>b.length||cliDir+8>opt+sizeOpt)return new Probe(true,false,plus,machine,sections,0,0,"PE optional header has no CLR directory slot");
+        if (cliDir+8 > b.length) return new Probe(true,false,plus,machine,sections,0,0,"PE has no complete CLR data-directory entry");
+        long clr=Integer.toUnsignedLong(u32(b,cliDir));
+        if (clr==0) return new Probe(true,false,plus,machine,sections,0,0,"PE has no CLR directory; this is a native/unmanaged PE file");
+        Section[] ss=new Section[Math.max(0,sections)];
+        int sh=opt+u16(b,coff+16);
+        for(int i=0;i<ss.length;i++){int o=sh+i*40;if(o+40>b.length)return new Probe(true,true,plus,machine,sections,clr,0,"CLR directory exists but the PE section table is truncated");ss[i]=new Section(u32(b,o+12),u32(b,o+16),u32(b,o+20),u32(b,o+8));}
+        int cliOff=rva(ss,(int)clr);
+        if(cliOff<0||cliOff+16>b.length)return new Probe(true,true,plus,machine,sections,clr,0,"CLR directory points outside the PE sections");
+        long md=Integer.toUnsignedLong(u32(b,cliOff+8));
+        int mdOff=rva(ss,(int)md);
+        boolean root=mdOff>=0 && mdOff+4<=b.length && u32(b,mdOff)==0x424A5342;
+        if(!root) {
+            // Obfuscators and post-processing tools sometimes leave a stale CLR metadata RVA.
+            // A valid BSJB root anywhere in the image is enough to try the metadata reader.
+            root=findMetadataRoot(b)>=0;
+        }
+        return new Probe(true,root,plus,machine,sections,clr,md,root?"CLR directory present; metadata root detected":"CLR directory present, but no readable BSJB metadata root was found");
+    }
+    private static int findMetadataRoot(byte[] b){
+        for(int i=0;i+4<=b.length;i++) if((b[i]&255)==0x42&&(b[i+1]&255)==0x53&&(b[i+2]&255)==0x4A&&(b[i+3]&255)==0x42)return i;
+        return -1;
+    }
     static final class TypeDef {
         final String namespace, name, baseType;
         final int token;
@@ -21,6 +85,9 @@ final class DotNetAssemblyParser {
         final List<MethodDef> methods = new ArrayList<>();
         final List<PropertyDef> properties = new ArrayList<>();
         final List<TypeDef> nested = new ArrayList<>();
+        final List<String> interfaces = new ArrayList<>();
+        final List<String> genericParams = new ArrayList<>();
+        TypeDef enclosing;
         int flags;
         TypeDef(String ns, String n, String b, int token, int flags) {
             namespace = ns == null ? "" : ns; name = n == null ? "" : n; baseType = b == null ? "" : b;
@@ -40,12 +107,15 @@ final class DotNetAssemblyParser {
     static final class MethodDef {
         final String name; String ownerType=""; String ret="void"; int params; int flags; int token; int rva;
         String[] paramTypes = new String[0]; String[] paramNames = new String[0];
+        final List<String> genericParams = new ArrayList<>();
         String il = ""; String source = "";
         MethodDef(String n) { name=n; }
         String signature() {
             String display = ".ctor".equals(name) || ".cctor".equals(name) ? ownerType : cleanMemberName(name);
             if (display == null || display.isEmpty()) display = name;
-            StringBuilder b=new StringBuilder((".ctor".equals(name)||".cctor".equals(name)) ? "" : ret+" ").append(display).append('(');
+            StringBuilder b=new StringBuilder((".ctor".equals(name)||".cctor".equals(name)) ? "" : ret+" ").append(display);
+            if(!genericParams.isEmpty() && !(".ctor".equals(name)||".cctor".equals(name))){b.append('<');for(int i=0;i<genericParams.size();i++){if(i>0)b.append(", ");b.append(cleanGeneric(genericParams.get(i)));}b.append('>');}
+            b.append('(');
             for(int i=0;i<paramTypes.length;i++){if(i>0)b.append(", ");b.append(paramTypes[i]).append(' ').append(paramNames.length>i&&paramNames[i]!=null&&!paramNames[i].isEmpty()?paramNames[i]:"arg"+i);}
             return b.append(')').toString();
         }
@@ -72,28 +142,40 @@ final class DotNetAssemblyParser {
     }
 
     static DotNetAssemblyParser parse(byte[] b) throws IOException {
-        if(b.length<0x100||u16(b,0)!=0x5A4D) throw new IOException("Missing MZ header");
-        int pe=u32(b,0x3c); if(pe<0||pe+24>b.length||u32(b,pe)!=0x4550) throw new IOException("Missing PE header");
-        int coff=pe+4, sections=u16(b,coff+2), opt=coff+20, magic=u16(b,opt);
-                int dataDir=opt+(magic==0x20b?112:96), cliDir=dataDir+14*8;
-        if(cliDir+8>b.length) throw new IOException("No CLR directory");
-        int cliRva=u32(b,cliDir), cliSize=u32(b,cliDir+4); if(cliRva==0||cliSize==0) throw new IOException("No CLR metadata");
-        Section[] ss=new Section[sections]; int sh=opt+u16(b,coff+16);
-        for(int i=0;i<sections;i++){int o=sh+i*40; if(o+40>b.length)throw new IOException("Invalid PE section table"); ss[i]=new Section(u32(b,o+12),u32(b,o+16),u32(b,o+20),u32(b,o+8));}
-        int cliOff=rva(ss,cliRva); if(cliOff<0||cliOff+16>b.length) throw new IOException("Invalid CLR header");
-        int mdRva=u32(b,cliOff+8), mdOff=rva(ss,mdRva);
-        IOException primary=null;
-        if(mdOff>=0){
-            try { return parseMetadata(b,ss,mdOff); } catch(IOException e){ primary=e; }
+        Probe probe=probe(b);
+        if(!probe.pe) throw new IOException(probe.reason);
+        // Do not reject a PE solely because its CLR directory is missing: a few
+        // packers/rewriters leave the directory stale while preserving the metadata root.
+        if(!probe.managed) {
+            int root=findMetadataRoot(b);
+            if(root<0) throw new IOException(probe.reason);
         }
-        // Some protected/rewritten managed files leave a stale CLI metadata RVA.
-        // Search for a valid BSJB metadata root as a conservative recovery path.
-        for(int i=0;i+4<=b.length;i++){
-            if((b[i]&255)==0x42&&(b[i+1]&255)==0x53&&(b[i+2]&255)==0x4A&&(b[i+3]&255)==0x42){
-                try { return parseMetadata(b,ss,i); } catch(IOException ignored) { }
+        int pe=u32(b,0x3c);
+        int coff=pe+4, sections=u16(b,coff+2), opt=coff+20, magic=u16(b,opt);
+        int dataDir=opt+(magic==0x20b?112:96), cliDir=dataDir+14*8;
+        Section[] ss=new Section[sections]; int sh=opt+u16(b,coff+16);
+        for(int i=0;i<sections;i++){int o=sh+i*40;if(o+40>b.length)throw new IOException("Invalid PE section table");ss[i]=new Section(u32(b,o+12),u32(b,o+16),u32(b,o+20),u32(b,o+8));}
+        IOException primary=null;
+        if(cliDir+8<=b.length){
+            int cliRva=u32(b,cliDir);
+            if(cliRva!=0){
+                int cliOff=rva(ss,cliRva);
+                if(cliOff>=0&&cliOff+16<=b.length){
+                    int mdRva=u32(b,cliOff+8), mdOff=rva(ss,mdRva);
+                    if(mdOff>=0){
+                        try{return parseMetadata(b,ss,mdOff);}catch(IOException e){primary=e;}
+                    }
+                }
             }
         }
-        throw primary!=null?primary:new IOException("Invalid CLR metadata");
+        // Recovery for stale/relocated CLR metadata directories.
+        for(int i=0;i+4<=b.length;i++){
+            if((b[i]&255)==0x42&&(b[i+1]&255)==0x53&&(b[i+2]&255)==0x4A&&(b[i+3]&255)==0x42){
+                try{return parseMetadata(b,ss,i);}catch(IOException ignored){}
+            }
+        }
+        if(primary!=null) throw primary;
+        throw new IOException("CLR metadata root (BSJB) could not be parsed");
     }
 
     private static DotNetAssemblyParser parseMetadata(byte[] b, Section[] ss, int off) throws IOException {
@@ -104,6 +186,8 @@ final class DotNetAssemblyParser {
         for(int i=0;i<streams;i++){
             if(pos+8>b.length)throw new IOException("Truncated metadata stream header");
             int so=u32(b,pos), sz=u32(b,pos+4); int p=pos+8,q=p; while(q<b.length&&b[q]!=0)q++;
+            if(q>=b.length)throw new IOException("Unterminated metadata stream name");
+            if(so<0||sz<0||so>b.length-off||sz>b.length-off-so)throw new IOException("Metadata stream exceeds file");
             String name=new String(b,p,q-p,StandardCharsets.US_ASCII); q=(q+4)&~3; sm.put(name,new int[]{off+so,sz}); pos=q;
         }
         int[] tablesStream=sm.get("#~"); if(tablesStream==null)tablesStream=sm.get("#-"); if(tablesStream==null)throw new IOException("No metadata tables stream");
@@ -122,12 +206,15 @@ final class DotNetAssemblyParser {
         int typeCount=tables.count(2);
         for(int rid=1;rid<=typeCount;rid++){
             Row r=tables.row(2,rid-1); int flags=r.u4(0); int nameIx=r.strIndex(1); int nsIx=r.strIndex(2); int extendsTok=r.coded(3,"TypeDefOrRef");
-            TypeDef td=new TypeDef(str(nameIx), str(nsIx), resolveTypeToken(extendsTok), 0x02000000|rid, flags); byRid.add(td); types.add(td);
+            TypeDef td=new TypeDef(str(nsIx), str(nameIx), resolveTypeToken(extendsTok), 0x02000000|rid, flags); byRid.add(td); types.add(td);
             tokenNames.put(td.token,td.fullName()); tokenTypes.put(td.token,"type");
         }
         // Nested types are kept visible in the assembly browser and use their full name for source rendering.
         int nestedCount=tables.count(41);
-        for(int i=0;i<nestedCount;i++){Row r=tables.row(41,i);int nested=r.table(0), enclosing=r.table(1);if(nested>0&&enclosing>0&&nested<byRid.size()&&enclosing<byRid.size())byRid.get(enclosing).nested.add(byRid.get(nested));}
+        for(int i=0;i<nestedCount;i++){Row r=tables.row(41,i);int nested=r.table(0), enclosing=r.table(1);if(nested>0&&enclosing>0&&nested<byRid.size()&&enclosing<byRid.size()){TypeDef child=byRid.get(nested), parent=byRid.get(enclosing);child.enclosing=parent;parent.nested.add(child);}}
+        // Interface implementations.
+        int ifaceCount=tables.count(9);
+        for(int i=0;i<ifaceCount;i++){Row r=tables.row(9,i);int owner=r.table(0), iface=r.coded(1,"TypeDefOrRef");if(owner>0&&owner<byRid.size()){String n=resolveTypeToken(iface);if(n!=null&&!n.isEmpty())byRid.get(owner).interfaces.add(simple(n));}}
 
         int fieldCount=tables.count(4); List<FieldDef> fieldByRid=new ArrayList<>();fieldByRid.add(null);
         for(int rid=1;rid<=fieldCount;rid++){Row r=tables.row(4,rid-1);String n=str(r.strIndex(1));String ty=decodeFieldSig(r.blobIndex(2));FieldDef f=new FieldDef(n,ty,r.u2(0),0x04000000|rid);fieldByRid.add(f);tokenNames.put(f.token,n);tokenTypes.put(f.token,"field");}
@@ -147,6 +234,11 @@ final class DotNetAssemblyParser {
             int nextMethod=(rid<typeCount)?tables.row(2,rid).table(5):methodCount+1;int firstMethod=tr.table(5);
             for(int x=firstMethod;x<nextMethod&&x>0&&x<=methodCount;x++){ methods.get(x).ownerType=td.name; td.methods.add(methods.get(x)); }
         }
+        // Generic type and method parameters.
+        int gpCount=tables.count(42);
+        for(int i=0;i<gpCount;i++){Row r=tables.row(42,i);int owner=r.coded(2,"TypeOrMethodDef"), number=r.u2(0);String name=str(r.strIndex(3));String n=(name==null||name.isEmpty())?"T"+number:name;int ot=(owner>>>24)&255,or=owner&0xffffff;if(ot==2&&or>0&&or<byRid.size())ensureGeneric(byRid.get(or).genericParams,number,n);else if(ot==6){for(TypeDef td:byRid)if(td!=null)for(MethodDef md:td.methods)if(md.token==owner)ensureGeneric(md.genericParams,number,n);}}
+        int gpcCount=tables.count(44);
+        for(int i=0;i<gpcCount;i++){Row r=tables.row(44,i);int owner=r.table(0), constraint=r.coded(1,"TypeDefOrRef");if(owner<=0||owner>gpCount)continue;Row gr=tables.row(42,owner-1);String c=resolveTypeToken(constraint);int own=gr.coded(2,"TypeOrMethodDef"),num=gr.u2(0);int ot=(own>>>24)&255,or=own&0xffffff;if(ot==2&&or>0&&or<byRid.size()){TypeDef td=byRid.get(or);String n=genericName(td.genericParams,num);if(n!=null&&c!=null&&!c.isEmpty())replaceGenericConstraint(td.genericParams,num,n+" : "+simple(c));}else if(ot==6){for(TypeDef td:byRid)if(td!=null)for(MethodDef md:td.methods)if(md.token==own){String n=genericName(md.genericParams,num);if(n!=null&&c!=null&&!c.isEmpty())replaceGenericConstraint(md.genericParams,num,n+" : "+simple(c));}}}
         // Properties and accessor methods.
         int propCount=tables.count(23); List<PropertyDef> props=new ArrayList<>();props.add(null);
         for(int rid=1;rid<=propCount;rid++){Row r=tables.row(23,rid-1);PropertyDef p=new PropertyDef(str(r.strIndex(2)),decodePropertySig(r.blobIndex(3)));props.add(p);}
@@ -169,6 +261,10 @@ final class DotNetAssemblyParser {
         for(MethodDef m:methods)if(m!=null){m.il=decodeMethodIL(m);m.source=renderMethod(m);}
     }
 
+    private static void ensureGeneric(List<String> list,int index,String name){while(list.size()<=index)list.add(null);if(list.get(index)==null)list.set(index,name);}
+    private static String genericName(List<String> list,int index){return index>=0&&index<list.size()?list.get(index):null;}
+    private static void replaceGenericConstraint(List<String> list,int index,String value){if(index>=0&&index<list.size())list.set(index,value);}
+
     private int findMethodForParam(int paramRid,List<MethodDef> methods){
         // Param rows are contiguous by owner; infer owner from MethodDef ParamList boundaries.
         int methodCount=tables.count(6);for(int rid=1;rid<=methodCount;rid++){Row mr=tables.row(6,rid-1);int first=mr.table(5);int next=rid<methodCount?tables.row(6,rid).table(5):tables.count(8)+1;if(paramRid>=first&&paramRid<next)return rid;}return 0;
@@ -176,26 +272,46 @@ final class DotNetAssemblyParser {
 
     String summary(){return "Managed .NET assembly\nAssembly: "+assemblyName+"\nTypes: "+types.size()+"\nMethods: "+tables.count(6)+"\nFields: "+tables.count(4)+"\nSelect a type, method or property to inspect reconstructed C# and IL.";}
 
-    String decompile(TypeDef t){StringBuilder s=new StringBuilder();appendType(s,t,0);return s.toString();}
-    String decompileAll(){StringBuilder s=new StringBuilder();for(TypeDef t:types){if(t.name.equals("<Module>"))continue;s.append(decompile(t)).append('\n');}return s.toString();}
+    String metadataReport(){
+        StringBuilder s=new StringBuilder();
+        s.append("// Untrusted Manager managed-assembly report\n");
+        s.append("// Assembly: ").append(assemblyName).append('\n');
+        s.append("// Types: ").append(types.size()).append("  Methods: ").append(tables.count(6)).append("  Fields: ").append(tables.count(4)).append('\n');
+        s.append("// Metadata offset: 0x").append(Integer.toHexString(metadataOffset)).append("\n\n");
+        for(TypeDef t:types){if("<Module>".equals(t.name))continue;s.append("// ").append(t.fullName()).append("\n");}
+        return s.toString();
+    }
 
-    private void appendType(StringBuilder s,TypeDef t,int depth){String ind=indent(depth);if(!t.namespace.isEmpty()&&depth==0){s.append("namespace ").append(t.namespace).append(" {\n\n");}
-        String kind=((t.flags&0x20)!=0)?"interface":"class";s.append(ind).append(access(t.flags)).append(kind).append(' ').append(t.name);
-        if(!t.baseType.isEmpty()&&!"System.Object".equals(t.baseType)&&!"System.ValueType".equals(t.baseType))s.append(" : ").append(simple(t.baseType));s.append(" {\n");
-        for(FieldDef f:t.fields){s.append(ind).append("    ").append(fieldAccess(f.flags)).append(simple(f.type)).append(' ').append(f.name).append(";\n");}
-        for(PropertyDef p:t.properties){s.append(ind).append("    public ").append(simple(p.type)).append(' ').append(p.name).append(" { ");if(p.getter!=null)s.append("get; ");if(p.setter!=null)s.append("set; ");s.append("}\n");}
+
+    String decompile(TypeDef t){StringBuilder s=new StringBuilder();appendType(s,t,0);return s.toString();}
+    String decompileAll(){StringBuilder s=new StringBuilder();for(TypeDef t:types){if(t.name.equals("<Module>")||t.enclosing!=null)continue;s.append(decompile(t)).append('\n');}return s.toString();}
+
+    private void appendType(StringBuilder s,TypeDef t,int depth){
+        String ind=indent(depth);
+        if(!t.namespace.isEmpty()&&depth==0)s.append("namespace ").append(t.namespace).append(" {\n\n");
+        String kind=typeKind(t);
+        s.append(ind).append(access(t.flags)).append(kind).append(' ').append(t.name);
+        if(!t.genericParams.isEmpty()){s.append('<');for(int i=0;i<t.genericParams.size();i++){if(i>0)s.append(", ");s.append(cleanGeneric(t.genericParams.get(i)));}s.append('>');}
+        boolean normalBase=!t.baseType.isEmpty()&&!"System.Object".equals(t.baseType)&&!"System.ValueType".equals(t.baseType)&&!"System.Enum".equals(t.baseType)&&!"System.MulticastDelegate".equals(t.baseType);
+        if(normalBase)s.append(" : ").append(simple(t.baseType));
+        for(String iface:t.interfaces){if(iface==null||iface.isEmpty())continue;if(!normalBase&&t.interfaces.indexOf(iface)==0)s.append(" : ");else s.append(", ");s.append(simple(iface));}
+        s.append(" {\n");
+        for(FieldDef f:t.fields)s.append(indent(depth+1)).append(fieldAccess(f.flags)).append((f.flags&0x10)!=0?"static ":"").append(simple(f.type)).append(' ').append(f.name).append(";\n");
+        for(PropertyDef p:t.properties)s.append(indent(depth+1)).append("public ").append(simple(p.type)).append(' ').append(p.name).append(" { ").append(p.getter!=null?"get; ":"").append(p.setter!=null?"set; ":"").append("}\n");
         for(MethodDef m:t.methods){
             s.append(indent(depth+1)).append(methodAccess(m.flags)).append(m.signature());
-            boolean noBody = (m.flags & 0x0400) != 0 || (m.flags & 0x2000) != 0 || m.rva == 0;
-            if(noBody){ s.append(';').append("\n\n"); continue; }
-            s.append(" {\n");
-            String src=m.source; if(src==null||src.isEmpty())src="// No method body\n";
-            for(String line:src.split("\\n",-1)) if(!line.isEmpty()) s.append(indent(depth+2)).append(line).append('\n');
+            boolean noBody=(m.flags&0x0400)!=0||(m.flags&0x2000)!=0||m.rva==0;
+            if(noBody){s.append(';').append("\n\n");continue;}
+            s.append(" {\n");String src=m.source==null?"":m.source;if(src.isEmpty())src="// No method body";
+            for(String line:src.split("\n",-1))s.append(indent(depth+2)).append(line).append('\n');
             s.append(indent(depth+1)).append("}\n\n");
         }
-        for(TypeDef n:t.nested){appendType(s,n,depth+1);}
+        for(TypeDef n:t.nested)appendType(s,n,depth+1);
         s.append(ind).append("}\n");if(!t.namespace.isEmpty()&&depth==0)s.append("}\n");
     }
+
+    private static String typeKind(TypeDef t){if((t.flags&0x20)!=0)return "interface";if("System.Enum".equals(t.baseType))return "enum";if("System.MulticastDelegate".equals(t.baseType)||"System.Delegate".equals(t.baseType))return "delegate";if("System.ValueType".equals(t.baseType))return "struct";return "class";}
+    private static String cleanGeneric(String s){if(s==null||s.isEmpty())return "T";int i=s.indexOf(" : ");return i>0?s.substring(0,i):s;}
 
     private String renderMethod(MethodDef m){
         if(m.rva==0)return "// abstract/external method\n";
@@ -220,7 +336,7 @@ final class DotNetAssemblyParser {
                 case "nop": case "break": case "volatile.": case "readonly.": case "tail.": case "constrained.":
                     break;
                 case "ldnull": stack.push("null"); break;
-                case "ldstr": stack.push(arg); break;
+                case "ldstr": stack.push(csharpStringOperand(arg)); break;
                 case "ldc.i4.m1": stack.push("-1"); break;
                 case "ldc.i4.0": case "ldc.i4.1": case "ldc.i4.2": case "ldc.i4.3": case "ldc.i4.4": case "ldc.i4.5": case "ldc.i4.6": case "ldc.i4.7": case "ldc.i4.8": stack.push(op.substring(op.length()-1)); break;
                 case "ldc.i4": case "ldc.i4.s": case "ldc.i8": case "ldc.r4": case "ldc.r8": stack.push(arg); break;
@@ -290,6 +406,12 @@ final class DotNetAssemblyParser {
         if(degraded)out.insert(0,"// C# reconstruction uses conservative fallbacks where control flow or metadata could not be proven.\n");
         return out.toString().trim();
     }
+    private static String csharpStringOperand(String arg){
+        if(arg==null)return "\"\"";
+        int a=arg.indexOf("/* \""), b=arg.lastIndexOf("\" */");
+        if(a>=0&&b>a+5)return arg.substring(a+3,b+1);
+        return arg;
+    }
     private static String pop(ArrayDeque<String>s){return s.isEmpty()?"/* stack value unavailable */":s.pop();}
     private static String paramName(MethodDef m,int i){return (m.flags&0x0010)!=0?argName(m,i):i==0?"this":argName(m,i-1);}
     private static String argName(MethodDef m,int i){if(i>=0&&i<m.paramNames.length&&m.paramNames[i]!=null&&!m.paramNames[i].isEmpty())return m.paramNames[i];return "arg"+i;}
@@ -336,11 +458,11 @@ final class DotNetAssemblyParser {
     }
     private static boolean isBranch(String n){return n.startsWith("br")||n.startsWith("beq")||n.startsWith("bge")||n.startsWith("bgt")||n.startsWith("ble")||n.startsWith("blt")||n.startsWith("bne")||n.startsWith("leave");}
 
-    private String operandValue(String name,int p,int n){long v=0;for(int i=0;i<n;i++)v|=(long)(image[p+i]&255)<<(8*i);if(name.equals("ldstr")){int tok=(int)v;String us=resolveUserString(tok);if(us!=null)return "\""+escape(us)+"\"";} if(name.contains("token")||name.equals("call")||name.equals("callvirt")||name.equals("newobj")||name.equals("ldfld")||name.equals("stfld")||name.equals("ldsfld")||name.equals("stsfld")){int tok=(int)v;String resolved=resolveToken(tok);if(resolved!=null)return String.format(Locale.ROOT,"0x%08X /* %s */",tok,resolved);}if(n==1)return Integer.toString((byte)v);if(n==2)return Integer.toString((short)v);if(n==4)return Integer.toString((int)v);return Long.toString(v);}
+    private String operandValue(String name,int p,int n){long v=0;for(int i=0;i<n;i++)v|=(long)(image[p+i]&255)<<(8*i);if(name.equals("ldstr")){int tok=(int)v;String us=resolveUserString(tok);if(us!=null)return String.format(Locale.ROOT,"0x%08X /* \"%s\" */",tok,escape(us));}if(name.equals("ldc.r4")&&n==4)return Float.toString(Float.intBitsToFloat((int)v));if(name.equals("ldc.r8")&&n==8)return Double.toString(Double.longBitsToDouble(v));if(name.contains("token")||name.equals("call")||name.equals("callvirt")||name.equals("newobj")||name.equals("ldfld")||name.equals("stfld")||name.equals("ldsfld")||name.equals("stsfld")){int tok=(int)v;String resolved=resolveToken(tok);if(resolved!=null)return String.format(Locale.ROOT,"0x%08X /* %s */",tok,resolved);}if(n==1)return Integer.toString((byte)v);if(n==2)return Integer.toString((short)v);if(n==4)return Integer.toString((int)v);return Long.toString(v);}
     private int operandSize(String n){
         if(n==null)return 0;
-        if(n.equals("ldstr")||n.equals("call")||n.equals("callvirt")||n.equals("calli")||n.equals("newobj")||n.equals("ldfld")||n.equals("stfld")||n.equals("ldsfld")||n.equals("stsfld")||n.equals("ldtoken")||n.equals("box")||n.equals("unbox")||n.equals("unbox.any")||n.equals("castclass")||n.equals("isinst")||n.equals("newarr")||n.equals("ldobj")||n.equals("stobj")||n.equals("cpobj")||n.equals("initobj")||n.equals("sizeof")||n.equals("ldelem")||n.equals("stelem")||n.equals("ldelema")||n.equals("ldftn")||n.equals("ldvirtftn"))return 4;
-        if(n.equals("ldarg.s")||n.equals("ldarga.s")||n.equals("starg.s")||n.equals("ldloc.s")||n.equals("ldloca.s")||n.equals("stloc.s")||n.endsWith(".s")&&isBranch(n)||n.equals("ldc.i4.s"))return 1;
+        if(n.equals("ldstr")||n.equals("call")||n.equals("callvirt")||n.equals("calli")||n.equals("newobj")||n.equals("ldfld")||n.equals("stfld")||n.equals("ldsfld")||n.equals("stsfld")||n.equals("ldtoken")||n.equals("box")||n.equals("unbox")||n.equals("unbox.any")||n.equals("castclass")||n.equals("isinst")||n.equals("newarr")||n.equals("ldobj")||n.equals("stobj")||n.equals("cpobj")||n.equals("initobj")||n.equals("sizeof")||n.equals("ldelem")||n.equals("stelem")||n.equals("ldelema")||n.equals("ldftn")||n.equals("ldvirtftn")||n.equals("constrained"))return 4;
+        if(n.equals("ldarg.s")||n.equals("ldarga.s")||n.equals("starg.s")||n.equals("ldloc.s")||n.equals("ldloca.s")||n.equals("stloc.s")||n.equals("unaligned.")||n.equals("no.")||n.endsWith(".s")&&isBranch(n)||n.equals("ldc.i4.s"))return 1;
         if(n.equals("ldarg")||n.equals("ldarga")||n.equals("starg")||n.equals("ldloc")||n.equals("ldloca")||n.equals("stloc"))return 2;
         if(n.equals("ldc.i4")||n.equals("br")||n.startsWith("br")||n.equals("leave")||n.startsWith("beq")||n.startsWith("bge")||n.startsWith("bgt")||n.startsWith("ble")||n.startsWith("blt")||n.startsWith("bne")||n.equals("ldc.r4"))return 4;
         if(n.equals("ldc.i8")||n.equals("ldc.r8"))return 8;
@@ -371,21 +493,84 @@ final class DotNetAssemblyParser {
     private String decodeFieldSig(int blobIx){byte[] x=blob(blobIx);if(x.length<2)return "object";int[] p={0};int cc=x[p[0]++]&255;if(cc==0x06)return decodeType(x,p);return decodeType(x,new int[]{0});}
     private String decodePropertySig(int blobIx){byte[]x=blob(blobIx);if(x.length<2)return "object";int[]p={0};p[0]++;readCompressed(x,p);String ret=decodeType(x,p);return ret;}
     private MethodSig decodeMethodSig(int blobIx){byte[]x=blob(blobIx);if(x.length==0)return new MethodSig("void",new String[0]);int[]p={0};int cc=x[p[0]++]&255;if((cc&0x10)!=0)readCompressed(x,p);int count=readCompressed(x,p);String ret=decodeType(x,p);String[]params=new String[count];for(int i=0;i<count&&p[0]<x.length;i++)params[i]=decodeType(x,p);return new MethodSig(ret,params);}
-    private String decodeType(byte[]x,int[]p){if(p[0]>=x.length)return "object";int e=x[p[0]++]&255;switch(e){case 0x01:return"void";case 0x02:return"bool";case 0x03:return"char";case 0x04:return"sbyte";case 0x05:return"byte";case 0x06:return"short";case 0x07:return"ushort";case 0x08:return"int";case 0x09:return"uint";case 0x0A:return"long";case 0x0B:return"ulong";case 0x0C:return"float";case 0x0D:return"double";case 0x0E:return"string";case 0x10:return decodeType(x,p)+"&";case 0x0F:return decodeType(x,p)+"*";case 0x11:case 0x12:{int coded=readCompressed(x,p);return simple(resolveTypeToken(decodeSigToken(coded)));}case 0x13:return"T"+readCompressed(x,p);case 0x1E:return"!!"+readCompressed(x,p);case 0x1D:return decodeType(x,p)+"[]";case 0x14:{String elem=decodeType(x,p);int rank=readCompressed(x,p);int ns=readCompressed(x,p);int sizes=readCompressed(x,p);for(int i=0;i<sizes;i++)readCompressed(x,p);int lbs=readCompressed(x,p);for(int i=0;i<lbs;i++)readCompressed(x,p);return elem+"["+",".repeat(Math.max(0,rank-1))+"]";}case 0x15:{readCompressed(x,p);int n=readCompressed(x,p);String base=decodeType(x,p);String[]args=new String[n];for(int i=0;i<n;i++)args[i]=decodeType(x,p);return simple(base)+"<"+String.join(", ",args)+">";}case 0x16:return"typedref";case 0x18:return"native int";case 0x19:return"native uint";case 0x1B:return"methodptr";case 0x1C:return"object";default:return"object";}}
+    private String decodeType(byte[]x,int[]p){if(p[0]>=x.length)return "object";int e=x[p[0]++]&255;switch(e){case 0x01:return"void";case 0x02:return"bool";case 0x03:return"char";case 0x04:return"sbyte";case 0x05:return"byte";case 0x06:return"short";case 0x07:return"ushort";case 0x08:return"int";case 0x09:return"uint";case 0x0A:return"long";case 0x0B:return"ulong";case 0x0C:return"float";case 0x0D:return"double";case 0x0E:return"string";case 0x10:return decodeType(x,p)+"&";case 0x0F:return decodeType(x,p)+"*";case 0x11:case 0x12:{int coded=readCompressed(x,p);String t=resolveTypeToken(decodeSigToken(coded));return simple(t==null||t.isEmpty()?"object":t);}case 0x13:return"T"+readCompressed(x,p);case 0x1E:return"!!"+readCompressed(x,p);case 0x1D:return decodeType(x,p)+"[]";case 0x14:{String elem=decodeType(x,p);int rank=readCompressed(x,p);int ns=readCompressed(x,p);int sizes=readCompressed(x,p);for(int i=0;i<sizes;i++)readCompressed(x,p);int lbs=readCompressed(x,p);for(int i=0;i<lbs;i++)readCompressed(x,p);return elem+"["+",".repeat(Math.max(0,rank-1))+"]";}case 0x15:{readCompressed(x,p);int n=readCompressed(x,p);String base=decodeType(x,p);String[]args=new String[n];for(int i=0;i<n;i++)args[i]=decodeType(x,p);return simple(base)+"<"+String.join(", ",args)+">";}case 0x16:return"typedref";case 0x18:return"nint";case 0x19:return"nuint";case 0x1B:return"delegate*";case 0x1C:return"object";case 0x1F:case 0x20:readCompressed(x,p);return decodeType(x,p);case 0x45:return decodeType(x,p);default:return"object";}}
     private int decodeSigToken(int coded){int tag=coded&3,rid=coded>>>2;int table=switch(tag){case 0->2;case 1->1;default->27;};return table<<24|rid;}
     private int readCompressed(byte[]x,int[]p){if(p[0]>=x.length)return 0;int b=x[p[0]++]&255;if((b&0x80)==0)return b;if((b&0xC0)==0x80){if(p[0]>=x.length)return 0;return((b&0x3F)<<8)|(x[p[0]++]&255);}if(p[0]+2>=x.length)return 0;return((b&0x1F)<<24)|((x[p[0]++]&255)<<16)|((x[p[0]++]&255)<<8)|(x[p[0]++]&255);}
     private byte[] blob(int ix){if(blobBase==0||ix<=0)return new byte[0];int p=blobBase+ix;int[]q={p};int len=readCompressed(image,q);if(q[0]<0||q[0]+len>image.length)return new byte[0];return Arrays.copyOfRange(image,q[0],q[0]+len);}
     private String str(int ix){if(ix<=0)return"";int p=stringsBase+ix;if(p<0||p>=image.length)return"";int e=p;while(e<image.length&&image[e]!=0)e++;return new String(image,p,e-p,StandardCharsets.UTF_8);}
 
     private static String access(int flags){int a=flags&7;return switch(a){case 1->"public ";case 2,3->"private ";case 4->"protected ";case 5->"internal ";default->"";};}
-    private static String fieldAccess(int flags){return switch(flags&7){case 1->"public ";case 2->"private ";case 4->"family ";default->"private ";};}
-    private static String methodAccess(int flags){String s=switch(flags&7){case 1->"public ";case 2->"private ";case 4->"protected ";case 6->"protected internal ";default->"private ";};if((flags&0x10)!=0)s+="static ";if((flags&0x40)!=0)s+="virtual ";if((flags&0x400)!=0)s+="abstract ";return s;}
-    private static String simple(String s){if(s==null)return"object";int i=s.lastIndexOf('.');return i>=0?s.substring(i+1):s;}
+    private static String fieldAccess(int flags){return switch(flags&7){case 6->"public ";case 1->"private ";case 4->"protected ";case 3->"internal ";case 5->"protected internal ";case 2->"private protected ";default->"private ";};}
+    private static String methodAccess(int flags){String s=switch(flags&7){case 1,2->"private ";case 3->"internal ";case 4->"protected ";case 5->"protected internal ";case 6->"public ";default->"private ";};if((flags&0x10)!=0)s+="static ";if((flags&0x20)!=0)s+="final ";if((flags&0x40)!=0)s+="virtual ";if((flags&0x400)!=0)s+="abstract ";if((flags&0x2000)!=0)s+="extern ";return s;}
+    private static String simple(String s){if(s==null||s.isEmpty())return"object";int i=Math.max(s.lastIndexOf('.'),s.lastIndexOf('/'));return i>=0?s.substring(i+1):s;}
     private static String indent(int n){return"    ".repeat(Math.max(0,n));}
     private static String opcodeName(int op){return OPCODES.getOrDefault(op,"op_"+Integer.toHexString(op));}
-    private static final Map<Integer,String> OPCODES=new HashMap<>();static{String[][]a={{"00","nop"},{"01","break"},{"02","ldarg.0"},{"03","ldarg.1"},{"04","ldarg.2"},{"05","ldarg.3"},{"06","ldloc.0"},{"07","ldloc.1"},{"08","ldloc.2"},{"09","ldloc.3"},{"0A","stloc.0"},{"0B","stloc.1"},{"0C","stloc.2"},{"0D","stloc.3"},{"0E","ldarg.s"},{"0F","ldarga.s"},{"10","starg.s"},{"11","ldloc.s"},{"12","ldloca.s"},{"13","stloc.s"},{"14","ldnull"},{"15","ldc.i4.m1"},{"16","ldc.i4.0"},{"17","ldc.i4.1"},{"18","ldc.i4.2"},{"19","ldc.i4.3"},{"1A","ldc.i4.4"},{"1B","ldc.i4.5"},{"1C","ldc.i4.6"},{"1D","ldc.i4.7"},{"1E","ldc.i4.8"},{"1F","ldc.i4.s"},{"20","ldc.i4"},{"21","ldc.i8"},{"22","ldc.r4"},{"23","ldc.r8"},{"25","dup"},{"26","pop"},{"28","call"},{"29","calli"},{"2A","ret"},{"2B","br.s"},{"2C","brfalse.s"},{"2D","brtrue.s"},{"2E","beq.s"},{"2F","bge.s"},{"30","bgt.s"},{"31","ble.s"},{"32","blt.s"},{"33","bne.un.s"},{"34","bge.un.s"},{"35","bgt.un.s"},{"36","ble.un.s"},{"37","blt.un.s"},{"38","br"},{"39","brfalse"},{"3A","brtrue"},{"3B","beq"},{"3C","bge"},{"3D","bgt"},{"3E","ble"},{"3F","blt"},{"40","bne.un"},{"41","bge.un"},{"42","bgt.un"},{"43","ble.un"},{"44","blt.un"},{"45","switch"},{"46","ldind.i1"},{"47","ldind.u1"},{"48","ldind.i2"},{"49","ldind.u2"},{"4A","ldind.i4"},{"4B","ldind.u4"},{"4C","ldind.i8"},{"4D","ldind.i"},{"4E","ldind.r4"},{"4F","ldind.r8"},{"50","ldind.ref"},{"51","stind.ref"},{"52","stind.i1"},{"53","stind.i2"},{"54","stind.i4"},{"55","stind.i8"},{"56","stind.i"},{"57","stind.r4"},{"58","stind.r8"},{"59","add"},{"5A","sub"},{"5B","mul"},{"5C","div"},{"5D","div.un"},{"5E","rem"},{"5F","rem.un"},{"60","and"},{"61","or"},{"62","xor"},{"63","shl"},{"64","shr"},{"65","shr.un"},{"66","neg"},{"67","not"},{"68","conv.i1"},{"69","conv.i2"},{"6A","conv.i4"},{"6B","conv.i8"},{"6C","conv.r4"},{"6D","conv.r8"},{"6F","callvirt"},{"70","cpobj"},{"71","ldobj"},{"72","ldstr"},{"73","newobj"},{"74","castclass"},{"75","isinst"},{"76","conv.r.un"},{"79","unbox"},{"7A","throw"},{"7B","ldfld"},{"7C","ldflda"},{"7D","stfld"},{"7E","ldsfld"},{"7F","ldsflda"},{"80","stsfld"},{"81","stobj"},{"8C","box"},{"8D","newarr"},{"8E","ldlen"},{"8F","ldelema"},{"90","ldelem.i1"},{"91","ldelem.u1"},{"92","ldelem.i2"},{"93","ldelem.u2"},{"94","ldelem.i4"},{"95","ldelem.u4"},{"96","ldelem.i8"},{"97","ldelem.i"},{"98","ldelem.r4"},{"99","ldelem.r8"},{"9A","ldelem.ref"},{"9B","stelem.i"},{"9C","stelem.i1"},{"9D","stelem.i2"},{"9E","stelem.i4"},{"9F","stelem.i8"},{"A0","stelem.r4"},{"A1","stelem.r8"},{"A2","stelem.ref"},{"A3","ldelem"},{"A4","stelem"},{"A5","unbox.any"},{"B3","conv.u4"},{"B4","conv.u8"},{"B5","conv.i"},{"B6","conv.ovf.i"},{"B7","conv.ovf.u"},{"B8","add.ovf"},{"B9","add.ovf.un"},{"BA","mul.ovf"},{"BB","mul.ovf.un"},{"BC","sub.ovf"},{"BD","sub.ovf.un"},{"BE","endfinally"},{"C2","refanytype"},{"C3","readonly"},{"D0","ldtoken"},{"D1","conv.u2"},{"D2","conv.u1"},{"D3","conv.i1"},{"D4","conv.i2"},{"D5","conv.i"},{"D6","conv.ovf.i1"},{"D7","conv.ovf.u1"},{"D8","conv.ovf.i2"},{"D9","conv.ovf.u2"},{"DA","conv.ovf.i4"},{"DB","conv.ovf.u4"},{"DC","conv.ovf.i8"},{"DD","conv.ovf.u8"},{"DE","starg"},{"DF","ldarg"},{"E0","ceq"},{"E1","cgt"},{"E2","cgt.un"},{"E3","clt"},{"E4","clt.un"},{"FE00","arglist"},{"FE01","ceq"},{"FE02","cgt"},{"FE03","cgt.un"},{"FE04","clt"},{"FE05","clt.un"},{"FE09","ldarg"},{"FE0A","ldarga"},{"FE0B","starg"},{"FE0C","ldloc"},{"FE0D","ldloca"},{"FE0E","stloc"},{"FE16","constrained"},{"FE1A","readonly"}};for(String[]x:a)OPCODES.put(Integer.parseInt(x[0],16),x[1]);}
+    private static final Map<Integer,String> OPCODES=new HashMap<>();static{String[][]a={{"00","nop"},{"01","break"},{"02","ldarg.0"},{"03","ldarg.1"},{"04","ldarg.2"},{"05","ldarg.3"},{"06","ldloc.0"},{"07","ldloc.1"},{"08","ldloc.2"},{"09","ldloc.3"},{"0A","stloc.0"},{"0B","stloc.1"},{"0C","stloc.2"},{"0D","stloc.3"},{"0E","ldarg.s"},{"0F","ldarga.s"},{"10","starg.s"},{"11","ldloc.s"},{"12","ldloca.s"},{"13","stloc.s"},{"14","ldnull"},{"15","ldc.i4.m1"},{"16","ldc.i4.0"},{"17","ldc.i4.1"},{"18","ldc.i4.2"},{"19","ldc.i4.3"},{"1A","ldc.i4.4"},{"1B","ldc.i4.5"},{"1C","ldc.i4.6"},{"1D","ldc.i4.7"},{"1E","ldc.i4.8"},{"1F","ldc.i4.s"},{"20","ldc.i4"},{"21","ldc.i8"},{"22","ldc.r4"},{"23","ldc.r8"},{"25","dup"},{"26","pop"},{"28","call"},{"29","calli"},{"2A","ret"},{"2B","br.s"},{"2C","brfalse.s"},{"2D","brtrue.s"},{"2E","beq.s"},{"2F","bge.s"},{"30","bgt.s"},{"31","ble.s"},{"32","blt.s"},{"33","bne.un.s"},{"34","bge.un.s"},{"35","bgt.un.s"},{"36","ble.un.s"},{"37","blt.un.s"},{"38","br"},{"39","brfalse"},{"3A","brtrue"},{"3B","beq"},{"3C","bge"},{"3D","bgt"},{"3E","ble"},{"3F","blt"},{"40","bne.un"},{"41","bge.un"},{"42","bgt.un"},{"43","ble.un"},{"44","blt.un"},{"45","switch"},{"46","ldind.i1"},{"47","ldind.u1"},{"48","ldind.i2"},{"49","ldind.u2"},{"4A","ldind.i4"},{"4B","ldind.u4"},{"4C","ldind.i8"},{"4D","ldind.i"},{"4E","ldind.r4"},{"4F","ldind.r8"},{"50","ldind.ref"},{"51","stind.ref"},{"52","stind.i1"},{"53","stind.i2"},{"54","stind.i4"},{"55","stind.i8"},{"56","stind.i"},{"57","stind.r4"},{"58","stind.r8"},{"59","add"},{"5A","sub"},{"5B","mul"},{"5C","div"},{"5D","div.un"},{"5E","rem"},{"5F","rem.un"},{"60","and"},{"61","or"},{"62","xor"},{"63","shl"},{"64","shr"},{"65","shr.un"},{"66","neg"},{"67","not"},{"68","conv.i1"},{"69","conv.i2"},{"6A","conv.i4"},{"6B","conv.i8"},{"6C","conv.r4"},{"6D","conv.r8"},{"6F","callvirt"},{"70","cpobj"},{"71","ldobj"},{"72","ldstr"},{"73","newobj"},{"74","castclass"},{"75","isinst"},{"76","conv.r.un"},{"79","unbox"},{"7A","throw"},{"7B","ldfld"},{"7C","ldflda"},{"7D","stfld"},{"7E","ldsfld"},{"7F","ldsflda"},{"80","stsfld"},{"81","stobj"},{"8C","box"},{"8D","newarr"},{"8E","ldlen"},{"8F","ldelema"},{"90","ldelem.i1"},{"91","ldelem.u1"},{"92","ldelem.i2"},{"93","ldelem.u2"},{"94","ldelem.i4"},{"95","ldelem.u4"},{"96","ldelem.i8"},{"97","ldelem.i"},{"98","ldelem.r4"},{"99","ldelem.r8"},{"9A","ldelem.ref"},{"9B","stelem.i"},{"9C","stelem.i1"},{"9D","stelem.i2"},{"9E","stelem.i4"},{"9F","stelem.i8"},{"A0","stelem.r4"},{"A1","stelem.r8"},{"A2","stelem.ref"},{"A3","ldelem"},{"A4","stelem"},{"A5","unbox.any"},{"B3","conv.u4"},{"B4","conv.u8"},{"B5","conv.i"},{"B6","conv.ovf.i"},{"B7","conv.ovf.u"},{"B8","add.ovf"},{"B9","add.ovf.un"},{"BA","mul.ovf"},{"BB","mul.ovf.un"},{"BC","sub.ovf"},{"BD","sub.ovf.un"},{"BE","endfinally"},{"C2","refanytype"},{"C3","readonly"},{"D0","ldtoken"},{"D1","conv.u2"},{"D2","conv.u1"},{"D3","conv.i1"},{"D4","conv.i2"},{"D5","conv.i"},{"D6","conv.ovf.i1"},{"D7","conv.ovf.u1"},{"D8","conv.ovf.i2"},{"D9","conv.ovf.u2"},{"DA","conv.ovf.i4"},{"DB","conv.ovf.u4"},{"DC","conv.ovf.i8"},{"DD","conv.ovf.u8"},{"DE","starg"},{"DF","ldarg"},{"E0","ceq"},{"E1","cgt"},{"E2","cgt.un"},{"E3","clt"},{"E4","clt.un"},{"FE00","arglist"},{"FE01","ceq"},{"FE02","cgt"},{"FE03","cgt.un"},{"FE04","clt"},{"FE05","clt.un"},{"FE09","ldarg"},{"FE0A","ldarga"},{"FE0B","starg"},{"FE0C","ldloc"},{"FE0D","ldloca"},{"FE0E","stloc"},{"FE12","unaligned."},{"FE13","volatile."},{"FE14","tail."},{"FE16","constrained"},{"FE19","no."},{"FE1A","readonly"}};for(String[]x:a)OPCODES.put(Integer.parseInt(x[0],16),x[1]);}
 
     private static String cleanMemberName(String n){ if(n==null)return ""; int i=n.indexOf('`'); return i>0?n.substring(0,i):n; }
+
+    byte[] imageCopy() { return Arrays.copyOf(image, image.length); }
+
+    /** File offset of the MethodDef.RVA cell for a method token. */
+    int methodRvaFieldOffset(MethodDef m) throws IOException {
+        if (m == null || (m.token >>> 24) != 0x06) throw new IOException("Invalid MethodDef token");
+        int rid = m.token & 0x00FFFFFF;
+        if (rid <= 0 || rid > tables.count(6)) throw new IOException("MethodDef token is outside the metadata table");
+        Row row = tables.row(6, rid - 1);
+        if (row == null) throw new IOException("MethodDef row is unavailable");
+        return row.p;
+    }
+
+    int sectionAlignment() throws IOException { return peOptionalU32(0x38); }
+    int fileAlignment() throws IOException { return peOptionalU32(0x24); }
+    int numberOfSectionsFieldOffset() throws IOException { return peOffset() + 6; }
+    int sizeOfImageFieldOffset() throws IOException { return peOffset() + 4 + 20 + 56; }
+    int sectionTableOffset() throws IOException { return peOffset() + 4 + 20 + peOptionalU16(0x10); }
+    int optionalHeaderMagic() throws IOException { return peOptionalU16(0); }
+    int optionalHeaderSize() throws IOException { return peOptionalU16(0x14); }
+    private int peOffset() throws IOException {
+        int pe=u32(image,0x3c); if (pe < 0 || pe+24 > image.length || u32(image,pe)!=0x4550) throw new IOException("Invalid PE header"); return pe;
+    }
+    private int peOptionalU16(int rel) throws IOException { int pe=peOffset(); int opt=pe+4+20; return u16(image,opt+rel); }
+    private int peOptionalU32(int rel) throws IOException { int pe=peOffset(); int opt=pe+4+20; return u32(image,opt+rel); }
+
+    static final class MethodBodyInfo {
+        final int fileOffset, headerSize, codeOffset, codeSize, maxStack;
+        final int flags, localVarSigToken;
+        final boolean tiny, hasExtraSections, initLocals;
+        MethodBodyInfo(int fileOffset, int headerSize, int codeOffset, int codeSize, int maxStack, int flags, int localVarSigToken, boolean tiny, boolean hasExtraSections, boolean initLocals) {
+            this.fileOffset=fileOffset; this.headerSize=headerSize; this.codeOffset=codeOffset; this.codeSize=codeSize;
+            this.maxStack=maxStack; this.flags=flags; this.localVarSigToken=localVarSigToken; this.tiny=tiny; this.hasExtraSections=hasExtraSections; this.initLocals=initLocals;
+        }
+    }
+
+    MethodBodyInfo methodBody(MethodDef m) throws IOException {
+        if (m == null || m.rva == 0) throw new IOException("Method has no body");
+        int off=rva(sections,m.rva);
+        if(off<0||off>=image.length) throw new IOException("Method RVA is outside the PE image");
+        int first=image[off]&255;
+        if((first&3)==2){
+            int codeSize=first>>>2;
+            if(off+1+codeSize>image.length) throw new IOException("Tiny method body exceeds file");
+            return new MethodBodyInfo(off,1,off+1,codeSize,8,first,0,true,false,false);
+        }
+        int flags=u16(image,off);
+        if((flags&3)!=3) throw new IOException("Unsupported method-body header format");
+        int words=(flags>>>12)&15;
+        if(words<3||off+words*4>image.length) throw new IOException("Invalid fat method-body header");
+        int codeSize=u32(image,off+4);
+        int codeOff=off+words*4;
+        if(codeSize<0||codeOff+codeSize>image.length) throw new IOException("Fat method body exceeds file");
+        boolean more=(flags&0x8)!=0;
+        int localSig=u32(image,off+8);
+        return new MethodBodyInfo(off,words*4,codeOff,codeSize,u16(image,off+2),flags,localSig,false,more,(flags&0x10)!=0);
+    }
+
+    static int opcodeFor(String name) {
+        if(name==null) return -1;
+        for(Map.Entry<Integer,String> e:OPCODES.entrySet()) if(e.getValue().equalsIgnoreCase(name)) return e.getKey();
+        return -1;
+    }
 
     private static final class MethodSig{final String ret;final String[]params;MethodSig(String r,String[]p){ret=r;params=p;}}
     private static final class Section{final int va,vs,raw,rs;Section(int a,int b,int c,int d){va=a;vs=b;raw=c;rs=d;}}
