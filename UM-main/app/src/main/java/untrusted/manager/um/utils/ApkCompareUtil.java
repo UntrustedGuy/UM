@@ -7,12 +7,12 @@ import net.lingala.zip4j.ZipFile;
 import net.lingala.zip4j.model.FileHeader;
 
 import java.io.File;
+import java.io.InputStream;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.zip.ZipEntry;
 
 public class ApkCompareUtil {
 
@@ -94,10 +94,14 @@ public class ApkCompareUtil {
                 if (v1 == null) added.add(name);
                 else {
                     boolean equal = v1.size == v2.size && v1.crc == v2.crc;
-                    ZipEntry z1 = zf1.getEntry(name);
-                    ZipEntry z2 = zf2.getEntry(name);
+                    FileHeader z1 = zf1.getFileHeader(name);
+                    FileHeader z2 = zf2.getFileHeader(name);
                     if (equal && z1 != null && z2 != null && !z1.isDirectory()) {
-                        equal = ComparisonDigest.sha256(zf1, z1).equals(ComparisonDigest.sha256(zf2, z2));
+                        try (InputStream in1 = zf1.getInputStream(z1);
+                             InputStream in2 = zf2.getInputStream(z2)) {
+                            equal = ComparisonDigest.sha256(in1)
+                                    .equals(ComparisonDigest.sha256(in2));
+                        }
                     }
                     if (equal) same++; else modified.add(name);
                 }

@@ -1954,42 +1954,42 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                             FileUtils.copyFile(zipFile, backup);
                             if (!backup.isFile() || backup.length() != zipFile.length())
                                 throw new IOException("Could not create a verified archive backup: " + backup);
-                            try (ZipFile zf = new ZipFile(zipFile)) {
                             String entryPath = entry.getFullPath();
                             if (entryPath == null || entryPath.isEmpty()) throw new IOException("Invalid ZIP entry path");
                             String cleanEntryPath = entryPath.replace('\\', '/');
-                            if (entry.isDirectory()) {
-                                String dirPrefix = cleanEntryPath.endsWith("/") ? cleanEntryPath : cleanEntryPath + "/";
-                                int slash = cleanEntryPath.lastIndexOf('/');
-                                String parentPrefix = slash >= 0 ? cleanEntryPath.substring(0, slash + 1) : "";
-                                String newPrefix = parentPrefix + s + "/";
-                                Map<String, String> map = new HashMap<>();
-                                Set<String> moving = new HashSet<>();
-                                for (FileHeader fh : zf.getFileHeaders()) {
-                                    String fhFileName = fh.getFileName().replace('\\', '/');
-                                    if (fhFileName.equals(cleanEntryPath) || fhFileName.startsWith(dirPrefix)) {
-                                        moving.add(fhFileName);
+                            try (ZipFile zf = new ZipFile(zipFile)) {
+                                if (entry.isDirectory()) {
+                                    String dirPrefix = cleanEntryPath.endsWith("/") ? cleanEntryPath : cleanEntryPath + "/";
+                                    int slash = cleanEntryPath.lastIndexOf('/');
+                                    String parentPrefix = slash >= 0 ? cleanEntryPath.substring(0, slash + 1) : "";
+                                    String newPrefix = parentPrefix + s + "/";
+                                    Map<String, String> map = new HashMap<>();
+                                    Set<String> moving = new HashSet<>();
+                                    for (FileHeader fh : zf.getFileHeaders()) {
+                                        String fhFileName = fh.getFileName().replace('\\', '/');
+                                        if (fhFileName.equals(cleanEntryPath) || fhFileName.startsWith(dirPrefix)) {
+                                            moving.add(fhFileName);
+                                        }
                                     }
-                                }
-                                for (String oldName : moving) {
-                                    String targetName = oldName.equals(cleanEntryPath)
-                                            ? newPrefix
-                                            : newPrefix + oldName.substring(dirPrefix.length());
-                                    if (!oldName.equals(targetName) && !moving.contains(targetName)
-                                            && zf.getFileHeader(targetName) != null) {
-                                        throw new IOException("Destination already exists: " + targetName);
+                                    for (String oldName : moving) {
+                                        String targetName = oldName.equals(cleanEntryPath)
+                                                ? newPrefix
+                                                : newPrefix + oldName.substring(dirPrefix.length());
+                                        if (!oldName.equals(targetName) && !moving.contains(targetName)
+                                                && zf.getFileHeader(targetName) != null) {
+                                            throw new IOException("Destination already exists: " + targetName);
+                                        }
+                                        map.put(oldName, targetName);
                                     }
-                                    map.put(oldName, targetName);
+                                    if (!map.isEmpty()) zf.renameFiles(map);
+                                } else {
+                                    int slash = cleanEntryPath.lastIndexOf('/');
+                                    String parentPrefix = slash >= 0 ? cleanEntryPath.substring(0, slash + 1) : "";
+                                    String targetPath = parentPrefix + s;
+                                    if (!cleanEntryPath.equals(targetPath) && zf.getFileHeader(targetPath) != null)
+                                        throw new IOException("Destination already exists: " + targetPath);
+                                    zf.renameFile(cleanEntryPath, targetPath);
                                 }
-                                if (!map.isEmpty()) zf.renameFiles(map);
-                            } else {
-                                int slash = cleanEntryPath.lastIndexOf('/');
-                                String parentPrefix = slash >= 0 ? cleanEntryPath.substring(0, slash + 1) : "";
-                                String targetPath = parentPrefix + s;
-                                if (!cleanEntryPath.equals(targetPath) && zf.getFileHeader(targetPath) != null)
-                                    throw new IOException("Destination already exists: " + targetPath);
-                                zf.renameFile(cleanEntryPath, targetPath);
-                            }
                             }
                             try (ZipFile verify = new ZipFile(zipFile)) {
                                 String verifyPath;
