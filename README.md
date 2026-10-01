@@ -22,8 +22,6 @@ MP Manager provides the foundation for the project. UM keeps that foundation whi
 
 The main idea behind UM is simple: the file manager should be the place where everything connects. A file can be sent to a network service, opened in an editor, passed into a game-analysis tool, used by a terminal command, processed through MCP, or handed to a third-party plugin without turning the workflow into a pile of separate apps.
 
-> **Upstream credit:** MP Manager was created by **Abdurazaaq Mohammed**. This project builds on that work and keeps the upstream project and its contributors credited.
-
 ## What UM adds
 
 The sections below highlight the extra capabilities that make up the UM power-user layer.
