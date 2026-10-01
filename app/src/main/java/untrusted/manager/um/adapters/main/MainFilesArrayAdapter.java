@@ -2371,8 +2371,10 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
                     : value instanceof File && ((File) value).isDirectory();
             if (directory) folders++; else files++;
         }
+        final int finalFolders = folders;
+        final int finalFiles = files;
         context.handler.post(() -> context.<TextView>findViewById(R.id.folderCount)
-                .setText(context.rss.getString(R.string.folders_files_x, folders, files)));
+                .setText(context.rss.getString(R.string.folders_files_x, finalFolders, finalFiles)));
     }
 
     private void pruneSelection() {
