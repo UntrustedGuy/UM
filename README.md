@@ -5,944 +5,446 @@
 <h1 align="center">Untrusted Manager</h1>
 
 <p align="center">
-  <strong>A dual-pane Android file manager, APK/DEX/resource toolkit, remote-storage client, developer toolbox, media workspace, and extensible plugin platform.</strong>
+  <strong>An Android power-user toolkit built on top of MP Manager.</strong>
 </p>
 
 <p align="center">
-  <a href="#features"><img src="https://img.shields.io/badge/Features-80%2B%20built--in-7c3aed?style=for-the-badge" alt="80+ built-in features"></a>
-  <a href="#plugin-sdk"><img src="https://img.shields.io/badge/Plugin%20SDK-API%201-2563eb?style=for-the-badge" alt="Plugin SDK API 1"></a>
-  <a href="#architecture"><img src="https://img.shields.io/badge/Android-Java%2017-16a34a?style=for-the-badge" alt="Java 17"></a>
-  <a href="#security-and-data-safety"><img src="https://img.shields.io/badge/Focus-Local%20first-f59e0b?style=for-the-badge" alt="Local first"></a>
+  <a href="https://github.com/UntrustedGuy/UM/releases"><img src="https://img.shields.io/github/v/release/UntrustedGuy/UM?style=for-the-badge&label=Download" alt="Latest release"></a>
+  <a href="https://github.com/UntrustedGuy/UM/discussions"><img src="https://img.shields.io/badge/Discussions-GitHub-blue?style=for-the-badge&logo=github" alt="GitHub Discussions"></a>
+  <img src="https://img.shields.io/badge/Android-Java%2017-green?style=for-the-badge" alt="Android Java 17">
 </p>
 
 <p align="center">
-  <img src="./images/Ss1.png" width="180" alt="Untrusted Manager main interface">
-  <img src="./images/Ss2.png" width="180" alt="Untrusted Manager interface">
-  <img src="./images/sidebar.png" width="180" alt="Untrusted Manager sidebar">
+  <img src="./images/Ss1.png" width="190" alt="Untrusted Manager main screen">
+  <img src="./images/Ss2.png" width="190" alt="Untrusted Manager file manager">
+  <img src="./images/sidebar.png" width="190" alt="Untrusted Manager sidebar">
 </p>
 
-> **Untrusted Manager** keeps its original app identity — **name and starting icon** — while this README documents the current project as a complete platform rather than as a pass-by-pass changelog.
+## About
+
+**Untrusted Manager (UM)** is a community-maintained fork of [MP Manager](https://github.com/AbdurazaaqMohammed/MP-Manager), the open-source Android file manager created by **Abdurazaaq Mohammed**.
+
+MP Manager provides the foundation for the project. UM keeps that foundation while adding a much larger power-user layer aimed at Android developers, APK modders, reverse engineers, people working with remote files, and anyone who wants a toolbox that lives in one app.
+
+The main idea behind UM is simple: the file manager should be the place where everything connects. A file can be sent to a network service, opened in an editor, passed into a game-analysis tool, used by a terminal command, processed through MCP, or handed to a third-party plugin without turning the workflow into a pile of separate apps.
+
+> **Upstream credit:** MP Manager was created by **Abdurazaaq Mohammed**. This project builds on that work and keeps the upstream project and its contributors credited.
+
+## What UM adds
+
+The sections below highlight the extra capabilities that make up the UM power-user layer.
 
 ---
 
-## ✦ What is Untrusted Manager?
-
-Untrusted Manager (UM) is an Android utility suite centered on a **dual-pane file manager**. The file manager is only the foundation: the same application also contains archive tooling, APK and DEX workspaces, Android resource editors, a professional text editor, managed/native binary tooling, remote storage, remote-control services, an MCP interface, media utilities, device utilities, calculators, productivity tools, and an installable plugin system.
-
-The project is designed so that a user can move from **file → analysis → edit → rebuild/export** without repeatedly switching applications.
-
-### Platform at a glance
-
-| Capability | Included |
-|---|:---:|
-| Dual-pane local file manager | ✅ |
-| Local file operations + batch operations | ✅ |
-| ZIP / APK / JAR / 7z / RAR / TAR family | ✅ |
-| APK analysis, editing, rebuild and signing workflows | ✅ |
-| DEX / Smali / multidex tooling | ✅ |
-| AXML + `resources.arsc` tooling | ✅ |
-| Text/code editor + syntax highlighting | ✅ |
-| HTML preview + embedded syntax | ✅ |
-| Managed DLL / native PE / hex tooling | ✅ |
-| FTP / FTPS server and client workflows | ✅ |
-| SMB / SFTP / WebDAV / S3 | ✅ |
-| HTTP remote management | ✅ |
-| MCP local-file + APK workspace tools | ✅ |
-| Terminal with normal / Shizuku / root backends | ✅ |
-| Media player + image viewer/editor | ✅ |
-| Comparison/diff tooling | ✅ |
-| Android pinned shortcuts | ✅ |
-| SAF/cloud backup and restore | ✅ |
-| Service auto-start | ✅ |
-| Third-party feature plugins | ✅ |
-| 80 built-in Tools Kit entries | ✅ |
-
----
-
-# ◆ Features
-
-## 1. File Manager
-
-### Dual-pane workspace
-
-- Two independent panes.
-- Independent navigation state and history.
-- Back/forward and parent navigation.
-- Home locations and refresh.
-- Pane selection and synchronized navigation workflows.
-- Bottom action bar for common file operations.
-- Sidebar/bookmark drawer integration.
-
-### Bookmarks and navigation
-
-- Bookmark folders and locations.
-- Bookmark groups.
-- Reorder, rename, move and delete bookmark entries.
-- Navigation history per pane.
-- State restoration across normal file-manager navigation.
-- Pinned file/folder shortcuts with stable IDs and safe labels.
-
-### Selection
-
-- Single selection.
-- Multi-selection.
-- Range/swipe selection.
-- Select all.
-- Invert selection.
-- Select same type.
-- Selection filtering and stale-selection pruning.
-- Archive-aware selection that does not treat synthetic parent entries as ordinary files.
-
-### Sorting and filtering
-
-- Configurable filename sorting.
-- Reverse sorting.
-- Hidden-file handling.
-- Filename filters.
-- Search-history support.
-
-### Search
-
-- Recursive filename search.
-- Case-sensitive matching.
-- Regular-expression matching.
-- Size limits.
-- Recent-search history.
-- Find-in-Files content search.
-- UTF-8-aware text matching.
-- Bounded result collection.
-- Cancellation/interruption checks.
-- Canonical-directory tracking.
-- Symlink-directory exclusion to avoid recursive traversal loops.
-
-### Filesystem operations
-
-- Create files.
-- Create folders.
-- Rename.
-- Copy.
-- Move.
-- Delete.
-- Share.
-- Open with Android's chooser/URI mechanisms.
-- Properties with copyable metadata values.
-- Local and elevated-operation paths where supported.
-- Background execution for expensive operations.
-- Progress reporting where the operation supports it.
-
-### Batch operations
-
-- Multi-copy.
-- Multi-move.
-- Multi-delete.
-- Multi-rename.
-- Multi-compress.
-- Checksums over selected files.
-- Command-helper operations over selected files.
-- Batch APK signing/optimization/install workflows.
-- Batch image operations.
-- Selection validation before destructive operations.
-- Partial-operation isolation and explicit failure reporting.
-
-### Path safety
+# Android Power-User & Modding Tools
 
-Create/rename operations reject unsafe child names such as empty names, `.`/`..`, NUL characters, path separators and absolute paths. Transfer paths are checked before ordinary filesystem work. Recursive transfer and archive paths are designed to avoid silently following symbolic links outside the requested tree.
+## APK Patcher
 
----
+UM includes an integrated patching workspace for APK-related patch formats instead of treating patching as an external helper.
 
-# 2. Archives & Containers
+It provides a common entry point for supported **APK Editor**, **Lucky Patcher**, and **LPZIP-style** patch workflows.
 
-UM treats common Android and general-purpose containers as editable workspaces rather than merely files to extract.
+### Lucky Patcher-style patching
 
-### ZIP / APK / JAR
+- Apply supported **CLASSES** byte-pattern patches.
+- Apply supported **ODEX** byte-pattern patches.
+- Apply supported **LIB** byte-pattern patches.
+- Work with patch definitions directly from the UM workflow.
+- Keep patch execution inside the application rather than requiring a separate patcher APK.
 
-- Browse entries.
-- Browse directories inside archives.
-- Extract entries.
-- Add entries.
-- Delete entries.
-- Rename entries.
-- Create archives.
-- Modify existing archives.
-- APK/JAR-aware workflows.
-- Collision-safe extraction.
-- Transactional archive updates where implemented.
-- Backup/verification before sensitive archive rewrites.
+## Root and Shizuku integration
 
-### 7z
+UM extends the file-operation side of the app with elevated execution paths when the device provides them.
 
-- Extraction.
-- Archive creation.
-- Path-constrained destination handling.
+- Root-backed file operations where root access is available.
+- Shizuku-backed file operations where Shizuku is authorized.
+- Non-root operation remains available on ordinary devices.
+- Elevated command execution is exposed through the same Tools Kit and terminal workflows.
+- Operations are checked before committing filesystem changes rather than assuming an elevated command succeeded.
 
-### RAR
+## Game Analyzer
 
-- RAR extraction through the integrated JunRAR stack.
-- Destination safety checks.
+The Game Analyzer is built for inspecting Android game packages and identifying the files that matter for further analysis.
 
-### TAR family
+It can work with APK/XAPK/APKM/APKS/AAB/ZIP-style inputs and can locate or report things such as:
 
-- TAR.
-- GZIP-compressed TAR.
-- BZIP2-compressed TAR.
-- XZ-compressed TAR.
-- Hardened extraction.
-- Symbolic/hard-link rejection on the hardened extraction path.
+- Unity/IL2CPP native libraries.
+- Global metadata files.
+- Native libraries.
+- APK package structures.
+- Candidate game-analysis inputs.
 
-### Archive safety
+Analysis reports are written to the UM analysis workspace instead of requiring another application.
 
-- Path traversal protection.
-- NUL/path-component validation.
-- Duplicate-entry handling.
-- Destination collision handling.
-- Symbolic-link traversal defenses.
-- Archive-directory validation.
-- Transactional/verified write paths where the editor supports them.
+## IL2CPP Dumper
 
----
+UM includes an integrated IL2CPP dumping workflow.
 
-# 3. APK Studio
-
-The APK workflow is one of UM's core developer-oriented areas.
-
-### APK inspection
-
-- Package name.
-- Version information.
-- Application metadata.
-- Launcher/activity information.
-- APK icon extraction.
-- Manifest inspection.
-- Resource inspection.
-- DEX discovery.
-- Native-library discovery.
-- Base/split APK awareness.
-- Signature information.
+The dumper can accept the inputs that are available to the user instead of forcing a single rigid workflow:
 
-### APK editing
+- APK — optional context/input.
+- `libil2cpp.so` — optional direct input when supplied separately.
+- `global-metadata.dat` — optional direct input when supplied separately.
 
-- Manifest editing.
-- Application-attribute editing.
-- Resource workflows.
-- DEX/Smali workflows.
-- APK extraction.
-- Quick-edit operations.
-- Clone/optimization workflows.
-
-### Build and signing
-
-- Rebuild APK workspaces.
-- Signing workflows.
-- Supported keystore/key formats.
-- Configurable automatic signing paths.
-- Split-APK workflows where supported by the existing installer/tooling.
-- Output validation rather than silently reporting an invalid build as successful.
-
-### APK Patcher / LPZIP-style tooling
-
-The Tools Kit also exposes APK patching workflows for supported patch formats and byte-pattern based CLASSES/ODEX/LIB operations.
-
----
-
-# 4. DEX, Smali & Bytecode
-
-UM contains integrated dexlib2, smali/baksmali and APK-editor infrastructure.
-
-### DEX editor
-
-- Open DEX files.
-- Work with multidex APKs.
-- Inspect classes and methods.
-- Edit supported DEX structures.
-- Save validated DEX output.
-- Smali conversion.
-- String-oriented workflows.
-- DEX inspection/repair paths.
-
-### DEX++ / merge workflows
-
-- Merge supported DEX inputs.
-- Duplicate-class detection.
-- Transactional output.
-- Output validation before committing a merged result.
-
-### Smali
-
-- Disassembly.
-- Search/navigation.
-- Editing.
-- Reassembly through the integrated smali toolchain.
-- APK workspace integration.
-
----
-
-# 5. Android XML & Resource Studio
-
-## AXML
-
-Binary Android XML can be decoded, edited and encoded again.
-
-- Typed attributes.
-- References.
-- Booleans.
-- Dimensions.
-- Fractions.
-- Floats.
-- Integers.
-- Colors.
-- Typed list attributes.
-- Namespace URI preservation.
-- Text-editor integration.
-
-## `resources.arsc` / ARSC++
-
-- Resource-table inspection.
-- Multi-configuration editing.
-- String-pool editing.
-- Search.
-- Arrays.
-- Styles.
-- Complex map values.
-- Individual map-value editing.
-- Export.
-- Transactional save paths.
-- Comparison/refactoring utilities.
-
-Framework APK discovery can use `0/Untrusted Manager/frameworks/` and device framework resources where available.
-
----
-
-# 6. Text & Code Studio
-
-UM's editor is based on the integrated Sora/TextMate editor stack and is intended for actual source editing rather than a plain text box.
-
-### Editor capabilities
-
-- Tabs.
-- Undo/redo.
-- Search.
-- Replace.
-- Regex workflows.
-- Session restoration.
-- Backup/session persistence.
-- Large-file safety limits.
-- UTF-8 BOM handling.
-- CRLF/LF/CR preservation.
-- AXML editing.
-- Language-specific syntax highlighting.
-
-### Languages/workflows covered by the syntax stack
-
-- XML.
-- AXML.
-- HTML.
-- CSS.
-- JavaScript.
-- JSON.
-- C#.
-- IL.
-- Python.
-- YAML.
-- Markdown.
-- GDScript.
-- Ren'Py.
-- Godot resources/shaders.
-
-### HTML workspace
-
-- Dedicated HTML preview.
-- Editor preview workflow.
-- File-manager HTML preview action.
-- Embedded CSS syntax.
-- Embedded JavaScript syntax.
-- Embedded JSON script-block syntax.
-- Markdown language-specific fenced-code syntax.
-
----
-
-# 7. Managed DLL / PE / Hex Studio
-
-## Managed DLL editor
-
-The DLL editor contains an independently maintained PE/CLI reader, metadata navigator, C# decompiler/editor and conservative CIL writer.
-
-### Assembly inspection
+Dump output is placed under:
+
+```text
+0/Untrusted Manager/Dump/
+```
+
+The workflow is designed around explicit input validation and reports failures instead of claiming that a dump succeeded when the required metadata pair could not be processed.
+
+## Global Metadata inspector
+
+UM has a dedicated tool for inspecting `global-metadata.dat` files.
+
+It can validate supported metadata structures and produce readable analysis output for the game-analysis workspace.
+
+## Game Encryption tools
+
+The Game Encryption tool provides a place to inspect protected or transformed game data and identify what the current tooling can understand.
+
+It deliberately reports unsupported schemes instead of pretending that every protected asset has been decrypted.
+
+## Game Modding Toolkit
+
+The Game Modding Toolkit brings the game-oriented pieces of UM into one place:
+
+- APK patching.
+- APK extraction/editing workflows.
+- DEX tooling.
+- Native-library inspection.
+- IL2CPP tooling.
+- IL2CPP editing.
+- Frida runtime helpers.
+- Managed DLL editing.
+
+## IL2CPP Editor
+
+The IL2CPP editor provides a working area for edited IL2CPP dumps and native files.
+
+- Open analysis output directly from the UM workspace.
+- Edit supported generated/native data.
+- Keep edited copies separate from the original input.
+- Return edited results to the normal file-manager workflow.
+
+## Frida Runtime Kit
+
+UM includes a Frida-oriented runtime tool surface for game-analysis work.
+
+- Generate IL2CPP-oriented Frida scripts.
+- Work with script files from the UM file manager.
+- Launch supported runtime workflows through the integrated tool surface.
+- Keep runtime scripts and output inside the UM workspace.
+
+## Managed DLL / PE / CIL editor
+
+UM contains a dedicated managed-assembly workflow that goes well beyond simply opening a DLL as a binary file.
+
+### Managed assembly inspection
 
 - PE/COFF probing.
-- CLR metadata discovery.
-- Recovery of stale metadata roots where valid metadata can be found.
-- ECMA-335 table reading.
-- Type/member navigation.
-- Methods.
-- Fields.
-- Properties.
-- Interfaces.
-- Generics.
+- CLR metadata detection.
+- Metadata table parsing.
+- Type navigation.
+- Method navigation.
+- Field navigation.
+- Property navigation.
+- Interface navigation.
+- Generic type/member inspection.
 - Decompiled C# document navigation.
 
-### C# workflow
+### C# edit and rebuild workflow
 
-1. Open a managed assembly.
-2. Inspect/decompile it.
-3. Edit the reconstructed source.
-4. Store editable source under `0/Untrusted Manager/DLL/EditedSource/`.
-5. Compile using the managed compiler backend when available.
-6. Write the resulting assembly under `0/Untrusted Manager/DLL/Edited/`.
-7. Keep the original DLL untouched.
+A managed assembly can be reconstructed into editable C# source, edited, compiled, and written back as a new assembly.
 
-The compiler backend prefers Roslyn `csc.exe` where provisioned and can fall back to Mono `mcs.exe`.
+Edited source is kept under:
 
-### IL workflow
+```text
+0/Untrusted Manager/DLL/EditedSource/
+```
 
-- Decode supported CIL instructions.
-- Edit supported instructions.
-- Write new method bodies.
-- Preserve supported locals/init-locals state and metadata tokens.
-- Relocate larger replacement method bodies into a dedicated `.umcil` PE section where required.
-- Reparse the resulting image before reporting success.
-- Reject unsupported extra method-section/exception-handling layouts rather than writing stale offsets.
+Generated assemblies are kept under:
 
-### Native PE and hex
+```text
+0/Untrusted Manager/DLL/Edited/
+```
 
-- Native/unmanaged PE inspection.
-- Raw hex editing.
-- Inspection of malformed/protected binaries without incorrectly labeling them as managed assemblies.
+The original DLL is left untouched.
 
----
+The managed compiler backend prefers the provisioned **Roslyn `csc.exe`** backend and can fall back to **Mono `mcs.exe`** where available.
 
-# 8. Game Analysis & Modding Toolkit
+### CIL / IL editing
 
-The integrated game-analysis surface includes:
+The editor can decode supported CIL instructions and write supported changes back into a new assembly.
 
-- Game Analyzer.
-- IL2CPP Dumper.
-- Global Metadata inspector.
-- Game-encryption inspection utilities.
-- Game Modding Toolkit.
-- IL2CPP Editor.
-- Frida Runtime Kit.
-- DLL Editor.
+The writer handles larger replacement method bodies by relocating them into a dedicated `.umcil` PE section when necessary and reparses the generated image before accepting it.
 
-The IL2CPP workflow can work with an APK and/or supplied `libil2cpp.so` and `global-metadata.dat` inputs where supported by the current dumper path. Dump-oriented outputs use the Untrusted Manager workspace conventions rather than requiring a separate helper application.
+Unsupported extra method-section and exception-handling layouts are rejected rather than being written with stale offsets.
+
+### Native PE and hex work
+
+Native/unmanaged PE files receive a proper PE inspection path instead of being incorrectly treated as malformed managed assemblies.
+
+Raw hex editing is also available for binary files, malformed files, and files that do not expose managed metadata.
 
 ---
 
-# 9. Remote Storage & Networking
-
-## FTP / FTPS
-
-- FTP client workflows.
-- FTP server workflows.
-- FTPS server/client workflows.
-- Profiles.
-- Passive mode.
-- Binary transfers.
-- Connection/data timeouts.
-- Transfer verification.
-- Delete/rename/create operations.
-- Certificate validation.
-- FTPS hostname verification.
-- Protected profile credentials.
-- Boot/package-replacement restoration when auto-start is explicitly enabled.
-
-## SMB
-
-- SMB2/SMB3 browsing.
-- Authentication.
-- Secure signing defaults.
-- Downloads/uploads.
-- Atomic temporary-download handling.
-- Transfer-size verification.
-
-## SFTP
-
-- SSH/SFTP browsing.
-- Upload/download.
-- Host-key fingerprint pinning.
-- Explicit trust-any mode for controlled first-time setup.
-- Staged transfers and result verification.
-
-## WebDAV
-
-- PROPFIND listing.
-- Download/upload.
-- MKCOL.
-- Delete.
-- Move.
-- XML external-entity protections.
-- Path traversal protection.
-- Download-size verification.
-
-## S3
-
-- Object listing.
-- Upload/download/delete.
-- Directory-style operations.
-- SigV4 signing.
-- Canonical query handling.
-- Streaming transfers.
-
-## HTTP Remote Management
-
-- Remote browser/file-manager workflow.
-- Authenticated HTTP service.
-- Bearer authentication.
-- Constrained source/destination operations.
-- Symlink-ancestor rejection.
-- Collision-safe copy/move/rename.
-- Atomic text writes.
+# Remote Storage & Network Workspaces
 
 ## Network Storage Hub
 
-Saved locations use stable per-location IDs and isolated preference namespaces so endpoint data does not accidentally bleed between unrelated profiles.
+UM adds a unified remote-storage area for protocols that are outside the normal local/FTP workflow.
+
+Saved locations are kept as separate profiles with stable IDs so one connection's settings do not accidentally overwrite another connection.
+
+Supported backends include:
+
+- **SMB / SMB2 / SMB3**
+- **SFTP / SSH**
+- **WebDAV**
+- **S3-compatible object storage**
+
+## SMB storage
+
+- Browse SMB shares from the UM workspace.
+- Authenticate against remote shares.
+- Transfer files without leaving the app.
+- SMB2/SMB3 signing is enabled by default in the hardened path.
+- Downloads use temporary files before the final destination is committed.
+- Resulting file sizes are checked after transfers.
+
+## SFTP storage
+
+UM's SFTP workflow uses SSH/SFTP rather than requiring a separate network browser.
+
+- Browse remote directories.
+- Upload files.
+- Download files.
+- Create remote directories.
+- Rename remote entries.
+- Delete remote entries.
+- Pin a host fingerprint for normal connections.
+- Use an explicit trust-any mode when the user deliberately chooses that setup.
+- Verify staged transfers before finalizing them.
+
+## WebDAV storage
+
+The WebDAV client supports the normal file-management operations needed for a remote workspace:
+
+- `PROPFIND` directory listing.
+- Upload.
+- Download.
+- `MKCOL` directory creation.
+- Delete.
+- Move/rename.
+
+The client also applies traversal and XML parser protections to remote paths and responses.
+
+## S3-compatible storage
+
+UM provides an S3-style object-storage browser with:
+
+- Object listing.
+- Upload.
+- Download.
+- Delete.
+- Directory-like prefixes.
+- Rename/move-style object workflows where the backend supports them.
+- AWS Signature Version 4 request signing.
+- Canonical query handling.
+- Streaming transfers.
 
 ## Network Transfers
 
-A unified transfer surface exposes queued remote operations, cancellation and transfer history.
+Remote operations are coordinated through a shared transfer queue.
 
----
+- Queue multiple transfers.
+- Cancel active work.
+- Keep transfer history.
+- Perform expensive network work away from the main UI thread.
+- Keep remote activity visible as a single workflow instead of one-off progress dialogs.
 
-# 10. MCP — AI File & APK Workspace
+## HTTP Remote Management
 
-UM exposes a Streamable-HTTP MCP service for automation/AI clients.
+UM includes a dedicated HTTP remote-management service and client workflow.
 
-### Local file MCP
+The service exposes a browser-friendly remote file manager with authenticated operations and server-side path confinement.
 
-- File listing.
+- Bearer authentication.
+- Remote file listing.
 - Read/write operations.
-- Copy/move operations.
-- Path-level permissions.
-- Read-only / read-write / deny rules.
-- Canonical-path enforcement.
-- Symlink rejection.
+- Copy/move/rename operations.
+- Atomic text writes.
+- Collision-aware destination handling.
+- Symlink-ancestor rejection.
+- Source and destination confinement.
 
-### APK MCP
+The remote service is designed so path restrictions are enforced on the server side rather than being treated as a UI-only setting.
 
-APK workspaces are isolated from the original source file.
+## Streamable HTTP MCP service
 
-- Open APK into a workspace.
+UM exposes a **Model Context Protocol (MCP)** service over Streamable HTTP.
+
+This is intended for AI clients and automation systems that need to operate on files or APK workspaces through a controlled interface.
+
+### File tools
+
+- List files/directories.
+- Read files.
+- Write files.
+- Copy files.
+- Move files.
+- Delete files.
+- Enforce path permissions on the server.
+
+### Path permissions
+
+Each configured path can be governed by a server-side policy:
+
+- **Read-only**
+- **Read-write**
+- **Denied**
+
+The longest matching configured path wins, with the service applying canonical-path checks and rejecting symlink-based escapes.
+
+The Home path is the default writable area for the local workspace unless the administrator changes it.
+
+### APK MCP workspace
+
+APK operations use isolated workspaces so automation does not directly mutate the original APK.
+
+The APK MCP surface can:
+
+- Create/open an APK workspace.
 - List workspaces.
 - Inspect workspace metadata.
 - Delete workspaces.
-- List APK ZIP entries.
-- Read entries.
-- Write entries.
-- Delete entries.
-- Inspect Android package metadata.
+- List APK entries.
+- Read APK entries.
+- Write APK entries.
+- Delete APK entries.
 - Search DEX classes.
-- Disassemble/read Smali.
-- Edit Smali.
-- Reassemble changed DEX content.
-- Rebuild the APK workspace.
-- Sign output using the supported signing path.
+- Read and edit Smali content.
+- Reassemble supported changed DEX content.
+- Inspect package/manifest metadata.
+- Rebuild an APK workspace.
+- Sign rebuilt output through the supported signing path.
 
-### Authentication
+### MCP authentication
 
-- Authentication can be disabled for controlled local use.
-- Active service token support is retained.
-- Named Bearer tokens can be created and revoked.
+UM supports controlled local use as well as authenticated remote use.
+
+- Authentication can be deliberately disabled for a trusted local setup.
+- Bearer-token authentication can be enabled.
+- Named tokens can be created.
+- Individual tokens can be revoked.
 - Authentication state is persisted with the remote-service configuration.
 
-### Service lifecycle
+---
 
-HTTP/MCP service restoration after boot/package replacement is user opt-in. Android foreground-service restrictions are handled by the current service architecture.
+# HTML & Editor Enhancements
+
+## HTML preview
+
+UM adds a dedicated HTML preview workflow instead of treating an HTML document only as plain source text.
+
+HTML files can be opened from the file manager and sent into a dedicated preview surface, with the editor and preview workflows sharing the same file context.
+
+## Embedded web-language syntax
+
+The editor understands common embedded content inside HTML and Markdown files, including:
+
+- CSS inside HTML.
+- JavaScript inside HTML.
+- JSON contained in script blocks.
+- Code fences inside Markdown.
+
+This makes mixed-language web documents much easier to edit without manually changing the editor language every time the cursor moves into another section.
+
+## Streaming HTTP headers
+
+UM provides a persistent header-rule system for HTTP requests used by supported streaming/metadata workflows.
+
+Rules can target:
+
+- A specific URL.
+- A URL prefix.
+- Requests globally.
+
+The same rules are applied to both metadata probing and supported media playback requests.
 
 ---
 
-# 11. Terminal
+# Expanded Batch Workflows
 
-The standalone terminal provides a persistent shell surface with:
+UM extends batch work beyond simple rename templates.
 
-- Normal app shell.
-- Shizuku shell.
-- Root shell where available.
-- Persistent shell state.
-- Working-directory startup.
-- Command history.
-- Bounded output.
-- Clear output.
-- Interrupt input.
-- Tools Hub integration.
+Supported batch-oriented workflows include:
 
-Availability of Shizuku/root behavior depends on the device and the corresponding external authorization/environment.
+- Multi-file copy.
+- Multi-file move.
+- Multi-file delete.
+- Multi-file compression.
+- Checksum operations over selected files.
+- Batch command-helper execution for selected files.
+- Batch image operations.
 
----
-
-# 12. Comparison & Diff
-
-- Text comparison.
-- APK comparison.
-- ZIP comparison.
-- ARSC comparison.
-- Nested comparison.
-- Asynchronous comparison work.
-- Progress reporting.
-- SHA-256 content confirmation after fast-path equality checks.
-- File-read failure isolation so one unreadable comparison entry does not unnecessarily abort the entire comparison.
-- Rendering safety limits for pathological inputs.
+Selections are validated again when the operation starts so stale UI selection state does not silently become the wrong filesystem input.
 
 ---
 
-# 13. Media & Images
+# Extra Everyday Tools
 
-## Media player
+UM also contains several small tools that are intentionally unrelated to APK editing. They are there because a power-user app is useful when you can do the small job without opening another app.
 
-- Audio playback.
-- Video playback.
-- Queue management.
-- Seek.
-- Speed control.
-- Volume.
-- Mute.
-- Repeat.
-- Shuffle.
-- A-B repeat.
-- Background/miniplayer behavior.
-- Resume-position persistence.
-- Defensive lifecycle cleanup.
+## Additional device tools
 
-## Streaming headers
+- **Strobe Light** — fullscreen flashing tool.
+- **Screen Tester** — fullscreen colour/dead-pixel testing surface.
 
-Persistent HTTP header rules can target:
+## Additional time & productivity tools
 
-- Exact URLs.
-- URL prefixes.
-- Global requests.
+- **World Clock** — multi-zone time display.
+- **Checklist** — saved task lists.
+- **Habit Tracker** — streak tracking.
+- **Expense Tracker** — personal spending log.
+- **Attendance Tracker** — attendance percentages and required attendance calculations.
+- **Typing Test** — typing speed and accuracy measurement.
 
-The same rules are wired into metadata probing and media playback.
-
-## Image viewer/editor
-
-- Image viewing.
-- Directory navigation.
-- Metadata inspection.
-- Share/delete workflows.
-- Image editing utilities exposed through the Tools Kit.
-- Batch crop/EXIF/metadata workflows where supported.
+These are part of the integrated UM Tools Kit and do not require separate helper applications.
 
 ---
 
-# 14. Device & Hardware Tools
+# Backup & Service Lifecycle
 
-The built-in Tools Kit includes:
+## Cloud backup
 
-| Tool | Purpose |
-|---|---|
-| Device Hub | Hardware, battery, CPU, sensors and storage information |
-| Compass | Magnetic heading |
-| Bubble Level | Surface-level measurement |
-| GPS Speedometer | Live speed |
-| Ruler | On-screen cm/inch ruler |
-| Protractor | Touch angle measurement |
-| Magnifier | Zoomed inspection/loupe |
-| Flashlight | Torch/fullscreen light |
-| Vibration Studio | Custom vibration patterns |
-| Strobe Light | Fullscreen flashing |
-| Screen Tester | Fullscreen/dead-pixel test |
-| Volume Panel | Audio stream controls |
-| Ringtone Preview | Browse/play device sounds |
-| Wallpaper Maker | Color-wheel/gradient wallpaper generation |
-| Wi-Fi Manager | DNS/profile/password/usage utilities |
-| Connectivity Hub | Network/Bluetooth/NFC-related device utilities |
-| QR Scanner | Camera barcode/QR scanning |
-| QR Generator | Text, URL and Wi-Fi QR generation |
-| NFC Reader | NFC tag reading |
-| Bluetooth Pairs | Bonded-device inspection |
+UM includes a SAF-based backup and restore workflow that can target Android document providers, including cloud-backed providers exposed through the system file picker.
+
+The backup format is versioned and validated before being restored.
+
+Sensitive internal keys are deliberately excluded from portable backup data.
+
+## Remote-service auto-start
+
+Users can opt into restoring supported remote-management services after device boot or application package replacement.
+
+The implementation accounts for modern Android foreground-service restrictions and promotes the service before expensive server initialization when a service needs to be restored.
+
+Supported long-running services include the remote-management stack used by HTTP/MCP and the FTP/FTPS service lifecycle.
 
 ---
 
-# 15. Math, Finance & Conversion Tools
+# Plugin SDK
 
-### Mathematics
+UM has a real plugin boundary so developers can add tools without rebuilding the main application.
 
-- Scientific Calculator.
-- Unit Converter.
-- Base Converter — binary/octal/decimal/hexadecimal.
-- Prime Tools — prime/factor operations.
-- Quadratic Solver.
-- 2×2 Matrix calculator.
-- Triangle Solver.
-- Geometry Calculator.
-- Fraction Calculator.
+Plugins are **separately installed Android APKs**. Once installed and enabled, their tool entries appear inside the UM Tools Kit alongside the built-in tools.
 
-### Finance
+The host API is intentionally small and stable.
 
-- Price & Tax Lab.
-- Discount calculations.
-- GST calculations.
-- Tip calculations.
-- Percentage comparisons.
-- Finance Lab.
-- EMI calculations.
-- Interest calculations.
-- Savings calculations.
-- Currency Converter with offline rates.
-- Fuel Calculator.
-- Mileage/cost calculations.
-- Pace Calculator.
-- Ohm's Law calculator.
-- Resistor color-band decoder.
-- GPA calculator.
-- Cooking converter for common cup/gram-style conversions.
-
----
-
-# 16. Time, Productivity & Personal Utilities
-
-- Timer Suite.
-  - Stopwatch.
-  - Timer.
-  - Pomodoro.
-  - Interval timing.
-- World Clock.
-- Date Toolkit.
-  - Date difference.
-  - Age calculation.
-  - Date addition.
-  - Countdown.
-- Quick Notes.
-- Checklist.
-- Habit Tracker.
-- Expense Tracker.
-- Attendance Tracker.
-- Tally Counter.
-- Typing Test.
-- Health Hub.
-  - BMI.
-  - Calories.
-  - Body-fat-related calculations.
-  - Water utilities.
-  - Sleep-related utilities.
-
----
-
-# 17. Text, Encoding & Security Utilities
-
-- Text Studio.
-  - Character/word counting.
-  - Case conversion.
-  - Lorem generation.
-  - JSON utilities.
-  - Regex utilities.
-- Encoder Lab.
-  - Hashes.
-  - Base64.
-  - URL encoding/decoding.
-  - Binary conversion.
-  - Supported cipher/encoding utilities.
-- Color Converter.
-  - HEX.
-  - RGB.
-  - HSL.
-
----
-
-# 18. Media & Random Utilities
-
-### Media
-
-- Tone Generator.
-- Voice Recorder.
-- Metronome.
-- Speak Text / text-to-speech.
-
-### Random / generation
-
-- Randomizer.
-  - Dice.
-  - Coin.
-  - Number generation.
-- Generator Studio.
-  - Password generation.
-  - UUID generation.
-  - Random values.
-
----
-
-# 19. Storage, System & Access Utilities
-
-- Storage Manager.
-  - Largest-file discovery.
-  - Cache-oriented utilities.
-- Quick Settings shortcuts.
-- Root Manager.
-  - Root access where available.
-  - Shizuku access where available.
-  - Non-root operation.
-- Cloud Backup.
-  - SAF destinations.
-  - Cloud document providers exposed through SAF.
-  - Versioned backup format.
-  - Validation.
-  - Sensitive-key exclusion.
-- Android pinned shortcuts for supported files/folders/tools.
-
----
-
-# 20. Tools Kit — all built-in entries
-
-The current source registers **80 built-in tool entries**, before separately installed plugins are added dynamically.
-
-<details>
-<summary><strong>Storage & Apps</strong> — 6 built-in tools</summary>
-
-- APK Patcher
-- Lucky Patcher
-- Root Manager
-- Terminal
-- Storage Manager
-- Quick Settings
-</details>
-
-<details>
-<summary><strong>Game Analysis & Modding</strong> — 8 built-in tools</summary>
-
-- Game Analyzer
-- IL2CPP Dumper
-- Global Metadata
-- Game Encryption
-- Game Modding Toolkit
-- IL2CPP Editor
-- Frida Runtime Kit
-- DLL Editor
-</details>
-
-<details>
-<summary><strong>Wi-Fi & Network</strong> — 14 built-in tools</summary>
-
-- Wi-Fi Manager
-- Connectivity Hub
-- HTTP Remote Management
-- MCP Service
-- Network Storage
-- Network Transfers
-- WebDAV Storage
-- S3 Storage
-- SMB Storage
-- SFTP Storage
-- QR Generator
-- QR Scanner
-- NFC Reader
-- Bluetooth Pairs
-</details>
-
-<details>
-<summary><strong>Device & Hardware</strong> — 14 built-in tools</summary>
-
-- Device Hub
-- Compass
-- Bubble Level
-- GPS Speedometer
-- Ruler
-- Protractor
-- Magnifier
-- Flashlight
-- Vibration Studio
-- Strobe Light
-- Screen Tester
-- Volume Panel
-- Ringtone Preview
-- Wallpaper Maker
-</details>
-
-<details>
-<summary><strong>Math & Finance</strong> — 18 built-in tools</summary>
-
-- Calculator
-- Unit Converter
-- Base Converter
-- Prime Tools
-- Quadratic Solver
-- Matrix 2x2
-- Triangle Solver
-- Geometry Calc
-- Fraction Calc
-- Price & Tax Lab
-- Finance Lab
-- Currency Converter
-- Cooking Converter
-- Fuel Calculator
-- Pace Calculator
-- Ohm Law Calc
-- Resistor Decoder
-- GPA Calculator
-</details>
-
-<details>
-<summary><strong>Time & Productivity</strong> — 11 built-in tools</summary>
-
-- Timer Suite
-- World Clock
-- Date Toolkit
-- Quick Notes
-- Checklist
-- Habit Tracker
-- Expense Tracker
-- Attendance Tracker
-- Tally Counter
-- Typing Test
-- Health Hub
-</details>
-
-<details>
-<summary><strong>Text & Security</strong> — 3 built-in tools</summary>
-
-- Text Studio
-- Encoder Lab
-- Color Converter
-</details>
-
-<details>
-<summary><strong>Media & Sound</strong> — 4 built-in tools</summary>
-
-- Tone Generator
-- Voice Recorder
-- Metronome
-- Speak Text
-</details>
-
-<details>
-<summary><strong>Random</strong> — 2 built-in tools</summary>
-
-- Randomizer
-- Generator Studio
-</details>
-
----
-
-# 21. Plugin SDK
-
-Plugins are **independently installed Android APKs**. They are discovered by UM automatically and appear in Tools Kit as first-class feature entries.
-
-A plugin does **not** require rebuilding the UM base APK when it is added or updated.
-
-## Plugin architecture
-
-```text
-Third-party plugin APK
-        │
-        ├── ACTION_ENTRY activity
-        ├── UmPluginContract metadata
-        └── UmPluginActivity implementation
-                    │
-                    ▼
-          Untrusted Manager discovery
-                    │
-          compatibility + identity checks
-                    │
-                    ▼
-              Plugin Manager
-                    │
-             enabled / disabled
-                    │
-                    ▼
-                Tools Kit
-                    │
-                    ▼
-             Plugin Activity
-```
-
-## Stable API
+## SDK module
 
 The SDK lives in:
 
@@ -950,7 +452,7 @@ The SDK lives in:
 plugin-api/
 ```
 
-Important classes:
+Primary API classes:
 
 ```text
 untrusted.manager.um.plugin.api.UmPluginContract
@@ -963,11 +465,25 @@ Current host API version:
 1
 ```
 
-## Step 1 — Create a plugin Android module
+## Plugin discovery
 
-For a separate plugin project, create a normal Android application module and depend on the UM plugin API.
+A plugin exposes an activity using the UM entry-point action:
 
-If you are developing the plugin alongside this source tree, you can use the local API module:
+```text
+untrusted.manager.um.plugin.ACTION_ENTRY
+```
+
+UM discovers installed plugins automatically, validates the plugin metadata, checks API compatibility, remembers enabled/disabled state, and adds enabled entries to Tools Kit.
+
+A plugin can be updated independently of the UM base APK.
+
+## Creating a plugin
+
+### 1. Create a normal Android application project
+
+A plugin is its own Android application module. It does not need to copy UM's private implementation classes.
+
+During development inside the UM source tree, the API module can be referenced directly:
 
 ```gradle
 dependencies {
@@ -975,9 +491,11 @@ dependencies {
 }
 ```
 
-For a standalone plugin project, publish/copy the compatible `plugin-api` Android library into your own dependency setup. The plugin API is deliberately small: the host/plugin boundary is an Android activity contract rather than a dependency on UM's private implementation classes.
+For a completely separate project, package the compatible `plugin-api` library as part of the plugin project dependency setup.
 
-## Step 2 — Implement the plugin activity
+### 2. Implement `UmPluginActivity`
+
+A minimal plugin can look like this:
 
 ```java
 package com.example.umplugin;
@@ -1000,7 +518,7 @@ public final class ExamplePluginActivity extends UmPluginActivity {
 }
 ```
 
-The base activity exposes the host-provided context helpers:
+The base activity exposes:
 
 ```java
 pluginId()
@@ -1009,11 +527,11 @@ inputUri()
 inputMime()
 ```
 
-These allow a plugin to understand which plugin entry launched it and, when the host supplies a file context, what file/URI/MIME type was associated with the launch.
+The helpers tell the plugin which plugin entry launched it and, when file context was supplied, which file/URI/MIME type was associated with the launch.
 
-## Step 3 — Register the plugin entry point
+### 3. Register the entry activity
 
-Declare an exported activity with the stable UM action and metadata:
+Add an exported activity to the plugin manifest:
 
 ```xml
 <activity
@@ -1052,21 +570,23 @@ Declare an exported activity with the stable UM action and metadata:
 </activity>
 ```
 
-## Metadata reference
+### Plugin metadata
 
-| Metadata | Required | Meaning |
+| Metadata | Required | Purpose |
 |---|:---:|---|
-| `untrusted.manager.um.plugin.id` | ✅ | Stable plugin ID; max 64 chars and limited to letters, digits, `.`, `_`, `-` |
-| `untrusted.manager.um.plugin.name` | ✅ | User-facing feature name |
-| `untrusted.manager.um.plugin.api` | ✅ | API version implemented by the plugin |
-| `untrusted.manager.um.plugin.min_api` | ✅ | Oldest host API required |
-| `untrusted.manager.um.plugin.description` | Optional | Feature description shown in Tools Kit |
-| `untrusted.manager.um.plugin.category` | Optional | Tools Kit category; defaults to Plugins |
-| `untrusted.manager.um.plugin.icon` | Optional | Plugin icon metadata |
+| `untrusted.manager.um.plugin.id` | Yes | Stable plugin ID |
+| `untrusted.manager.um.plugin.name` | Yes | Name shown to the user |
+| `untrusted.manager.um.plugin.api` | Yes | API version implemented |
+| `untrusted.manager.um.plugin.min_api` | Yes | Minimum host API required |
+| `untrusted.manager.um.plugin.description` | No | Description shown in Tools Kit |
+| `untrusted.manager.um.plugin.category` | No | Tools Kit category; defaults to Plugins |
+| `untrusted.manager.um.plugin.icon` | No | Optional plugin icon metadata |
 
-## File-context contract
+Plugin IDs are intended to remain stable across plugin updates and should contain only letters, digits, `.`, `_`, and `-`.
 
-When a plugin is launched with file context, UM can provide:
+### File context
+
+When a file-aware launch is available, the host can provide:
 
 ```java
 UmPluginContract.EXTRA_INPUT_URI
@@ -1074,10 +594,10 @@ UmPluginContract.EXTRA_INPUT_PATH
 UmPluginContract.EXTRA_INPUT_MIME
 ```
 
-The plugin ID is supplied through:
+The plugin ID is available through:
 
 ```java
-UmPluginContract.EXTRA_PLUGIN_ID
+UmPluginContract.EXTRA_ID
 ```
 
 Example:
@@ -1088,316 +608,213 @@ String mime = inputMime();
 android.net.Uri uri = inputUri();
 ```
 
-A plugin should treat all incoming paths and URIs as untrusted input and perform its own validation before reading or writing data.
+Treat every incoming URI/path as untrusted input and validate it before performing filesystem work.
 
-## Plugin lifecycle inside UM
-
-1. Android installs the plugin APK.
-2. UM discovers activities advertising `ACTION_ENTRY`.
-3. UM reads plugin metadata.
-4. UM validates plugin identity and API compatibility.
-5. UM filters disabled/incompatible entries.
-6. Enabled plugins are added to the Tools Kit registry.
-7. The plugin's application icon can be used by the host UI.
-8. Selecting the plugin launches its declared activity.
-9. The host supplies the plugin ID and optional file context.
-
-Plugins remain separate Android packages. Android controls their installation/removal; UM controls discovery, compatibility filtering and enabled/disabled state.
-
-## Plugin development rules
-
-- Keep the plugin ID stable after release.
-- Do not depend on UM's private Java implementation packages.
-- Depend only on the published/stable `plugin-api` contract for host integration.
-- Validate every incoming URI/path.
-- Do not assume a file context is present.
-- Do not assume root, Shizuku or special permissions exist.
-- Handle API incompatibility gracefully.
-- Keep plugin UI self-contained.
-- Use your own application package and signing key.
-- Test install, disable, re-enable, update and uninstall behavior.
-- Avoid claiming compatibility with an API version the plugin has not actually tested.
-
-## Minimal plugin project layout
+### Recommended plugin structure
 
 ```text
-MyUmPlugin/
+ExamplePlugin/
 ├── app/
-│   ├── src/main/
-│   │   ├── AndroidManifest.xml
-│   │   └── java/com/example/umplugin/
-│   │       └── ExamplePluginActivity.java
-│   └── build.gradle
-├── settings.gradle
+│   ├── src/main/java/com/example/umplugin/
+│   │   └── ExamplePluginActivity.java
+│   └── src/main/AndroidManifest.xml
+├── build.gradle
+└── settings.gradle
+```
+
+The plugin can contain as many internal activities/classes/resources as it needs. Only the entry contract needs to be exposed to UM.
+
+### Plugin development rules
+
+- Keep the plugin ID stable.
+- Depend on the public `plugin-api` contract rather than UM private implementation packages.
+- Validate all incoming URIs and paths.
+- Do not assume file context exists.
+- Do not assume root or Shizuku is available.
+- Handle unsupported host API versions gracefully.
+- Keep the plugin independent so it can be installed and updated on its own.
+
+---
+
+# Project Layout
+
+```text
+UM/
+├── app/                         # Untrusted Manager Android application
+├── plugin-api/                  # Stable third-party plugin contract
+├── images/                      # README screenshots
+├── LICENSE                      # Project license
 └── README.md
 ```
 
----
-
-# 22. Project Architecture
+The main application namespace is:
 
 ```text
-Untrusted Manager
-│
-├── app/                         # Android application
-│   └── src/main/
-│       ├── java/
-│       │   ├── file manager + UI
-│       │   ├── archive engines
-│       │   ├── APK / DEX / Smali
-│       │   ├── AXML / ARSC
-│       │   ├── DLL / PE / IL
-│       │   ├── network clients/servers
-│       │   ├── MCP / HTTP remote services
-│       │   ├── media/editor
-│       │   └── Tools Kit
-│       └── res/
-│
-├── plugin-api/                 # Stable third-party plugin contract
-│   └── src/main/java/
-│       └── untrusted/manager/um/plugin/api/
-│
-├── images/                     # Project screenshots/assets
-├── tools/                      # Development/build helper scripts
-├── gradlew                     # Gradle wrapper
-└── README.md
+untrusted.manager.um
 ```
 
-### Major internal surfaces
-
-- `UMManager` — primary file-manager/navigation application layer.
-- `tools` — Tools Kit, registry, runner and plugin management.
-- `network` — SMB/SFTP/WebDAV/S3/network transfer surfaces.
-- `remote` — HTTP remote management.
-- `arsc` — resource-table editors.
-- `player` — media/image workflows.
-- `gameanalysis` — IL2CPP/game-analysis workflows.
-- `patcher` — APK patching workflows.
-- `plugin-api` — stable external plugin contract.
-
----
-
-# 23. Storage Layout
-
-The application uses an `Untrusted Manager` workspace under shared storage for user-facing persistent artifacts where the relevant feature requires it.
-
-Common locations include:
+The plugin API namespace is:
 
 ```text
-0/Untrusted Manager/
-├── logs/
-├── Dump/
-├── DLL/
-│   ├── EditedSource/
-│   └── Edited/
-└── frameworks/
+untrusted.manager.um.plugin.api
 ```
-
-Feature-specific subdirectories may be created as needed. The application-private area is used for sensitive service state and isolated MCP APK workspaces where appropriate.
 
 ---
 
-# 24. Security & Data Safety
+# Building
 
-UM is intentionally defensive around operations that can corrupt or escape a requested workspace.
+UM is a standard Android Gradle project.
 
-### Filesystem
-
-- Reject unsafe child names.
-- Validate source/destination relationships.
-- Avoid recursive traversal through symbolic links on hardened paths.
-- Verify copies/moves where supported.
-- Clean up failed partial destinations where possible.
-
-### Archives
-
-- Constrain extraction destinations.
-- Reject traversal components.
-- Validate archive paths.
-- Avoid unsafe link extraction on hardened TAR paths.
-- Verify sensitive archive rewrites.
-
-### Network
-
-- Encrypted profile storage where implemented.
-- FTPS certificate/hostname validation.
-- SFTP host-key pinning with explicit trust-any escape hatch.
-- MCP/HTTP path confinement.
-- Server-side read/read-write/deny permissions.
-- Bearer authentication options.
-
-### APK / binary editing
-
-- Original files are preserved by workflows that create edited outputs.
-- Rebuild/sign operations are explicit.
-- Unsupported binary layouts should fail rather than silently produce stale offsets.
-- MCP APK workspaces are isolated from source APKs.
-
-### Permissions
-
-Some tools require Android permissions or device capabilities. Root/Shizuku, NFC, camera, GPS, Bluetooth, network, storage-provider access and other capabilities are used only when the corresponding feature requires them. The presence of a tool does not imply that every device can provide every underlying capability.
-
----
-
-# 25. Building from Source
-
-UM is a standard Android Gradle project with two modules:
-
-```text
-:app
-:plugin-api
-```
-
-The project currently targets:
+The application currently targets Java 17 with:
 
 ```text
 compileSdk 36
 targetSdk 37
 minSdk 19
-Java 17
 ```
 
-Typical commands:
+From a normal Android development environment:
 
 ```bash
 ./gradlew assembleDebug
 ```
 
-or:
-
-```bash
-./gradlew :app:assembleDebug
-```
-
-For source-only Java compilation when the required Gradle distribution/dependencies are already available:
-
-```bash
-./gradlew :app:compileDebugJavaWithJavac --no-daemon
-```
-
-> A successful source audit is not the same thing as a successful Android build. A complete build requires the configured Gradle distribution and all Android/Maven dependencies to be available in the environment.
+For plugin development, build the plugin project using its own Android Gradle setup and include the compatible UM `plugin-api` library.
 
 ---
 
-# 26. Verification Philosophy
+# Workspace Conventions
 
-The project treats **“the button exists”** and **“the feature works”** as different things.
+UM keeps application-created analysis and diagnostic data in an ordinary user-visible workspace.
 
-A feature is expected to have:
-
-- A real implementation.
-- A reachable UI entry point where applicable.
-- Correct tool-registry wiring.
-- Correct launcher/intent dispatch.
-- Correct manifest declarations.
-- Correct resource references.
-- Error handling for invalid input.
-- Persistence behavior where required.
-- Safe cancellation for expensive work.
-- No fake success result.
-- No placeholder-only screen.
-- No unfinished `TODO`/`FIXME` implementation standing in for a feature.
-
-The source audit also checks for the classic failure mode where a tool is registered and visible but its click path is not actually handled.
-
----
-
-# 27. Current Feature Matrix
-
-| Area | Source state |
-|---|---|
-| File manager | 🟢 Implemented + hardened |
-| FTP | 🟢 Implemented |
-| FTPS | 🟢 Implemented |
-| SMB | 🟢 Implemented |
-| WebDAV | 🟢 Implemented |
-| SFTP | 🟢 Implemented |
-| S3 | 🟢 Implemented |
-| HTTP remote management | 🟢 Implemented |
-| MCP + APK-MCP | 🟢 Pass 19 complete |
-| Plugin system / SDK | 🟢 Implemented |
-| ZIP / APK / JAR | 🟢 Implemented |
-| 7z | 🟢 Implemented |
-| RAR | 🟢 Implemented |
-| TAR family | 🟢 Implemented |
-| DEX | 🟢 Implemented + hardened |
-| DEX++ | 🟢 Implemented + hardened |
-| AXML | 🟢 Implemented + hardened |
-| ARSC++ | 🟢 Implemented + hardened |
-| Text editor | 🟢 Implemented + hardened |
-| HTML preview | 🟢 Implemented |
-| HTML embedded syntax | 🟢 Implemented |
-| Media player | 🟢 Implemented + hardened |
-| Streaming headers | 🟢 Implemented |
-| Terminal | 🟢 Implemented |
-| Comparison | 🟢 Implemented + hardened |
-| Batch operations | 🟢 Pass 19 complete |
-| Shortcuts | 🟢 Implemented |
-| Cloud backup | 🟢 Implemented |
-| Search/history edge cases | 🟢 Hardened |
-| Service auto-start | 🟢 Implemented |
-
----
-
-# 28. Development Notes
-
-### Do not treat generated build output as source
-
-The repository's source of truth is the source tree. APKs, Gradle build directories and generated artifacts are not substitutes for the implementation.
-
-### Keep the plugin contract stable
-
-Changes to `UmPluginContract` can affect independently installed plugin APKs. Additive changes should preserve existing metadata/action names whenever possible.
-
-### Keep user data safe
-
-New file/archive/network features should follow the existing validation and transactional patterns instead of introducing a second, weaker path implementation.
-
-### Keep UI actions reachable
-
-When adding a Tools Kit item, always add the corresponding launcher path and test the full chain:
+Important locations include:
 
 ```text
-Tools Hub
-  → ToolRegistry ID
-  → click handler
-  → Activity / runner
-  → actual feature implementation
-  → success/failure result
+0/Untrusted Manager/
+├── Dump/                 # IL2CPP/game-analysis dump output
+├── DLL/
+│   ├── Edited/           # Generated managed assemblies
+│   └── EditedSource/     # Editable reconstructed C# sources
+├── frameworks/           # Optional Android framework resources
+└── logs/                 # Application diagnostic logs
 ```
 
----
-
-# 29. Contributing a New Built-in Tool
-
-For a built-in feature, the normal integration path is:
-
-1. Implement the feature in an appropriate package.
-2. Add its activity/service/resources if required.
-3. Add manifest declarations when required.
-4. Add a `ToolRegistry.ToolItem` entry.
-5. Give it a unique ID.
-6. Add the launcher/dispatch branch.
-7. Add a real icon resource.
-8. Verify the UI action reaches the implementation.
-9. Verify invalid input and cancellation paths.
-10. Run source/static checks before considering it complete.
-
-For a feature intended to be independently installable, prefer the **Plugin SDK** instead of modifying the built-in registry.
+These folders are intended to make generated work easy to find, back up, and inspect from the file manager.
 
 ---
 
-# 30. Project Identity
+# License
 
-<p align="center">
-  <img src="./app/src/main/res/mipmap-xxxhdpi/ic_launcher.png" width="72" height="72" alt="Untrusted Manager">
-</p>
+Untrusted Manager is distributed under the **GNU General Public License v3.0 or later**. See [`LICENSE`](./LICENSE).
+
+UM also contains and links against many separately licensed open-source projects. Their individual license texts are included where required by the corresponding project and are shown from the application's About/Credits UI.
+
+---
+
+# Credits
+
+Untrusted Manager is a fork of **[MP Manager](https://github.com/AbdurazaaqMohammed/MP-Manager)** by **[Abdurazaaq Mohammed](https://github.com/AbdurazaaqMohammed)**. MP Manager is the foundation of this project, and its original authors and contributors remain credited.
+
+UM also brings together a number of open-source libraries, projects, and technical references. Some are incorporated directly into the application, while others are used as references or external runtime dependencies for specific tools. The distinction matters: a project listed as a reference is not being claimed as code that was copied into UM.
+
+## Upstream
+
+| Project | Author / Team | Link | Used for |
+|---|---|---|---|
+| **MP Manager** | Abdurazaaq Mohammed | https://github.com/AbdurazaaqMohammed/MP-Manager | Base application and the foundation UM is forked from |
+
+## Android, APK and editor libraries
+
+| Project | Author / Team | Link | Used for |
+|---|---|---|---|
+| DEX Editor | Krushna Chandra | https://github.com/developer-krushna/Dex-Editor-Android | DEX browsing and editing |
+| APKEditor | REAndroid | https://github.com/REAndroid/APKEditor | APK/archive processing |
+| ApkCloner | Krushna Chandra | https://github.com/developer-krushna/ApkCloner | APK-related workflows |
+| JKS Signature Generator | Krushna Chandra | https://github.com/developer-krushna/JKS-SignKey-Generator | Signing support |
+| sun.security for Android | Muntashir Al-Islam | https://github.com/MuntashirAkon/sun-security-android | Java security compatibility |
+| apksig for Android | Muntashir Al-Islam | https://github.com/MuntashirAkon/apksig-android | APK signature handling |
+| Sora Editor | Rosemoe | https://github.com/Rosemoe/sora-editor | Code/text editing and syntax support |
+| zip4j | Srikanth Lingala | https://github.com/srikanth-lingala/zip4j | ZIP processing |
+| aXML | APK Explorer & Editor | https://github.com/apk-editor/aXML | Android XML/APK XML processing |
+| jadx | skylot | https://github.com/skylot/jadx | Java/Dex decompilation support |
+| smali / baksmali | JesusFreke and the Android Open Source Project | https://github.com/JesusFreke/smali | Smali assembly/disassembly support |
+| AndroidX | Google | https://github.com/androidx/androidx | Android application components |
+| Material Components | Google | https://github.com/material-components/material-components-android | Material UI components |
+| Material Design Icons | Google | https://github.com/google/material-design-icons | Application icons |
+
+## Game-analysis and IL2CPP references
+
+The IL2CPP tooling in UM is informed by several public projects and their documented approaches. These projects deserve explicit credit because their work helped establish the formats, metadata structures, and workflows that this tooling works with.
+
+| Project | Author / Team | Link | Relation to UM |
+|---|---|---|---|
+| **Il2CppDumper** | Perfare | https://github.com/Perfare/Il2CppDumper | IL2CPP metadata/layout and dumping reference |
+| **Il2CppDumper** | Jumboperson | https://github.com/Jumboperson/Il2CppDumper | Earlier IL2CPP dumping work referenced by the broader ecosystem |
+| **il2cpp-Dumper** | MyDearMoon | https://github.com/MyDearMoon/il2cpp-Dumper | Archive/envelope and modern IL2CPP workflow reference |
+| **Il2CppMetadataExtractor** | CameroonD | https://github.com/CameroonD/Il2CppMetadataExtractor | Runtime metadata-recovery reference |
+| **frida-il2cpp-bridge** | vfsfitvnm | https://github.com/vfsfitvnm/frida-il2cpp-bridge | Runtime IL2CPP scripting/dump workflow used by the Frida tool integration |
+| **Frida** | Frida Project | https://frida.re/ | External runtime required by the Frida workflow |
+
+The UM Game Analyzer also records these IL2CPP references in its generated analysis report so that analysis output retains attribution to the projects that informed the workflow.
+
+## Managed DLL / .NET tooling
+
+UM's DLL editor is its own integrated implementation for inspecting and editing managed assemblies and PE files. It was developed around the same kinds of workflows users commonly use with established .NET reverse-engineering tools.
+
+| Project / technology | Author / Team | Link | Relation to UM |
+|---|---|---|---|
+| **dnSpy** | dnSpy contributors | https://github.com/dnSpy/dnSpy | Workflow/reference for managed assembly browsing and C# inspection |
+| **ILSpy** | ICSharpCode | https://github.com/icsharpcode/ILSpy | Workflow/reference for managed assembly browsing and decompilation |
+| **Mono / MSBuild** | Mono Project | https://www.mono-project.com/ | Managed compilation/runtime support |
+| **termux-mono** | IanusInferus | https://github.com/IanusInferus/termux-mono | Android/Termux Mono bundle reference used by the managed compiler backend |
+| **Roslyn** | Microsoft | https://github.com/dotnet/roslyn | C# compiler backend when available through the managed compiler environment |
+
+The DLL editor should not be read as claiming that dnSpy or ILSpy source code is embedded in UM; they are credited as tooling references/influences for the managed-assembly workflow.
+
+## Archive, networking and utility libraries
+
+| Project | Author / Team | Link | Used for |
+|---|---|---|---|
+| Commons Collections | Apache Software Foundation | https://github.com/apache/commons-collections | Collection utilities |
+| Guava | Google | https://github.com/google/guava | Java utility support |
+| Gson | Google | https://github.com/google/gson | JSON serialization |
+| Commons IO | Apache Software Foundation | https://github.com/apache/commons-io | File and stream utilities |
+| Apache Commons Compress | Apache Software Foundation | https://commons.apache.org/proper/commons-compress | TAR/7z/archive support |
+| Apache Commons Net | Apache Software Foundation | https://commons.apache.org/proper/commons-net | Network protocol support |
+| JunRAR | JunRAR | https://github.com/junrar/junrar | RAR archive support |
+| XZ for Java | Tukaani | https://tukaani.org/xz/java.html | XZ compression |
+| Apache MINA FTP Server | Apache Software Foundation | https://github.com/apache/mina-ftpserver | Embedded FTP server |
+| Android-EZ-FTP | lilincpp | https://github.com/lilincpp/Android-EZ-FTP | FTP functionality |
+| ftp4j | Carlo Pelliccia / Sauron Software | http://www.sauronsoftware.it/projects/ftp4j | FTP client support |
+| Volley | Google | https://github.com/google/volley | HTTP networking |
+| SSHJ | SSHJ contributors | https://github.com/hierynomus/sshj | SSH/SFTP support |
+| Bouncy Castle | The Legion of the Bouncy Castle | https://github.com/bcgit/bc-java | Cryptographic support |
+| SLF4J | QOS.ch | https://github.com/qos-ch/slf4j | Logging API |
+| java-diff-utils | java-diff-utils | https://github.com/java-diff-utils/java-diff-utils | Text/file difference processing |
+| ANTLR | The ANTLR Project | https://github.com/antlr/antlr4 | Parsing support |
+| joni | JRuby | https://github.com/jruby/joni | Regular-expression engine support |
+| Markwon | noties | https://github.com/noties/Markwon | Markdown rendering |
+| ZXing | zxing | https://github.com/zxing/zxing | QR/barcode processing |
+| zxing-android-embedded | Journey Mobile | https://github.com/journeyapps/zxing-android-embedded | Android QR scanning UI |
+| JCommander | Cedric Beust | https://github.com/cbeust/jcommander | Command-line argument parsing |
+
+## Other credited projects
+
+| Project | Author / Team | Link | Used for |
+|---|---|---|---|
+| Shizuku | RikkaApps | https://github.com/RikkaApps/Shizuku | Privileged Android API bridge |
+| Screen Color Picker | codehasan | https://github.com/codehasan/ScreenColorPicker | Color-picker functionality |
+| Layout Inspector | Ratul Hasan | https://github.com/AbdurazaaqMohammed/Layout-Inspector | Layout inspection |
+| Viz.js | Mike Daines | https://github.com/mdaines/viz.js | Graph rendering |
+| svg-pan-zoom | Andrea Leofreddi | https://github.com/ariutta/svg-pan-zoom | SVG navigation and zooming |
+
+## Licensing
+
+The relevant license texts for redistributed open-source components are included in the application assets where required. UM's in-app **About / Credits** screen provides the project name, author, repository, and license information for the libraries it directly tracks there.
+
+For the exact licensing terms of an individual dependency, use that project's repository and the license text shipped with UM rather than treating this README as a replacement for the original license.
 
 <p align="center">
   <strong>Untrusted Manager</strong><br>
-  Android file management + APK tooling + developer utilities + remote storage + extensible tools.
-</p>
-
-<p align="center">
-  <sub>The original Untrusted Manager name and launcher icon are intentionally retained as the project's identity.</sub>
+  <sub>Built on MP Manager. Expanded for Android power users.</sub>
 </p>
