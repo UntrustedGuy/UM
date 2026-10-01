@@ -60,6 +60,8 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
     private Node selectedNode;
     private DotNetAssemblyParser.MethodDef editingIlMethod;
     private boolean editingCSharp;
+    /** Complete decompiled C# document currently displayed in the editor. */
+    private String fullCSharpSource = "";
     private final ExecutorService dllExecutor = Executors.newSingleThreadExecutor();
 
     @Override protected void onCreate(Bundle state) {
@@ -244,6 +246,7 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
         selectedNode = null;
         parser = null;
         probe = null;
+        fullCSharpSource = "";
         allNodes.clear(); visibleNodes.clear(); adapter.notifyDataSetChanged();
         setEditorText("Loading assembly…", "loading.txt");
         dllExecutor.execute(() -> {
@@ -263,8 +266,19 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
                 if (result != null) {
                     parser = result;
                     rebuildTree();
-                    if (!visibleNodes.isEmpty()) select(visibleNodes.get(0));
-                    else setEditorText("// Assembly contains no user-defined types.\n\n" + result.summary(), "assembly.cs");
+                    // Keep ONE complete C# document in the editor. Selecting a type,
+                    // field, property or method from the tree must navigate inside
+                    // this document instead of replacing it with a tiny fragment.
+                    fullCSharpSource = result.decompileAll();
+                    editingCSharp = true;
+                    editingIlMethod = null;
+                    setEditorText(fullCSharpSource, "assembly.cs");
+                    if (!visibleNodes.isEmpty()) {
+                        selectedNode = visibleNodes.get(0);
+                        jumpToNode(selectedNode);
+                    } else {
+                        setEditorText("// Assembly contains no user-defined types.\n\n" + result.summary(), "assembly.cs");
+                    }
                     Toast.makeText(this, "Managed assembly loaded", Toast.LENGTH_SHORT).show();
                     return;
                 }
@@ -321,10 +335,97 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
         editingIlMethod = null;
         editingCSharp = true;
         if (parser == null || n == null) return;
-        if (n.type == Node.TYPE) setEditorText(parser.decompile(n.owner), n.owner.name + ".cs");
-        else if (n.type == Node.METHOD) setEditorText(methodSource(n.method), n.method.name + ".cs");
-        else if (n.type == Node.FIELD) setEditorText(fieldSource(n.field), n.field.name + ".cs");
-        else if (n.type == Node.PROPERTY) setEditorText(propertySource(n.property), n.property.name + ".cs");
+
+        // C# mode is a complete assembly document. Do not replace the document
+        // when a tree item is selected; simply jump to its declaration. This is
+        // the same navigation model users expect from a real assembly browser.
+        if (fullCSharpSource == null || fullCSharpSource.isEmpty()) {
+            fullCSharpSource = parser.decompileAll();
+            setEditorText(fullCSharpSource, "assembly.cs");
+        }
+        jumpToNode(n);
+    }
+
+    /**
+     * Find the declaration represented by a tree node in the existing full C#
+     * document and move the Sora editor directly to it. No source replacement
+     * occurs, so edits elsewhere in the document are preserved.
+     */
+    private void jumpToNode(Node n) {
+        if (n == null || editorFragment == null || editorFragment.getEditor() == null) return;
+        String source = fullCSharpSource;
+        if (source == null || source.isEmpty()) return;
+
+        String query = nodeSearchText(n);
+        int index = findDeclarationIndex(source, n, query);
+        if (index < 0) return;
+
+        int line = 0;
+        int column = 0;
+        for (int i = 0; i < index; i++) {
+            if (source.charAt(i) == '\n') { line++; column = 0; }
+            else column++;
+        }
+        final int targetLine = line;
+        final int targetColumn = column;
+        final String targetQuery = query == null ? "" : query;
+        // navigateTo() already handles delayed editor layout and scrolls the
+        // selected line into view. A second post-layout call makes navigation
+        // reliable immediately after setText()/tree overlay dismissal.
+        editorFragment.navigateTo(targetLine, targetColumn, targetQuery);
+        editorFragment.getEditor().postDelayed(() -> {
+            if (editorFragment != null && editorFragment.getEditor() != null) {
+                try {
+                    editorFragment.navigateTo(targetLine, targetColumn, targetQuery);
+                } catch (Throwable ignored) {}
+            }
+        }, 80L);
+    }
+
+    private String nodeSearchText(Node n) {
+        if (n.type == Node.METHOD && n.method != null) return n.method.signature();
+        if (n.type == Node.FIELD && n.field != null) return n.field.name;
+        if (n.type == Node.PROPERTY && n.property != null) return n.property.name;
+        if (n.type == Node.TYPE && n.owner != null) return n.owner.name;
+        return n.label;
+    }
+
+    private int findDeclarationIndex(String source, Node n, String query) {
+        if (source == null || source.isEmpty()) return -1;
+
+        // Prefer the complete declaration/signature. This avoids jumping to a
+        // same-named call elsewhere in the file.
+        if (query != null && !query.isEmpty()) {
+            int exact = source.indexOf(query);
+            if (exact >= 0) return exact;
+        }
+
+        if (n.type == Node.TYPE && n.owner != null) {
+            String name = n.owner.name;
+            String[] markers = {
+                    "class " + name, "struct " + name, "interface " + name,
+                    "enum " + name, "delegate " + name
+            };
+            for (String marker : markers) {
+                int i = source.indexOf(marker);
+                if (i >= 0) return i;
+            }
+        }
+
+        if (n.type == Node.METHOD && n.method != null) {
+            String name = n.method.name;
+            int i = source.indexOf(name);
+            if (i >= 0) return i;
+        }
+        if (n.type == Node.FIELD && n.field != null) {
+            int i = source.indexOf(n.field.name);
+            if (i >= 0) return i;
+        }
+        if (n.type == Node.PROPERTY && n.property != null) {
+            int i = source.indexOf(n.property.name);
+            if (i >= 0) return i;
+        }
+        return -1;
     }
 
     private String methodSource(DotNetAssemblyParser.MethodDef m) {
@@ -355,8 +456,11 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
             Toast.makeText(this, probe != null && probe.pe && !probe.managed ? "C# is unavailable for native/unmanaged PE files" : "Open a valid managed .NET assembly first", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (selectedNode != null) select(selectedNode);
-        else { editingIlMethod = null; editingCSharp = true; setEditorText(parser.decompileAll(), "assembly.cs"); }
+        editingIlMethod = null;
+        editingCSharp = true;
+        if (fullCSharpSource == null || fullCSharpSource.isEmpty()) fullCSharpSource = parser.decompileAll();
+        setEditorText(fullCSharpSource, "assembly.cs");
+        if (selectedNode != null) jumpToNode(selectedNode);
     }
 
     private void openSelectedIl() {
@@ -395,7 +499,10 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
                     probe = null;
                     editingIlMethod = null;
                     rebuildTree();
-                    if (!visibleNodes.isEmpty()) select(visibleNodes.get(0));
+                    fullCSharpSource = parser.decompileAll();
+                    editingCSharp = true;
+                    setEditorText(fullCSharpSource, "assembly.cs");
+                    if (!visibleNodes.isEmpty()) { selectedNode = visibleNodes.get(0); jumpToNode(selectedNode); }
                     Toast.makeText(this, "Edited DLL saved: " + out.getAbsolutePath(), Toast.LENGTH_LONG).show();
                 });
             } catch (Throwable e) {
@@ -449,7 +556,10 @@ public final class DllEditorActivity extends AppCompatActivity implements Unifie
                     editingIlMethod = null;
                     editingCSharp = false;
                     rebuildTree();
-                    setEditorText(parser.decompileAll(), "assembly.cs");
+                    fullCSharpSource = parser.decompileAll();
+                    editingCSharp = true;
+                    setEditorText(fullCSharpSource, "assembly.cs");
+                    if (!visibleNodes.isEmpty()) { selectedNode = visibleNodes.get(0); jumpToNode(selectedNode); }
                     Toast.makeText(this, "C# compiled to DLL: " + out.getAbsolutePath(), Toast.LENGTH_LONG).show();
                 });
             } catch (Throwable e) {
