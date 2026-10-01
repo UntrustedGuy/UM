@@ -38,7 +38,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.provider.Settings;
-import android.sun.security.provider.JavaKeyStoreProvider;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextUtils;
@@ -193,6 +192,7 @@ import untrusted.manager.um.ui.UiFields;
 import untrusted.manager.um.ui.activities.TextEditorActivity;
 import untrusted.manager.um.ui.dialogs.FilePickerDialog;
 import untrusted.manager.um.ui.views.SortDirectionToggle;
+import untrusted.manager.um.utils.SignatureKeyPaths;
 import untrusted.manager.um.utils.AccessManager;
 import untrusted.manager.um.utils.CopyUtil;
 import untrusted.manager.um.utils.DialogUtil;
@@ -2025,10 +2025,10 @@ public class MainActivity extends AppCompatActivity {
         boolean useDeviceRss = lang.equals(deviceLang);
         rss = getResources();// /*useDeviceRss ? getResources() :*/ LocaleHelper.setLocale(this, Locale.getDefault().getLanguage()).getResources();
 
-        new Thread(() -> {
-            Security.addProvider(new BouncyCastleProvider());
-            Security.addProvider(new JavaKeyStoreProvider());
-        }).start();
+        // JKS is required by signing/key-management flows, so initialize it
+        // synchronously rather than racing the first signature operation.
+        SignatureKeyPaths.ensureJksProvider();
+        new Thread(() -> Security.addProvider(new BouncyCastleProvider())).start();
 
         requestPermissionLauncher = registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> { });
 

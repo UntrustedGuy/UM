@@ -45,21 +45,8 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
-import android.sun.security.x509.AlgorithmId;
-import android.sun.security.x509.CertificateAlgorithmId;
-import android.sun.security.x509.CertificateExtensions;
-import android.sun.security.x509.CertificateIssuerName;
-import android.sun.security.x509.CertificateSerialNumber;
-import android.sun.security.x509.CertificateSubjectName;
-import android.sun.security.x509.CertificateValidity;
-import android.sun.security.x509.CertificateVersion;
-import android.sun.security.x509.CertificateX509Key;
-import android.sun.security.x509.KeyIdentifier;
-import android.sun.security.x509.PrivateKeyUsageExtension;
-import android.sun.security.x509.SubjectKeyIdentifierExtension;
+import android.sun.security.x509.CertAndKeyGen;
 import android.sun.security.x509.X500Name;
-import android.sun.security.x509.X509CertImpl;
-import android.sun.security.x509.X509CertInfo;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Base64;
@@ -96,12 +83,12 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 import java.util.Date;
-import java.util.Random;
 
 import untrusted.manager.um.R;
 import untrusted.manager.um.utils.ErrorUtil;
 import untrusted.manager.um.utils.FileUtils;
 import untrusted.manager.um.utils.PasswordEncryptor;
+import untrusted.manager.um.utils.SignatureKeyPaths;
 
 public class KeyStoreMakerDialog extends DialogFragment {
 
@@ -320,24 +307,14 @@ public class KeyStoreMakerDialog extends DialogFragment {
                 try {
                     KeyParam keyParam = save();
                     mainHandler.post(() -> {
-                        progress.dismiss();
-                        if (listener != null) {
-                            listener.onKeyGenerated(keyParam);
-                        }
+                        if (progress != null && progress.isShowing()) progress.dismiss();
+                        if (listener != null) listener.onKeyGenerated(keyParam);
                     });
                 } catch (Exception e) {
                     mainHandler.post(() -> {
-                        progress.dismiss();
-                        /*String message = e.toString();
-                        new MaterialAlertDialogBuilder(c)
-                                .setTitle("Error")
-                                .setMessage(message)
-                                .setPositiveButton(android.R.string.ok, null)
-                                .show();
-                        if (listener != null) {
-                            listener.onError(e.toString());
-                        }*/
-                        new ErrorUtil(c).showError(e);
+                        if (progress != null && progress.isShowing()) progress.dismiss();
+                        if (listener != null) listener.onError(getExceptionMessage(e));
+                        else if (getActivity() != null) new ErrorUtil(getActivity()).showError(e);
                     });
                 }
             }).start();
@@ -361,7 +338,7 @@ public class KeyStoreMakerDialog extends DialogFragment {
         String directoryText = directory.getText() == null ? "" : directory.getText().toString().trim();
         File outputDirectory;
         if (directoryText.isEmpty()) {
-            outputDirectory = new File(Environment.getExternalStorageDirectory(), "Untrusted Manager/keys");
+            outputDirectory = SignatureKeyPaths.ensureDefaultDirectory();
         } else {
             File requested = new File(directoryText);
             outputDirectory = requested.isAbsolute()
@@ -391,15 +368,20 @@ public class KeyStoreMakerDialog extends DialogFragment {
     }
 
     private void generateKey(KeyParam keyParam) throws Exception {
-        KeyPairGenerator instance = KeyPairGenerator.getInstance("RSA");
-        instance.initialize(keyParam.keySize, SecureRandom.getInstance("SHA1PRNG"));
-        KeyPair generateKeyPair = instance.generateKeyPair();
-        PublicKey publicKey = generateKeyPair.getPublic();
-        PrivateKey privateKey = generateKeyPair.getPrivate();
+        SignatureKeyPaths.ensureJksProvider();
 
-        CertificateExtensions certificateExtensions = new CertificateExtensions();
-        certificateExtensions.set("SubjectKeyIdentifier",
-                new SubjectKeyIdentifierExtension(new KeyIdentifier(publicKey).getIdentifier()));
+        // Use the same self-signed certificate generator already used by UM's
+        // FTPS code. This avoids the fragile hand-built X509CertInfo path that
+        // could fail before any output file was written on newer Android/JDK
+        // combinations.
+        CertAndKeyGen keyGen = new CertAndKeyGen("RSA", "SHA256withRSA");
+        keyGen.setRandom(new SecureRandom());
+        keyGen.generate(keyParam.keySize);
+
+        PrivateKey privateKey = keyGen.getPrivateKey();
+        if (privateKey == null || privateKey.getEncoded() == null || privateKey.getEncoded().length == 0) {
+            throw new IOException("RSA private key generation returned no encodable key");
+        }
 
         StringBuilder x500NameBuilder = new StringBuilder("CN=").append(keyParam.commonName);
         if (keyParam.organizationName != null && !keyParam.organizationName.isEmpty()) {
@@ -417,89 +399,125 @@ public class KeyStoreMakerDialog extends DialogFragment {
         if (keyParam.country != null && !keyParam.country.isEmpty()) {
             x500NameBuilder.append(", C=").append(keyParam.country);
         }
+
         X500Name x500Name = new X500Name(x500NameBuilder.toString());
+        Date notBefore = new Date();
+        long validitySeconds = Math.multiplyExact(keyParam.days, 24L * 60L * 60L);
+        X509Certificate generatedCert = keyGen.getSelfCertificate(x500Name, notBefore, validitySeconds);
+        if (generatedCert == null || generatedCert.getEncoded().length == 0) {
+            throw new IOException("Certificate generation returned no usable certificate");
+        }
 
-        Date date = new Date();
-        long j = (keyParam.days * 24) * 3600000;
-        Date date2 = new Date();
-        date2.setTime(j + date.getTime());
-        certificateExtensions.set("PrivateKeyUsage", new PrivateKeyUsageExtension(date, date2));
-
-        X509Certificate generatedCert = generateCert(privateKey, publicKey, x500Name, date, date2, certificateExtensions);
-
+        // Generate exactly one certificate and reuse it for both output forms.
         if (generatePairKeys.isChecked()) {
             writeCertificate(privateKey, generatedCert, keyParam);
         }
         if (generateJKS.isChecked()) {
-            writeJks(privateKey, generateCert(privateKey, publicKey, x500Name, date, date2, certificateExtensions), keyParam);
+            writeJks(privateKey, generatedCert, keyParam);
         }
-    }
 
-    private X509Certificate generateCert(PrivateKey privateKey, PublicKey publicKey,
-                                         X500Name x500Name, Date date, Date date2,
-                                         CertificateExtensions certificateExtensions) throws Exception {
-        String str = "SHA512withRSA";
-        try {
-            CertificateValidity certificateValidity = new CertificateValidity(date, date2);
-            X509CertInfo x509CertInfo = new X509CertInfo();
-            x509CertInfo.set("version", new CertificateVersion(2));
-            x509CertInfo.set("serialNumber", new CertificateSerialNumber(new Random().nextInt() & Integer.MAX_VALUE));
-            x509CertInfo.set("algorithmID", new CertificateAlgorithmId(AlgorithmId.get(str)));
-            x509CertInfo.set("subject", new CertificateSubjectName(x500Name));
-            x509CertInfo.set("key", new CertificateX509Key(publicKey));
-            x509CertInfo.set("validity", certificateValidity);
-            x509CertInfo.set("issuer", new CertificateIssuerName(x500Name));
-
-            if (certificateExtensions != null) {
-                x509CertInfo.set("extensions", certificateExtensions);
-            }
-
-            X509CertImpl x509CertImpl = new X509CertImpl(x509CertInfo);
-            x509CertImpl.sign(privateKey, str);
-            return x509CertImpl;
-        } catch (IOException e) {
-            throw new CertificateEncodingException("getSelfCert: " + e.getMessage());
-        }
+        verifyOutputs(keyParam);
     }
 
     private void writeCertificate(PrivateKey privateKey, X509Certificate x509Certificate,
                                   KeyParam keyParam) throws Exception {
         File keyFile = new File(keyParam.keyPath);
-        if (!keyFile.getParentFile().exists()) {
-            keyFile.getParentFile().mkdirs();
-        }
-        try (OutputStream key = FileUtils.getOutputStream(keyFile)) {
-            key.write(privateKey.getEncoded());
+        File certFile = new File(keyParam.certOrAlias);
+        File parent = keyFile.getParentFile();
+        if (parent == null) throw new IOException("Signature-key output has no parent directory");
+        if (!parent.isDirectory() && !parent.mkdirs() && !parent.isDirectory()) {
+            throw new IOException("Cannot create output directory: " + parent.getAbsolutePath());
         }
 
-        try (FileOutputStream cery = new FileOutputStream(keyParam.certOrAlias)) {
-            cery.write("-----BEGIN CERTIFICATE-----".getBytes());
-            byte[] encoded = Base64.encode(x509Certificate.getEncoded(), Base64.DEFAULT);
-            cery.write(encoded);
-            cery.write("-----END CERTIFICATE-----".getBytes());
-            cery.flush();
+        byte[] encodedKey = privateKey.getEncoded();
+        if (encodedKey == null || encodedKey.length == 0) {
+            throw new IOException("Private key has no encoded form");
         }
+        byte[] encodedCertificate = x509Certificate.getEncoded();
+        if (encodedCertificate.length == 0) {
+            throw new IOException("Certificate has no encoded form");
+        }
+
+        try (OutputStream key = FileUtils.getOutputStream(keyFile)) {
+            key.write(encodedKey);
+            key.flush();
+        }
+
+        String pem = "-----BEGIN CERTIFICATE-----\n"
+                + Base64.encodeToString(encodedCertificate, Base64.NO_WRAP)
+                + "\n-----END CERTIFICATE-----\n";
+        try (OutputStream cert = FileUtils.getOutputStream(certFile)) {
+            cert.write(pem.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            cert.flush();
+        }
+
+        requireUsableFile(keyFile, "PK8 private key");
+        requireUsableFile(certFile, "X.509 certificate");
     }
 
     private void writeJks(PrivateKey privateKey, X509Certificate x509Certificate,
                           KeyParam keyParam) throws Exception {
-        KeyStore keyStore = KeyStore.getInstance("JKS");
+        SignatureKeyPaths.ensureJksProvider();
+        KeyStore keyStore = KeyStore.getInstance("JKS", "JKS");
         char[] storePass = keyParam.storePass.toCharArray();
-
+        char[] keyPass = keyParam.keyPass.toCharArray();
         File file = new File(keyParam.jksPath);
-        if (file.exists()) try (InputStream fis = FileUtils.getInputStream(keyParam.jksPath)) {
-            keyStore.load(fis, storePass);
-        } else {
-            keyStore.load(null, storePass);
+        File parent = file.getParentFile();
+        if (parent == null) throw new IOException("JKS output has no parent directory");
+        if (!parent.isDirectory() && !parent.mkdirs() && !parent.isDirectory()) {
+            throw new IOException("Cannot create JKS directory: " + parent.getAbsolutePath());
         }
 
-        char[] keyPass = keyParam.keyPass.toCharArray();
+        // New generation replaces the alias deterministically instead of trying
+        // to load a possibly stale/corrupt previous keystore.
+        keyStore.load(null, storePass);
         keyStore.setKeyEntry(keyParam.alias, privateKey, keyPass, new Certificate[]{x509Certificate});
 
-        file.createNewFile();
         try (OutputStream fos = FileUtils.getOutputStream(file)) {
             keyStore.store(fos, storePass);
+            fos.flush();
         }
+        requireUsableFile(file, "JKS keystore");
+
+        // Immediately validate the generated keystore with the same provider.
+        try (InputStream fis = FileUtils.getInputStream(file)) {
+            KeyStore verify = KeyStore.getInstance("JKS", "JKS");
+            verify.load(fis, storePass);
+            if (!verify.containsAlias(keyParam.alias) || !verify.isKeyEntry(keyParam.alias)) {
+                throw new IOException("Generated JKS does not contain alias: " + keyParam.alias);
+            }
+        }
+    }
+
+    private void verifyOutputs(KeyParam keyParam) throws IOException {
+        if (generatePairKeys.isChecked()) {
+            requireUsableFile(new File(keyParam.keyPath), "PK8 private key");
+            requireUsableFile(new File(keyParam.certOrAlias), "X.509 certificate");
+        }
+        if (generateJKS.isChecked()) {
+            requireUsableFile(new File(keyParam.jksPath), "JKS keystore");
+        }
+    }
+
+    private static void requireUsableFile(File file, String description) throws IOException {
+        if (file == null || !file.isFile() || file.length() == 0) {
+            throw new IOException(description + " was not created correctly: "
+                    + (file == null ? "null" : file.getAbsolutePath()));
+        }
+    }
+
+    private static String getExceptionMessage(Throwable t) {
+        StringBuilder out = new StringBuilder();
+        Throwable cur = t;
+        while (cur != null) {
+            if (out.length() > 0) out.append("\nCaused by: ");
+            out.append(cur.getClass().getSimpleName());
+            if (cur.getMessage() != null && !cur.getMessage().isEmpty()) {
+                out.append(": ").append(cur.getMessage());
+            }
+            cur = cur.getCause();
+        }
+        return out.toString();
     }
 
     public static class KeyParam {

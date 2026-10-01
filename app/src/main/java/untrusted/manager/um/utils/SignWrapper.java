@@ -199,6 +199,7 @@ public class SignWrapper {
     }
 
     private static boolean verifyKeystorePassword(File keyFile, String password) {
+        SignatureKeyPaths.ensureJksProvider();
         try {
             try (InputStream is = new FileInputStream(keyFile)) {
                 KeyStore ks = KeyStore.getInstance("PKCS12");
@@ -313,6 +314,9 @@ public class SignWrapper {
             String alias = keyStore.engineAliases().nextElement();
             KeyStore.PrivateKeyEntry entry = (KeyStore.PrivateKeyEntry) keyStore.engineGetEntry(alias, new KeyStore.PasswordProtection(password));
             return buildSignerConfig(entry.getPrivateKey(), (X509Certificate) keyStore.engineGetCertificate(alias));
+        }
+        if ("JKS".equals(type)) {
+            SignatureKeyPaths.ensureJksProvider();
         }
         try (InputStream in = FileUtils.getInputStream(key)) {
             KeyStore keyStore = KeyStore.getInstance(type);

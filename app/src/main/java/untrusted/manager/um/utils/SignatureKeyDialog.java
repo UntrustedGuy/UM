@@ -55,10 +55,14 @@ public class SignatureKeyDialog {
     }
 
     public static void show(AppCompatActivity activity, File file, boolean isSplitApk) {
-        File keysDir = new File(
-                Environment.getExternalStorageDirectory().getPath() + File.separatorChar + "MT2"
-                        + File.separatorChar + "keys"
-        );
+        File keysDir = SignatureKeyPaths.getDefaultDirectory();
+        File legacyKeysDir = SignatureKeyPaths.getLegacyDirectory();
+        try {
+            SignatureKeyPaths.ensureDefaultDirectory();
+            SignatureKeyPaths.ensureJksProvider();
+        } catch (Exception e) {
+            Extensions.showMessage(activity, e.getMessage() == null ? e.toString() : e.getMessage());
+        }
 
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(activity);
 
@@ -76,6 +80,7 @@ public class SignatureKeyDialog {
         }
         if (debugKeyPath != null && !signaturePaths.contains(debugKeyPath)) signaturePaths.add(debugKeyPath);
 
+        signaturePaths.addAll(getKeystoreFiles(legacyKeysDir));
         signaturePaths = new ArrayList<>(dedupe(signaturePaths));
         Collections.sort(signaturePaths);
         LayoutInflater inflater = LayoutInflater.from(activity);
@@ -121,6 +126,12 @@ public class SignatureKeyDialog {
 
         List<String> finalSignaturePaths = signaturePaths;
         btnPick.setOnClickListener(v -> {
+            try {
+                SignatureKeyPaths.ensureDefaultDirectory();
+            } catch (Exception e) {
+                Extensions.showMessage(activity, e.getMessage() == null ? e.toString() : e.getMessage());
+                return;
+            }
             FilePickerDialog.Properties properties = new FilePickerDialog.Properties();
             properties.selection_mode = FilePickerDialog.SINGLE_MODE;
             properties.selection_type = FilePickerDialog.FILE_SELECT;
@@ -328,6 +339,13 @@ public class SignatureKeyDialog {
                 .setNeutralButton(R.string.new_key, null) // Note: Need to set it after otherwise the dialog auto close
                 .show();
         ad.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener(v -> {
+            try {
+                SignatureKeyPaths.ensureDefaultDirectory();
+                SignatureKeyPaths.ensureJksProvider();
+            } catch (Exception e) {
+                Extensions.showMessage(activity, e.getMessage() == null ? e.toString() : e.getMessage());
+                return;
+            }
             KeyStoreMakerDialog ksmd = KeyStoreMakerDialog.newInstance();
             ksmd.setOnKeyGeneratedListener(new KeyStoreMakerDialog.OnKeyGeneratedListener() {
                 @Override

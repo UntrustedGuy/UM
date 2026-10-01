@@ -113,6 +113,7 @@ import untrusted.manager.um.utils.RootManager;
 import untrusted.manager.um.utils.RootStaging;
 import untrusted.manager.um.utils.SignWrapper;
 import untrusted.manager.um.utils.SignatureKeyDialog;
+import untrusted.manager.um.utils.SignatureKeyPaths;
 import untrusted.manager.um.utils.UiPrefs;
 import io.github.codehasan.colorpicker.extensions.Extensions;
 
@@ -1520,8 +1521,7 @@ public class MainFilesArrayAdapter extends RecyclerView.Adapter<MainFilesArrayAd
     }
 
     private void importSignature(File file, String fileName) {
-        File keysDir = new File(Environment.getExternalStorageDirectory()
-                + File.separator + "MT2" + File.separator + "keys");
+        File keysDir = SignatureKeyPaths.getDefaultDirectory();
         new Thread(() -> {
             try {
                 if (!keysDir.isDirectory() && !keysDir.mkdirs() && !keysDir.isDirectory()) {
