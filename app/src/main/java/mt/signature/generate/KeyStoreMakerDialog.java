@@ -608,8 +608,9 @@ public class KeyStoreMakerDialog extends DialogFragment {
                 updateProgressMessage("Writing JKS keystore...");
                 writeJks(privateKey, generatedCert, keyParam);
             }
-            updateProgressMessage("Validating generated files...");
-            verifyOutputs(keyParam);
+            // Each output is already checked after its final commit. Do not walk the
+            // generated files a second time on the critical path.
+            updateProgressMessage("Generation complete");
             completed = true;
         } finally {
             // Never leave a partially generated signing identity behind when any requested
@@ -704,10 +705,13 @@ public class KeyStoreMakerDialog extends DialogFragment {
 
         File temporary = new File(parent, "." + file.getName() + "." + System.nanoTime() + ".tmp");
         try {
+            long jksStartNanos = System.nanoTime();
             try (OutputStream fos = FileUtils.getOutputStream(temporary)) {
                 keyStore.store(fos, storePass);
                 fos.flush();
             }
+            long jksElapsedMs = (System.nanoTime() - jksStartNanos) / 1_000_000L;
+            updateProgressMessage("JKS written (" + jksElapsedMs + " ms)");
             requireUsableFile(temporary, "JKS keystore");
 
             // The key/certificate relationship was already cryptographically verified before
@@ -789,16 +793,6 @@ public class KeyStoreMakerDialog extends DialogFragment {
             }
         }
         requireUsableFile(target, description);
-    }
-
-    private void verifyOutputs(KeyParam keyParam) throws IOException {
-        if (keyParam.generatePairKeys) {
-            requireUsableFile(new File(keyParam.keyPath), "PK8 private key");
-            requireUsableFile(new File(keyParam.certOrAlias), "X.509 certificate");
-        }
-        if (keyParam.generateJKS) {
-            requireUsableFile(new File(keyParam.jksPath), "JKS keystore");
-        }
     }
 
     private static void requireUsableFile(File file, String description) throws IOException {
