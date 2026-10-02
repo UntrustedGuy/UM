@@ -445,12 +445,12 @@ public class KeyStoreMakerDialog extends DialogFragment {
                 }
                 mainHandler.post(() -> {
                     if (getView() == null) return;
+                    // Stop the generator UI immediately. The callback updates the parent
+                    // dialog and may perform additional UI/storage work; it must never keep
+                    // the generation spinner alive while that callback runs.
                     if (progress != null && progress.isShowing()) progress.dismiss();
-                    try {
-                        if (listener != null) listener.onKeyGenerated(keyParam);
-                    } finally {
-                        finishGeneration(true);
-                    }
+                    finishGeneration(true);
+                    if (listener != null) listener.onKeyGenerated(keyParam);
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
