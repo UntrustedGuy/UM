@@ -234,7 +234,10 @@ public class KeyStoreMakerDialog extends DialogFragment {
 
     private boolean validateInputs() {
         if (!generatePairKeys.isChecked() && !generateJKS.isChecked()) {
-            new ErrorUtil(requireContext()).showError(new IllegalArgumentException("Select at least one output format: pk8 + pem or JKS"));
+            Activity activity = getActivity();
+            if (activity != null) {
+                new ErrorUtil(activity).showError(new IllegalArgumentException("Select at least one output format: pk8 + pem or JKS"));
+            }
             return false;
         }
         String alias = key_name.getText() == null ? "" : key_name.getText().toString().trim();
@@ -411,7 +414,10 @@ public class KeyStoreMakerDialog extends DialogFragment {
                     }
                 }
             }
-            new ErrorUtil(requireContext()).showError(e);
+            Activity activity = getActivity();
+            if (activity != null) {
+                new ErrorUtil(activity).showError(e);
+            }
             return;
         }
 
