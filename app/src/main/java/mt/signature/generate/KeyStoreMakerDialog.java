@@ -74,6 +74,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
@@ -104,7 +105,11 @@ public class KeyStoreMakerDialog extends DialogFragment {
     // Reuse one process-local CSPRNG instead of constructing/seeding a new SecureRandom
     // for every key-generation request. The key material remains cryptographically random,
     // while repeated generations avoid the avoidable entropy/provider initialization cost.
-    private static final SecureRandom KEY_GENERATION_RANDOM = new SecureRandom();
+    private static SecureRandom createKeyGenerationRandom() throws GeneralSecurityException {
+        // Match MP Manager upstream: SHA1PRNG avoids the blocking platform-default
+        // SecureRandom initialization that can stall RSA generation on some Android builds.
+        return SecureRandom.getInstance("SHA1PRNG");
+    }
 
     // Views
     private LinearLayout linear1;
@@ -467,6 +472,14 @@ public class KeyStoreMakerDialog extends DialogFragment {
         progress.show();
     }
 
+    private void updateProgressMessage(String message) {
+        mainHandler.post(() -> {
+            if (progress != null && progress.isShowing()) {
+                progress.setMessage(message);
+            }
+        });
+    }
+
     private KeyParam save() throws Exception {
         KeyParam keyParam = new KeyParam();
 
@@ -533,22 +546,21 @@ public class KeyStoreMakerDialog extends DialogFragment {
     }
 
     private void generateKey(KeyParam keyParam) throws Exception {
+        updateProgressMessage("Preparing cryptographic provider...");
+        // Follow MP Manager's upstream signing path: use the platform RSA provider and
+        // explicitly select SHA1PRNG. The previous implementation used a lazily seeded
+        // SecureRandom and forced RSA through BC; on some Android devices that could make
+        // key generation appear to hang for minutes while waiting for entropy/provider
+        // initialization. SHA1PRNG is the upstream non-blocking generation path.
         SignatureKeyPaths.ensureJksProvider();
-
-        // Prefer Android's native RSA/Conscrypt provider when it is available.
-        // On some Android builds the generic provider lookup can land on a
-        // compatibility provider whose RSA generation is dramatically slower.
-        String rsaProvider = findFastRsaProvider();
-
-        // Use the same self-signed certificate generator already used by UM's
-        // FTPS code. This avoids the fragile hand-built X509CertInfo path that
-        // could fail before any output file was written on newer Android/JDK
-        // combinations.
-        CertAndKeyGen keyGen = rsaProvider == null
-                ? new CertAndKeyGen("RSA", "SHA256withRSA")
-                : new CertAndKeyGen("RSA", "SHA256withRSA", rsaProvider);
-        keyGen.setRandom(KEY_GENERATION_RANDOM);
+        SecureRandom keyRandom = createKeyGenerationRandom();
+        CertAndKeyGen keyGen = new CertAndKeyGen("RSA", "SHA256withRSA");
+        keyGen.setRandom(keyRandom);
+        updateProgressMessage("Generating RSA key...");
+        long keyStartNanos = System.nanoTime();
         keyGen.generate(keyParam.keySize);
+        long keyElapsedMs = (System.nanoTime() - keyStartNanos) / 1_000_000L;
+        updateProgressMessage("RSA key generated (" + keyElapsedMs + " ms)");
 
         PrivateKey privateKey = keyGen.getPrivateKey();
         if (privateKey == null || privateKey.getEncoded() == null || privateKey.getEncoded().length == 0) {
@@ -574,8 +586,12 @@ public class KeyStoreMakerDialog extends DialogFragment {
 
         X500Name x500Name = new X500Name(x500NameBuilder.toString());
         Date notBefore = new Date();
+        updateProgressMessage("Creating signing certificate...");
         long validitySeconds = Math.multiplyExact(keyParam.days, 24L * 60L * 60L);
+        long certStartNanos = System.nanoTime();
         X509Certificate generatedCert = keyGen.getSelfCertificate(x500Name, notBefore, validitySeconds);
+        long certElapsedMs = (System.nanoTime() - certStartNanos) / 1_000_000L;
+        updateProgressMessage("Certificate generated (" + certElapsedMs + " ms)");
         if (generatedCert == null || generatedCert.getEncoded().length == 0) {
             throw new IOException("Certificate generation returned no usable certificate");
         }
@@ -585,11 +601,14 @@ public class KeyStoreMakerDialog extends DialogFragment {
         try {
             // Generate exactly one certificate and reuse it for both output forms.
             if (keyParam.generatePairKeys) {
+                updateProgressMessage("Writing PK8 and certificate...");
                 writeCertificate(privateKey, generatedCert, keyParam);
             }
             if (keyParam.generateJKS) {
+                updateProgressMessage("Writing JKS keystore...");
                 writeJks(privateKey, generatedCert, keyParam);
             }
+            updateProgressMessage("Validating generated files...");
             verifyOutputs(keyParam);
             completed = true;
         } finally {
@@ -602,18 +621,6 @@ public class KeyStoreMakerDialog extends DialogFragment {
                 deleteGeneratedFile(keyParam.generateJKS ? keyParam.jksPath : null);
             }
         }
-    }
-
-    private static String findFastRsaProvider() {
-        String[] candidates = {"AndroidOpenSSL", "Conscrypt"};
-        for (String name : candidates) {
-            Provider provider = Security.getProvider(name);
-            if (provider != null && provider.getService("KeyPairGenerator", "RSA") != null
-                    && provider.getService("Signature", "SHA256withRSA") != null) {
-                return name;
-            }
-        }
-        return null;
     }
 
     private static String escapeX500Value(String value) {

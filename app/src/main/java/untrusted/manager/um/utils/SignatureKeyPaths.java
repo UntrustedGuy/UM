@@ -8,6 +8,7 @@ import java.security.Provider;
 import java.security.Security;
 
 import android.sun.security.provider.JavaKeyStoreProvider;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 /**
  * Shared storage and provider handling for APK-signing keys.
@@ -38,6 +39,22 @@ public final class SignatureKeyPaths {
             throw new IOException("Cannot create signature-key directory: " + dir.getAbsolutePath());
         }
         return dir;
+    }
+
+    public static synchronized void ensureBouncyCastleProvider() {
+        Provider provider = Security.getProvider("BC");
+        if (provider == null
+                || provider.getService("KeyPairGenerator", "RSA") == null
+                || provider.getService("Signature", "SHA256withRSA") == null) {
+            Security.removeProvider("BC");
+            Security.addProvider(new BouncyCastleProvider());
+        }
+        Provider verified = Security.getProvider("BC");
+        if (verified == null
+                || verified.getService("KeyPairGenerator", "RSA") == null
+                || verified.getService("Signature", "SHA256withRSA") == null) {
+            throw new IllegalStateException("Bouncy Castle RSA provider is unavailable");
+        }
     }
 
     public static synchronized void ensureJksProvider() {
