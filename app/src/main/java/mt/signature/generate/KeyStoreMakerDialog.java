@@ -435,6 +435,7 @@ public class KeyStoreMakerDialog extends DialogFragment {
         new Thread(() -> {
             try {
                 generateKey(keyParam);
+                updateProgressMessage("Saving key settings...");
                 if (keyParam.useBiometrics && !keyParam.keyPass.isEmpty()) {
                     s.edit()
                             .putBoolean("useBiometrics", true)
@@ -444,17 +445,14 @@ public class KeyStoreMakerDialog extends DialogFragment {
                     s.edit().putBoolean("useBiometrics", false).remove("keyPass").apply();
                 }
                 mainHandler.post(() -> {
-                    if (getView() == null) return;
-                    // Stop the generator UI immediately. The callback updates the parent
-                    // dialog and may perform additional UI/storage work; it must never keep
-                    // the generation spinner alive while that callback runs.
+                    // The worker has now finished every generation, output, and preference
+                    // operation. Dismiss the progress UI before invoking the parent callback.
                     if (progress != null && progress.isShowing()) progress.dismiss();
                     finishGeneration(true);
                     if (listener != null) listener.onKeyGenerated(keyParam);
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> {
-                    if (getView() == null) return;
                     if (progress != null && progress.isShowing()) progress.dismiss();
                     finishGeneration(false);
                     if (listener != null) listener.onError(getExceptionMessage(e));
@@ -609,8 +607,8 @@ public class KeyStoreMakerDialog extends DialogFragment {
                 writeJks(privateKey, generatedCert, keyParam);
             }
             // Each output is already checked after its final commit. Do not walk the
-            // generated files a second time on the critical path.
-            updateProgressMessage("Generation complete");
+            // generated files a second time on the critical path. The UI reports completion
+            // only after this worker has also finished its final preference operation.
             completed = true;
         } finally {
             // Never leave a partially generated signing identity behind when any requested

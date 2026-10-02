@@ -246,7 +246,8 @@ public class SidebarAdapter extends ArrayAdapter<SidebarAdapter.SidebarEntry> {
                 "httpremote",
                 "color_picker",
                 "layout",
-                "tools"
+                "tools",
+                "settings"
         };
         List<ToolRegistry.ToolItem> registeredTools = ToolRegistry.getTools(context);
         Map<String, ToolRegistry.ToolItem> registeredById = new LinkedHashMap<>();
