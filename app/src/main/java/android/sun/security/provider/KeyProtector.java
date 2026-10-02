@@ -115,6 +115,10 @@ final class KeyProtector {
 
     private final MessageDigest md;
 
+    // JKS key protection only needs fresh salt; reuse the process CSPRNG rather than
+    // constructing/seeding a new SecureRandom for every keystore generation.
+    private static final SecureRandom RANDOM = new SecureRandom();
+
 
     /**
      * Creates an instance of this class, and initializes it with the given
@@ -188,8 +192,7 @@ final class KeyProtector {
 
         // Create a random salt
         byte[] salt = new byte[SALT_LEN];
-        SecureRandom random = new SecureRandom();
-        random.nextBytes(salt);
+        RANDOM.nextBytes(salt);
 
         // Set up the byte array which will be XORed with "plainKey"
         byte[] xorKey = new byte[plainKey.length];

@@ -100,6 +100,10 @@ public class KeyStoreMakerDialog extends DialogFragment {
     private SharedPreferences s;
     private ProgressDialog progress;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    // Reuse one process-local CSPRNG instead of constructing/seeding a new SecureRandom
+    // for every key-generation request. The key material remains cryptographically random,
+    // while repeated generations avoid the avoidable entropy/provider initialization cost.
+    private static final SecureRandom KEY_GENERATION_RANDOM = new SecureRandom();
 
     // Views
     private LinearLayout linear1;
@@ -535,7 +539,7 @@ public class KeyStoreMakerDialog extends DialogFragment {
         // could fail before any output file was written on newer Android/JDK
         // combinations.
         CertAndKeyGen keyGen = new CertAndKeyGen("RSA", "SHA256withRSA");
-        keyGen.setRandom(new SecureRandom());
+        keyGen.setRandom(KEY_GENERATION_RANDOM);
         keyGen.generate(keyParam.keySize);
 
         PrivateKey privateKey = keyGen.getPrivateKey();
