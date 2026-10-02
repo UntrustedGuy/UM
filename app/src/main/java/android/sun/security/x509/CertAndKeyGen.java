@@ -75,6 +75,7 @@ public final class CertAndKeyGen {
     {
         keyGen = KeyPairGenerator.getInstance(keyType);
         this.sigAlg = sigAlg;
+        this.providerName = null;
     }
 
     /**
@@ -93,13 +94,10 @@ public final class CertAndKeyGen {
     {
         if (providerName == null) {
             keyGen = KeyPairGenerator.getInstance(keyType);
+            this.providerName = null;
         } else {
-            try {
-                keyGen = KeyPairGenerator.getInstance(keyType, providerName);
-            } catch (Exception e) {
-                // try first available provider instead
-                keyGen = KeyPairGenerator.getInstance(keyType);
-            }
+            keyGen = KeyPairGenerator.getInstance(keyType, providerName);
+            this.providerName = providerName;
         }
         this.sigAlg = sigAlg;
     }
@@ -239,7 +237,11 @@ public final class CertAndKeyGen {
             info.set(X509CertInfo.ISSUER, new CertificateIssuerName(myname));
 
             cert = new X509CertImpl(info);
-            cert.sign(privateKey, this.sigAlg);
+            if (providerName == null) {
+                cert.sign(privateKey, this.sigAlg);
+            } else {
+                cert.sign(privateKey, this.sigAlg, providerName);
+            }
 
             return cert;
 
@@ -295,7 +297,8 @@ public final class CertAndKeyGen {
     }
 
     private SecureRandom        prng;
-    private final String              sigAlg;
+    private final String        sigAlg;
+    private final String        providerName;
     private KeyPairGenerator    keyGen;
     private PublicKey           publicKey;
     private PrivateKey          privateKey;

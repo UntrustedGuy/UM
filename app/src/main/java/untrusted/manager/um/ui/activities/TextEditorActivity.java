@@ -34,6 +34,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -642,10 +643,20 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
     }
 
     private String readTabText(EditorTab tab) {
-        // Binary axml must be decoded, not read as UTF-8 text
+        if (tab == null) return "";
+
+        // A restored/closed tab can temporarily lose both its File and content URI.
+        // Never pass a null URI to ContentResolver.openInputStream(): Android throws
+        // a NullPointerException before it reaches our error handling.
+        if (tab.file == null && tab.fileUri == null) {
+            tab.loadFailed = true;
+            return "";
+        }
+
+        // Binary axml must be decoded, not read as UTF-8 text.
         if (tab.axml) {
-            try (InputStream is = tab.file != null ? FileUtils.getInputStream(tab.file)
-                    : getContentResolver().openInputStream(tab.fileUri)) {
+            try (InputStream is = openTabInputStream(tab)) {
+                if (is == null) throw new java.io.IOException("Unable to open the selected file");
                 tab.loadFailed = false;
                 return new aXMLDecoder(is, tab.resEntries).decodeAsString();
             } catch (Exception e) {
@@ -654,11 +665,10 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
                 return "";
             }
         }
-        boolean isFromFile = tab.file != null;
-        try (InputStream raw = isFromFile ? FileUtils.getInputStream(tab.file) : getContentResolver().openInputStream(tab.fileUri);
-             BufferedInputStream is = new BufferedInputStream(raw);
+        try (InputStream raw = openTabInputStream(tab);
+             BufferedInputStream is = raw == null ? null : new BufferedInputStream(raw);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            if (raw == null) throw new java.io.IOException("Unable to open input stream");
+            if (raw == null || is == null) throw new java.io.IOException("Unable to open the selected file");
             byte[] buffer = new byte[8192];
             long total = 0;
             int read;
@@ -679,6 +689,16 @@ public class TextEditorActivity extends AppCompatActivity implements UnifiedEdit
             runOnUiThread(() -> new ErrorUtil(this).showError(e));
             return "";
         }
+    }
+
+    private InputStream openTabInputStream(EditorTab tab) throws IOException {
+        if (tab == null) return null;
+        if (tab.file != null) {
+            return FileUtils.getInputStream(tab.file);
+        }
+        Uri uri = tab.fileUri;
+        if (uri == null) return null;
+        return getContentResolver().openInputStream(uri);
     }
 
     private void applyLoadedText(EditorTab tab, String text) {

@@ -240,7 +240,6 @@ public class SidebarAdapter extends ArrayAdapter<SidebarAdapter.SidebarEntry> {
         String[] defaults = {
                 "extract",
                 "terminal",
-                "texteditor",
                 "signaturekey",
                 "plugins",
                 "mcp",
